@@ -1,0 +1,243 @@
+import React, { useState, useEffect } from 'react';
+import { collection, query, orderBy, onSnapshot, deleteDoc, doc, addDoc, serverTimestamp } from 'firebase/firestore';
+import { db, handleFirestoreError, OperationType } from '../firebase';
+import { Plus, Search, Trash2, ShoppingBag, Calendar, IndianRupee, Package, Briefcase, X, Save } from 'lucide-react';
+import { toast } from 'sonner';
+
+interface StoreItem {
+  id: string;
+  name: string;
+  purchaseDate: string;
+  price: number;
+  quantity: number;
+  workUsing: string;
+  createdAt: any;
+}
+
+const StoreManagement: React.FC<{ userRole: string | null }> = ({ userRole }) => {
+  const [items, setItems] = useState<StoreItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+
+  useEffect(() => {
+    const q = query(collection(db, 'store'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as StoreItem)));
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'store');
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this item?')) return;
+    try {
+      await deleteDoc(doc(db, 'store', id));
+      toast.success('Item deleted successfully');
+    } catch (error) {
+      toast.error('Failed to delete item');
+    }
+  };
+
+  const filteredItems = items.filter(item => 
+    item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    item.workUsing.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  if (loading) return <div className="p-8 text-center">Loading...</div>;
+
+  return (
+    <div className="p-4 md:p-8 max-w-7xl mx-auto">
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Store Inventory</h1>
+          <p className="text-gray-500 mt-1">Manage your studio supplies and items.</p>
+        </div>
+        {(userRole === 'admin' || userRole === 'photographer') && (
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="bg-black text-white px-6 py-3 rounded-xl font-bold flex items-center space-x-2 hover:bg-gray-800 transition-all shadow-lg shadow-black/20"
+          >
+            <Plus className="w-5 h-5" />
+            <span>Add Item</span>
+          </button>
+        )}
+      </div>
+
+      <div className="mb-6">
+        <div className="relative">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
+          <input
+            type="text"
+            placeholder="Search item name or work..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full pl-12 pr-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-black outline-none transition-all"
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredItems.map((item) => (
+          <div key={item.id} className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all">
+            <div className="flex justify-between items-start mb-4">
+              <div className="p-3 bg-gray-50 rounded-xl">
+                <ShoppingBag className="w-6 h-6 text-gray-700" />
+              </div>
+              <div className="flex space-x-2">
+                <span className="px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-gray-100 text-gray-700">
+                  Qty: {item.quantity}
+                </span>
+                {userRole === 'admin' && (
+                  <button
+                    onClick={() => handleDelete(item.id)}
+                    className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                  >
+                    <Trash2 className="w-5 h-5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <h3 className="text-xl font-bold text-gray-900 mb-4">{item.name}</h3>
+
+            <div className="space-y-3">
+              <div className="flex items-center text-sm text-gray-500">
+                <Calendar className="w-4 h-4 mr-2" />
+                <span>Purchased: {item.purchaseDate}</span>
+              </div>
+              <div className="flex items-center text-sm text-gray-500">
+                <IndianRupee className="w-4 h-4 mr-2" />
+                <span>Price: ₹{item.price.toLocaleString()}</span>
+              </div>
+              <div className="flex items-center text-sm text-gray-500">
+                <Package className="w-4 h-4 mr-2" />
+                <span>Quantity: {item.quantity}</span>
+              </div>
+              <div className="flex items-center text-sm text-gray-500">
+                <Briefcase className="w-4 h-4 mr-2" />
+                <span>Work: {item.workUsing || 'None'}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {showAddModal && (
+        <AddItemModal onClose={() => setShowAddModal(false)} />
+      )}
+    </div>
+  );
+};
+
+const AddItemModal: React.FC<{ onClose: () => void }> = ({ onClose }) => {
+  const [formData, setFormData] = useState({
+    name: '',
+    purchaseDate: '',
+    price: '',
+    quantity: '',
+    workUsing: ''
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await addDoc(collection(db, 'store'), {
+        ...formData,
+        price: Number(formData.price),
+        quantity: Number(formData.quantity),
+        createdAt: serverTimestamp()
+      });
+      toast.success('Item added successfully');
+      onClose();
+    } catch (error) {
+      toast.error('Failed to add item');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-[70]">
+      <div className="bg-white rounded-2xl max-w-md w-full p-8 shadow-2xl">
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-2xl font-bold text-gray-900">Add Store Item</h2>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+            <X className="w-6 h-6" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Item Name</label>
+            <input
+              type="text"
+              required
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-black outline-none"
+              placeholder="e.g., SD Card 128GB"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Purchase Date</label>
+              <input
+                type="date"
+                required
+                value={formData.purchaseDate}
+                onChange={(e) => setFormData({ ...formData, purchaseDate: e.target.value })}
+                className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-black outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Price (₹)</label>
+              <input
+                type="number"
+                required
+                value={formData.price}
+                onChange={(e) => setFormData({ ...formData, price: e.target.value })}
+                className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-black outline-none"
+                placeholder="0"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+            <input
+              type="number"
+              required
+              value={formData.quantity}
+              onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+              className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-black outline-none"
+              placeholder="1"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Work Using</label>
+            <input
+              type="text"
+              value={formData.workUsing}
+              onChange={(e) => setFormData({ ...formData, workUsing: e.target.value })}
+              className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:ring-2 focus:ring-black outline-none"
+              placeholder="e.g., Wedding Shoot"
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="w-full bg-black text-white py-3 rounded-xl font-bold flex items-center justify-center space-x-2 hover:bg-gray-800 transition-all shadow-lg shadow-black/20 mt-6"
+          >
+            <Save className="w-5 h-5" />
+            <span>Save Item</span>
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+export default StoreManagement;

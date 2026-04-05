@@ -1,0 +1,443 @@
+{
+  "entities": {
+    "Payment": {
+      "title": "Payment",
+      "description": "Payment record for an order or booking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "orderId": { "type": "string" },
+        "clientId": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string", "format": "date" },
+        "method": { "type": "string", "enum": ["online", "manual"] },
+        "slipUrl": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "rejected"] },
+        "confirmedBy": { "type": "string" },
+        "confirmedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["orderId", "clientId", "amount", "date", "method", "status", "createdAt"]
+    },
+    "User": {
+      "title": "User",
+      "description": "User profile information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "photographer", "editor", "client", "other"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Photography booking order",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clientId": { "type": "string" },
+        "clientName": { "type": "string" },
+        "mobileNumber": { "type": "string" },
+        "invoiceNumber": { "type": "string" },
+        "photographerId": { "type": "string" },
+        "editorId": { "type": "string" },
+        "otherId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "in-progress", "completed", "cancelled"] },
+        "date": { "type": "string", "format": "date-time" },
+        "location": { "type": "string" },
+        "packageName": { "type": "string" },
+        "totalAmount": { "type": "number" },
+        "paidAmount": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clientId", "status", "date", "totalAmount"]
+    },
+    "TeamMember": {
+      "title": "Team Member",
+      "description": "Photography team member details",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "specialization": { "type": "string" },
+        "bio": { "type": "string" },
+        "availability": { "type": "boolean" }
+      },
+      "required": ["uid"]
+    },
+    "Gallery": {
+      "title": "Gallery",
+      "description": "Photo gallery for an order",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "orderId": { "type": "string" },
+        "clientId": { "type": "string" },
+        "name": { "type": "string" },
+        "isPublic": { "type": "boolean" },
+        "coverUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["orderId", "clientId", "name"]
+    },
+    "Photo": {
+      "title": "Photo",
+      "description": "Individual photo or video in a gallery",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "galleryId": { "type": "string" },
+        "url": { "type": "string" },
+        "thumbnailUrl": { "type": "string" },
+        "type": { "type": "string", "enum": ["image", "video"] },
+        "uploadedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["galleryId", "url", "type"]
+    },
+    "ClientNote": {
+      "title": "Client Note",
+      "description": "Notes related to client interactions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clientId": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "content": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clientId", "authorId", "content", "createdAt"]
+    },
+    "Review": {
+      "title": "Review",
+      "description": "Client review for the photography service",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clientId": { "type": "string" },
+        "clientName": { "type": "string" },
+        "clientPhoto": { "type": "string" },
+        "rating": { "type": "integer" },
+        "comment": { "type": "string" },
+        "isApproved": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clientId", "clientName", "rating", "comment", "createdAt"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "Detailed photography booking information",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "invoiceNumber": { "type": "string" },
+        "clientName": { "type": "string" },
+        "clientMobile": { "type": "string" },
+        "clientEmail": { "type": "string" },
+        "eventDate": { "type": "string", "format": "date-time" },
+        "package": { "type": "string", "enum": ["Silver", "Gold", "Diamond", "Customize"] },
+        "eventType": { "type": "string", "enum": ["WEDD BRIDESIDE", "WEDD GROOM", "ANNOPRASAN", "BIRTHDAY", "MODEL SHOOT", "CINEMATIC", "EVENT", "SHORT FILM", "MUSIC VIDEO", "OUTDOOR"] },
+        "eventPlace": { "type": "string" },
+        "address": { "type": "string" },
+        "requirement": { "type": "string" },
+        "brideAddress": { "type": "string" },
+        "brideNumber": { "type": "string" },
+        "brideName": { "type": "string" },
+        "brideBengaliName": { "type": "string" },
+        "groomAddress": { "type": "string" },
+        "groomNumber": { "type": "string" },
+        "groomName": { "type": "string" },
+        "groomBengaliName": { "type": "string" },
+        "childName": { "type": "string" },
+        "childBengaliName": { "type": "string" },
+        "modelName": { "type": "string" },
+        "modelIdLink": { "type": "string" },
+        "makeupArtist": { "type": "string" },
+        "makeupArtistIdLink": { "type": "string" },
+        "channel": { "type": "string" },
+        "ourWeddingSong": { "type": "string" },
+        "eventSong": { "type": "string" },
+        "reelsSong": { "type": "string" },
+        "totalPackageAmount": { "type": "number" },
+        "dueAmount": { "type": "number" },
+        "emi1Date": { "type": "string" },
+        "emi2Date": { "type": "string" },
+        "emi3Date": { "type": "string" },
+        "emi4Date": { "type": "string" },
+        "emi5Date": { "type": "string" },
+        "paymentMode": { "type": "string" },
+        "photographerName": { "type": "string" },
+        "photographerPrice": { "type": "number" },
+        "videographerName": { "type": "string" },
+        "videographerPrice": { "type": "number" },
+        "otherServiceName": { "type": "string" },
+        "otherServicePrice": { "type": "number" },
+        "photographerId": { "type": "string" },
+        "editorId": { "type": "string" },
+        "otherId": { "type": "string" },
+        "rawFileLink": { "type": "string" },
+        "teaserStatus": { "type": "string", "enum": ["delivered", "review", "pending"] },
+        "teaserLink": { "type": "string" },
+        "fullVideoStatus": { "type": "string", "enum": ["delivered", "review", "pending"] },
+        "fullVideoLink": { "type": "string" },
+        "videoStatus": { "type": "string", "enum": ["delivered", "review", "pending"] },
+        "editPhotoStatus": { "type": "string", "enum": ["delivered", "review", "pending"] },
+        "photoEditLink": { "type": "string" },
+        "albumDesignStatus": { "type": "string", "enum": ["delivered", "review", "pending"] },
+        "albumLink": { "type": "string" },
+        "eInviteStatus": { "type": "string", "enum": ["delivered", "review", "pending"] },
+        "eInviteLink": { "type": "string" },
+        "photoSelectionStatus": { "type": "string", "enum": ["delivered", "review", "pending"] },
+        "photoSelectionLink": { "type": "string" },
+        "preWeddingVideoStatus": { "type": "string", "enum": ["delivered", "review", "pending"] },
+        "preWeddingVideoLink": { "type": "string" },
+        "preWeddingPhotoStatus": { "type": "string", "enum": ["delivered", "review", "pending"] },
+        "preWeddingPhotoLink": { "type": "string" },
+        "otherStatus": { "type": "string", "enum": ["delivered", "review", "pending"] },
+        "otherLink": { "type": "string" },
+        "reelsStatus": { "type": "string", "enum": ["delivered", "review", "pending"] },
+        "reelsLink": { "type": "string" },
+        "vlogStatus": { "type": "string", "enum": ["delivered", "review", "pending"] },
+        "outputLink": { "type": "string" },
+        "clientId": { "type": "string" },
+        "googleDriveFolderId": { "type": "string" },
+        "photographerPaid": { "type": "boolean" },
+        "editorPaid": { "type": "boolean" },
+        "otherPaid": { "type": "boolean" },
+        "faceRecognitionPhotos": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "updatedBy": { "type": "string" }
+      },
+      "required": ["clientName", "eventDate", "package", "eventType", "totalPackageAmount"]
+    },
+    "Employee": {
+      "title": "Employee",
+      "description": "Employee profile information",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "designation": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phoneNumber": { "type": "string" },
+        "workAssigned": { "type": "string" },
+        "portfolioUrl": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "designation", "email"]
+    },
+    "EventCost": {
+      "title": "Event Cost",
+      "description": "Event-related expenses and photographer details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "invoice": { "type": "string" },
+        "name": { "type": "string" },
+        "travelExtra": { "type": "number" },
+        "caligraphy": { "type": "number" },
+        "weddingVideo": { "type": "number" },
+        "weddingTeaser": { "type": "number" },
+        "weddingPhoto": { "type": "number" },
+        "box": { "type": "number" },
+        "other": { "type": "number" },
+        "albumDesign": { "type": "number" },
+        "albumPrint": { "type": "number" },
+        "prePhoto": { "type": "number" },
+        "preVideo": { "type": "number" },
+        "lidGenerate": { "type": "number" },
+        "gift": { "type": "number" },
+        "pendrive": { "type": "number" },
+        "tvLedProjector": { "type": "number" },
+        "photographers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "photographer": { "type": "string" },
+              "work": { "type": "string" },
+              "payment": { "type": "string" },
+              "workReview": { "type": "string" }
+            }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["invoice", "name"]
+    },
+    "Equipment": {
+      "title": "Equipment",
+      "description": "Photography equipment details",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "purchaseDate": { "type": "string", "format": "date" },
+        "price": { "type": "number" },
+        "status": { "type": "string", "enum": ["Available", "In Use", "Repair", "Retired"] },
+        "workUsing": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "purchaseDate", "price", "status"]
+    },
+    "StoreItem": {
+      "title": "Store Item",
+      "description": "Items available in the store",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "purchaseDate": { "type": "string", "format": "date" },
+        "price": { "type": "number" },
+        "quantity": { "type": "number" },
+        "workUsing": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "purchaseDate", "price", "quantity"]
+    },
+    "JobApplication": {
+      "title": "Job Application",
+      "description": "Job application details from careers page",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phoneNumber": { "type": "string" },
+        "designation": { "type": "string" },
+        "portfolioUrl": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "email", "phoneNumber", "designation", "createdAt"]
+    },
+    "ServiceInquiry": {
+      "title": "Service Inquiry",
+      "description": "Inquiry for a specific service",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "serviceTitle": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "phoneNumber": { "type": "string" },
+        "location": { "type": "string" },
+        "requirements": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["serviceTitle", "name", "email", "phoneNumber", "location", "requirements", "createdAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "A notification for a user.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["info", "success", "warning", "error"] },
+        "isRead": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "message", "type", "isRead", "createdAt"]
+    },
+    "BlogPost": {
+      "title": "Blog Post",
+      "description": "A blog post created by an admin",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "coverUrl": { "type": "string" },
+        "isPublished": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "content", "authorId", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/payments/{paymentId}": {
+      "schema": "Payment",
+      "description": "Payment records"
+    },
+    "/users/{uid}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/store/{itemId}": {
+      "schema": "StoreItem",
+      "description": "Store inventory"
+    },
+    "/equipment/{equipmentId}": {
+      "schema": "Equipment",
+      "description": "Equipment inventory"
+    },
+    "/eventCosts/{costId}": {
+      "schema": "EventCost",
+      "description": "Event expenses"
+    },
+    "/employees/{employeeId}": {
+      "schema": "Employee",
+      "description": "Employee profiles"
+    },
+    "/orders/{orderId}": {
+      "schema": "Order",
+      "description": "Photography orders"
+    },
+    "/bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "Detailed bookings"
+    },
+    "/teamMembers/{uid}": {
+      "schema": "TeamMember",
+      "description": "Team member details"
+    },
+    "/galleries/{galleryId}": {
+      "schema": "Gallery",
+      "description": "Photo galleries"
+    },
+    "/galleries/{galleryId}/photos/{photoId}": {
+      "schema": "Photo",
+      "description": "Photos within a gallery"
+    },
+    "/clientNotes/{noteId}": {
+      "schema": "ClientNote",
+      "description": "CRM notes for clients"
+    },
+    "/reviews/{reviewId}": {
+      "schema": "Review",
+      "description": "Client reviews"
+    },
+    "/jobApplications/{applicationId}": {
+      "schema": "JobApplication",
+      "description": "Job applications"
+    },
+    "/serviceInquiries/{inquiryId}": {
+      "schema": "ServiceInquiry",
+      "description": "Service inquiries"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "User notifications"
+    },
+    "/blogPosts/{postId}": {
+      "schema": "BlogPost",
+      "description": "Blog posts"
+    }
+  }
+}

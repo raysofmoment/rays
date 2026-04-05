@@ -1,0 +1,9 @@
+{
+  "name": "Rays of Moment",
+  "description": "A comprehensive photography management platform for bookings, team collaboration, and client galleries.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}

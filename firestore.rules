@@ -1,0 +1,308 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Fields: uid, email, displayName, photoURL, role (admin, photographer, editor, client, other), createdAt
+    //
+    // Collection: orders
+    // Fields: id, clientId, clientName, teamMemberId, status, date, location, packageName, totalAmount, paidAmount, createdAt
+    //
+    // Collection: teamMembers
+    // Fields: uid, specialization, bio, availability
+    //
+    // Collection: galleries
+    // Fields: id, orderId, clientId, name, isPublic, coverUrl, createdAt
+    //
+    // Collection: photos
+    // Fields: id, galleryId, url, thumbnailUrl, uploadedAt
+    //
+    // Collection: employees
+    // Fields: id, name, designation, email, phoneNumber, workAssigned, portfolioUrl, photoURL, createdAt
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        ((request.auth.token.email == "saikatbanerjee139@gmail.com" && request.auth.token.email_verified == true) ||
+         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
+    }
+
+    function isPhotographer() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'photographer';
+    }
+
+    function isEditor() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'editor';
+    }
+
+    function isClient() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'client';
+    }
+
+    function isOther() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'other';
+    }
+
+    function isTeam() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'photographer', 'editor']);
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidPayment(data) {
+      return hasOnlyAllowedFields(['id', 'orderId', 'clientId', 'amount', 'date', 'method', 'slipUrl', 'status', 'confirmedBy', 'confirmedAt', 'createdAt', 'updatedAt']) &&
+             data.orderId is string && data.clientId is string && data.amount is number &&
+             data.method in ['online', 'manual'] && data.status in ['pending', 'confirmed', 'rejected'];
+    }
+
+    function isValidUser(data) {
+      return hasOnlyAllowedFields(['uid', 'email', 'displayName', 'photoURL', 'role', 'createdAt', 'updatedAt']) &&
+             data.uid is string && data.email is string &&
+             data.role in ['admin', 'photographer', 'editor', 'client', 'other'];
+    }
+
+    function isValidOrder(data) {
+      return hasOnlyAllowedFields(['id', 'clientId', 'clientName', 'mobileNumber', 'invoiceNumber', 'photographerId', 'editorId', 'otherId', 'status', 'date', 'location', 'packageName', 'totalAmount', 'paidAmount', 'createdAt', 'updatedAt']) &&
+             data.clientId is string && data.status in ['pending', 'confirmed', 'in-progress', 'completed', 'cancelled'] &&
+             data.totalAmount is number;
+    }
+
+    function isValidGallery(data) {
+      return hasOnlyAllowedFields(['id', 'orderId', 'clientId', 'name', 'isPublic', 'coverUrl', 'createdAt']) &&
+             data.orderId is string && data.clientId is string && data.name is string;
+    }
+
+    function isValidClientNote(data) {
+      return hasOnlyAllowedFields(['id', 'clientId', 'authorId', 'authorName', 'content', 'createdAt']) &&
+             data.clientId is string && data.authorId is string && data.content is string;
+    }
+
+    function isValidReview(data) {
+      return hasOnlyAllowedFields(['id', 'clientId', 'clientName', 'clientPhoto', 'rating', 'comment', 'isApproved', 'createdAt']) &&
+             data.clientId is string && data.clientName is string && data.rating is number && data.comment is string;
+    }
+
+    function isValidBooking(data) {
+      return hasOnlyAllowedFields(['id', 'invoiceNumber', 'clientId', 'clientName', 'clientMobile', 'clientEmail', 'eventDate', 'package', 'eventType', 'eventPlace', 'address', 'requirement', 'brideAddress', 'brideNumber', 'brideName', 'brideBengaliName', 'groomAddress', 'groomNumber', 'groomName', 'groomBengaliName', 'childName', 'childBengaliName', 'modelName', 'modelIdLink', 'makeupArtist', 'makeupArtistIdLink', 'channel', 'ourWeddingSong', 'eventSong', 'reelsSong', 'totalPackageAmount', 'dueAmount', 'emi1Date', 'emi2Date', 'emi3Date', 'emi4Date', 'emi5Date', 'paymentMode', 'photographerName', 'photographerPrice', 'photographerId', 'photographerPaid', 'videographerName', 'videographerPrice', 'editorId', 'editorPaid', 'otherServiceName', 'otherServicePrice', 'otherId', 'otherPaid', 'rawFileLink', 'teaserStatus', 'teaserLink', 'fullVideoStatus', 'fullVideoLink', 'videoStatus', 'editPhotoStatus', 'photoEditLink', 'albumDesignStatus', 'albumLink', 'eInviteStatus', 'eInviteLink', 'photoSelectionStatus', 'photoSelectionLink', 'preWeddingVideoStatus', 'preWeddingVideoLink', 'preWeddingPhotoStatus', 'preWeddingPhotoLink', 'otherStatus', 'otherLink', 'reelsStatus', 'vlogStatus', 'outputLink', 'googleDriveFolderId', 'faceRecognitionPhotos', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy']) &&
+             data.clientName is string && data.eventDate is string &&
+             data.package in ['Silver', 'Gold', 'Diamond', 'Customize'] &&
+             data.eventType in ['WEDD BRIDESIDE', 'WEDD GROOM', 'ANNOPRASAN', 'BIRTHDAY', 'MODEL SHOOT', 'CINEMATIC', 'EVENT', 'SHORT FILM', 'MUSIC VIDEO', 'OUTDOOR'];
+    }
+
+    function isValidEmployee(data) {
+      return hasOnlyAllowedFields(['id', 'name', 'designation', 'email', 'phoneNumber', 'workAssigned', 'portfolioUrl', 'photoURL', 'createdAt', 'updatedAt']) &&
+             data.name is string && data.designation is string && data.email is string;
+    }
+
+    function isValidJobApplication(data) {
+      return hasOnlyAllowedFields(['id', 'name', 'email', 'phoneNumber', 'designation', 'portfolioUrl', 'createdAt', 'updatedAt']) &&
+             data.name is string && data.email is string && data.phoneNumber is string && data.designation is string &&
+             (!('portfolioUrl' in data) || data.portfolioUrl is string) &&
+             (!('createdAt' in data) || data.createdAt is string) &&
+             (!('updatedAt' in data) || data.updatedAt is string);
+    }
+    
+    function isValidServiceInquiry(data) {
+      return hasOnlyAllowedFields(['id', 'serviceTitle', 'name', 'email', 'phoneNumber', 'location', 'requirements', 'createdAt']) &&
+             data.serviceTitle is string && data.name is string && data.email is string && 
+             data.phoneNumber is string && data.location is string && data.requirements is string;
+    }
+
+    function isValidNotification(data) {
+      return hasOnlyAllowedFields(['id', 'userId', 'title', 'message', 'type', 'isRead', 'createdAt']) &&
+             data.userId is string && data.title is string && data.message is string &&
+             data.type in ['info', 'success', 'warning', 'error'] && data.isRead is bool;
+    }
+
+    function isValidBlogPost(data) {
+      return hasOnlyAllowedFields(['id', 'title', 'content', 'authorId', 'authorName', 'coverUrl', 'isPublished', 'createdAt', 'updatedAt']) &&
+             data.title is string && data.title.size() > 0 && data.title.size() < 200 &&
+             data.content is string && data.content.size() > 0 &&
+             data.authorId is string;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /payments/{paymentId} {
+      allow read: if isAuthenticated() && (isAdmin() || isTeam() || resource.data.clientId == request.auth.uid);
+      allow create: if isAuthenticated() && isValidPayment(request.resource.data) && (request.auth.uid == request.resource.data.clientId || isAdmin());
+      allow update: if isAuthenticated() && (
+        (isAdmin() && isValidPayment(request.resource.data)) ||
+        (isOwner(resource.data.clientId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['slipUrl', 'date', 'amount']) && isValidPayment(request.resource.data))
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /users/{uid} {
+      allow read: if (isAuthenticated() && (isOwner(uid) || isAdmin() || isTeam())) || resource.data.role == 'admin';
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(uid) || isAdmin());
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(uid) || isAdmin());
+    }
+
+    match /employees/{employeeId} {
+      allow read: if isAuthenticated();
+      allow create: if isAdmin() && isValidEmployee(request.resource.data);
+      allow update: if isAdmin() && isValidEmployee(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /bookings/{bookingId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() || 
+        isTeam() || 
+        isOther() ||
+        (resource.data.clientId == request.auth.uid) ||
+        (resource.data.photographerId == request.auth.uid) || 
+        (resource.data.editorId == request.auth.uid) || 
+        (resource.data.otherId == request.auth.uid)
+      );
+      allow create: if isAuthenticated() && isValidBooking(request.resource.data) && (isAdmin() || isTeam());
+      allow update: if isAuthenticated() && isValidBooking(request.resource.data) && (
+        isAdmin() || 
+        isTeam() ||
+        (resource.data.photographerId == request.auth.uid) || 
+        (resource.data.editorId == request.auth.uid) || 
+        (resource.data.otherId == request.auth.uid)
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /eventCosts/{costId} {
+      allow read: if isAuthenticated() && (isAdmin() || isTeam());
+      allow create: if isAuthenticated() && (isAdmin() || isTeam());
+      allow update: if isAuthenticated() && (isAdmin() || isTeam());
+      allow delete: if isAdmin();
+    }
+
+    match /equipment/{equipmentId} {
+      allow read: if isAuthenticated() && (isAdmin() || isTeam());
+      allow create: if isAuthenticated() && (isAdmin() || isTeam());
+      allow update: if isAuthenticated() && (isAdmin() || isTeam());
+      allow delete: if isAdmin();
+    }
+
+    match /store/{itemId} {
+      allow read: if isAuthenticated() && (isAdmin() || isTeam());
+      allow create: if isAuthenticated() && (isAdmin() || isTeam());
+      allow update: if isAuthenticated() && (isAdmin() || isTeam());
+      allow delete: if isAdmin();
+    }
+
+    match /orders/{orderId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.clientId || 
+        request.auth.uid == resource.data.photographerId || 
+        request.auth.uid == resource.data.editorId || 
+        request.auth.uid == resource.data.otherId || 
+        isAdmin() || 
+        isTeam() ||
+        isOther()
+      );
+      allow create: if isAuthenticated() && isValidOrder(request.resource.data) && (request.auth.uid == request.resource.data.clientId || isAdmin());
+      allow update: if isAuthenticated() && isValidOrder(request.resource.data) && (
+        request.auth.uid == resource.data.clientId || 
+        isAdmin() || 
+        (isTeam() && (request.auth.uid == resource.data.photographerId || request.auth.uid == resource.data.editorId)) ||
+        (isOther() && request.auth.uid == resource.data.otherId)
+      );
+    }
+
+    match /teamMembers/{uid} {
+      allow read: if isAuthenticated();
+      allow write: if isAdmin();
+    }
+
+    match /galleries/{galleryId} {
+      allow read: if (resource.data.isPublic == true) || (isAuthenticated() && (request.auth.uid == resource.data.clientId || isAdmin() || isTeam()));
+      allow create: if isAdmin() || isTeam();
+      allow update: if isAdmin() || isTeam();
+      
+      match /photos/{photoId} {
+        allow read: if (get(/databases/$(database)/documents/galleries/$(galleryId)).data.isPublic == true) || (isAuthenticated() && (get(/databases/$(database)/documents/galleries/$(galleryId)).data.clientId == request.auth.uid || isAdmin() || isTeam()));
+        allow write: if isAdmin() || isTeam();
+      }
+    }
+
+    match /clientNotes/{noteId} {
+      allow read: if isAuthenticated() && (isAdmin() || isTeam());
+      allow create: if isAuthenticated() && isValidClientNote(request.resource.data) && (isAdmin() || isTeam());
+      allow update: if isAuthenticated() && isValidClientNote(request.resource.data) && (isAdmin() || isTeam());
+      allow delete: if isAdmin();
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if true; // Publicly readable
+      allow create: if isAuthenticated() && isValidReview(request.resource.data) && request.auth.uid == request.resource.data.clientId;
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /jobApplications/{applicationId} {
+      allow read: if isAdmin();
+      allow create: if isValidJobApplication(request.resource.data);
+      allow update: if isAdmin() && isValidJobApplication(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /serviceInquiries/{inquiryId} {
+      allow read: if isAdmin();
+      allow create: if isValidServiceInquiry(request.resource.data);
+      allow update: if isAdmin() && isValidServiceInquiry(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && (isOwner(resource.data.userId) || isAdmin());
+      allow create: if isValidNotification(request.resource.data) && (
+        isAdmin() || 
+        (isAuthenticated() && request.resource.data.userId == request.auth.uid) ||
+        (exists(/databases/$(database)/documents/users/$(request.resource.data.userId)) && 
+         get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.role == 'admin')
+      );
+      allow update: if isAuthenticated() && (
+        (isOwner(resource.data.userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead'])) ||
+        isAdmin()
+      ) && isValidNotification(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /blogPosts/{postId} {
+      allow read: if (resource.data.isPublished == true) || isAdmin();
+      allow create: if isAdmin() && isValidBlogPost(request.resource.data);
+      allow update: if isAdmin() && isValidBlogPost(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}
