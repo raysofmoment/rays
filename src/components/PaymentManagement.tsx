@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, where, getDocs, doc, updateDoc, getDoc, orderBy, onSnapshot } from 'firebase/firestore';
-import { db, auth } from '../firebase';
+import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { CheckCircle2, XCircle, Loader2, Calendar, IndianRupee, User, FileText, ExternalLink, Search, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
@@ -69,41 +69,119 @@ const PaymentManagement: React.FC = () => {
     try {
       setLoading(true);
       // 1. Update Payment status
-      await updateDoc(doc(db, 'payments', payment.id), {
-        status: 'confirmed',
-        confirmedBy: auth.currentUser?.uid,
-        confirmedAt: new Date().toISOString()
-      });
+      try {
+        await updateDoc(doc(db, 'payments', payment.id), {
+          status: 'confirmed',
+          confirmedBy: auth.currentUser?.uid,
+          confirmedAt: new Date().toISOString()
+        });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.UPDATE, `payments/${payment.id}`);
+      }
 
       // 2. Update Order/Booking paidAmount and dueAmount
       // Try bookings first
       const bookingRef = doc(db, 'bookings', payment.orderId);
-      const bookingSnap = await getDoc(bookingRef);
+      let bookingSnap;
+      try {
+        bookingSnap = await getDoc(bookingRef);
+      } catch (error) {
+        handleFirestoreError(error, OperationType.GET, `bookings/${payment.orderId}`);
+      }
       
-      if (bookingSnap.exists()) {
+      if (bookingSnap && bookingSnap.exists()) {
         const data = bookingSnap.data();
         const currentPaid = data.paidAmount || 0;
         const newPaid = currentPaid + payment.amount;
-        const newDue = (data.totalPackageAmount || 0) - newPaid;
+        const total = data.finalAmount || data.totalPackageAmount || 0;
+        const newDue = total - newPaid;
         
-        await updateDoc(bookingRef, {
-          paidAmount: newPaid,
-          dueAmount: newDue,
-          status: newDue <= 0 ? 'confirmed' : data.status
-        });
+        try {
+          await updateDoc(bookingRef, {
+            paidAmount: newPaid,
+            dueAmount: newDue,
+            status: newDue <= 0 ? 'confirmed' : data.status
+          });
+        } catch (error) {
+          handleFirestoreError(error, OperationType.UPDATE, `bookings/${payment.orderId}`);
+        }
+
+        // Also check for linked order
+        const ordersQuery = query(collection(db, 'orders'), where('bookingId', '==', payment.orderId));
+        let orderSnapshot;
+        try {
+          orderSnapshot = await getDocs(ordersQuery);
+        } catch (error) {
+          handleFirestoreError(error, OperationType.GET, 'orders');
+        }
+
+        if (orderSnapshot && !orderSnapshot.empty) {
+          const orderDoc = orderSnapshot.docs[0];
+          const orderData = orderDoc.data();
+          const orderPaid = (orderData.paidAmount || 0) + payment.amount;
+          const orderTotal = orderData.finalAmount || orderData.totalAmount || 0;
+          try {
+            await updateDoc(doc(db, 'orders', orderDoc.id), {
+              paidAmount: orderPaid,
+              dueAmount: orderTotal - orderPaid,
+              status: (orderTotal - orderPaid) <= 0 ? 'confirmed' : orderData.status
+            });
+          } catch (error) {
+            handleFirestoreError(error, OperationType.UPDATE, `orders/${orderDoc.id}`);
+          }
+        }
       } else {
         // Try orders
         const orderRef = doc(db, 'orders', payment.orderId);
-        const orderSnap = await getDoc(orderRef);
-        if (orderSnap.exists()) {
+        let orderSnap;
+        try {
+          orderSnap = await getDoc(orderRef);
+        } catch (error) {
+          handleFirestoreError(error, OperationType.GET, `orders/${payment.orderId}`);
+        }
+
+        if (orderSnap && orderSnap.exists()) {
           const data = orderSnap.data();
           const currentPaid = data.paidAmount || 0;
           const newPaid = currentPaid + payment.amount;
+          const total = data.finalAmount || data.totalAmount || 0;
+          const newDue = total - newPaid;
           
-          await updateDoc(orderRef, {
-            paidAmount: newPaid,
-            status: (data.totalAmount - newPaid) <= 0 ? 'confirmed' : data.status
-          });
+          try {
+            await updateDoc(orderRef, {
+              paidAmount: newPaid,
+              dueAmount: newDue,
+              status: newDue <= 0 ? 'confirmed' : data.status
+            });
+          } catch (error) {
+            handleFirestoreError(error, OperationType.UPDATE, `orders/${payment.orderId}`);
+          }
+
+          // Also check for linked booking
+          if (data.bookingId) {
+            const bookingRef = doc(db, 'bookings', data.bookingId);
+            let bookingSnap;
+            try {
+              bookingSnap = await getDoc(bookingRef);
+            } catch (error) {
+              handleFirestoreError(error, OperationType.GET, `bookings/${data.bookingId}`);
+            }
+
+            if (bookingSnap && bookingSnap.exists()) {
+              const bookingData = bookingSnap.data();
+              const bookingPaid = (bookingData.paidAmount || 0) + payment.amount;
+              const bookingTotal = bookingData.finalAmount || bookingData.totalPackageAmount || 0;
+              try {
+                await updateDoc(bookingRef, {
+                  paidAmount: bookingPaid,
+                  dueAmount: bookingTotal - bookingPaid,
+                  status: (bookingTotal - bookingPaid) <= 0 ? 'confirmed' : bookingData.status
+                });
+              } catch (error) {
+                handleFirestoreError(error, OperationType.UPDATE, `bookings/${data.bookingId}`);
+              }
+            }
+          }
         }
       }
 
@@ -125,8 +203,7 @@ const PaymentManagement: React.FC = () => {
       });
       toast.success('Payment rejected');
     } catch (error) {
-      console.error('Error rejecting payment:', error);
-      toast.error('Failed to reject payment');
+      handleFirestoreError(error, OperationType.UPDATE, `payments/${paymentId}`);
     }
   };
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User } from 'firebase/auth';
 import { collection, addDoc, updateDoc, doc, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../firebase';
+import { db, handleFirestoreError, OperationType } from '../firebase';
 import { notifyAdmins } from '../services/notificationService';
 import { toast } from 'sonner';
 import { X, Save } from 'lucide-react';
@@ -46,6 +46,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
     eventSong: '',
     reelsSong: '',
     totalPackageAmount: 0,
+    paidAmount: 0,
     dueAmount: 0,
     emi1Date: '',
     emi2Date: '',
@@ -56,14 +57,17 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
     photographerName: '',
     photographerPrice: 0,
     photographerId: '',
+    photographerIds: [] as string[],
     photographerPaid: false,
     videographerName: '',
     videographerPrice: 0,
     editorId: '',
+    editorIds: [] as string[],
     editorPaid: false,
     otherServiceName: '',
     otherServicePrice: 0,
     otherId: '',
+    otherIds: [] as string[],
     otherPaid: false,
     teaserStatus: 'pending',
     teaserLink: '',
@@ -152,6 +156,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
       }
       onClose();
     } catch (error) {
+      handleFirestoreError(error, OperationType.WRITE, bookingId ? `bookings/${bookingId}` : 'bookings');
       console.error('Error saving information:', error);
       toast.error('Failed to save information');
     }
@@ -212,6 +217,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
                   <option value="WEDD GROOM">WEDD GROOM</option>
                   <option value="ANNOPRASAN">ANNOPRASAN</option>
                   <option value="BIRTHDAY">BIRTHDAY</option>
+                  <option value="UPANAYAN">UPANAYAN</option>
                   <option value="MODEL SHOOT">MODEL SHOOT</option>
                   <option value="CINEMATIC">CINEMATIC</option>
                   <option value="EVENT">EVENT</option>
@@ -238,8 +244,13 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
           </section>
 
           {/* Wedding Specifics */}
-          <section>
-            <h3 className="text-lg font-bold text-gray-900 mb-4 border-b pb-2">Wedding Details</h3>
+          <section className={['WEDD BRIDESIDE', 'WEDD GROOM', 'WEDD BOTH'].includes(formData.eventType) ? 'p-6 bg-gray-50 rounded-2xl border-2 border-black/5' : ''}>
+            <div className="flex items-center justify-between mb-4 border-b pb-2">
+              <h3 className="text-lg font-bold text-gray-900">Wedding Details</h3>
+              {['WEDD BRIDESIDE', 'WEDD GROOM', 'WEDD BOTH'].includes(formData.eventType) && (
+                <span className="px-3 py-1 bg-black text-white text-[10px] font-bold rounded-full uppercase tracking-wider">Required for Wedding</span>
+              )}
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="space-y-4">
                 <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider">Bride Side</h4>
@@ -263,8 +274,13 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
           </section>
 
           {/* Other Event Details */}
-          <section>
-            <h3 className="text-lg font-bold text-gray-900 mb-4 border-b pb-2">Other Event Details</h3>
+          <section className={['BIRTHDAY', 'ANNOPRASAN', 'UPANAYAN'].includes(formData.eventType) ? 'p-6 bg-gray-50 rounded-2xl border-2 border-black/5' : ''}>
+            <div className="flex items-center justify-between mb-4 border-b pb-2">
+              <h3 className="text-lg font-bold text-gray-900">Other Event Details</h3>
+              {['BIRTHDAY', 'ANNOPRASAN', 'UPANAYAN'].includes(formData.eventType) && (
+                <span className="px-3 py-1 bg-black text-white text-[10px] font-bold rounded-full uppercase tracking-wider">Required for {formData.eventType}</span>
+              )}
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <div className="space-y-4">
                 <h4 className="text-sm font-bold text-gray-400 uppercase tracking-wider">Child / Model</h4>
@@ -314,6 +330,10 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
                 <input type="number" name="totalPackageAmount" value={formData.totalPackageAmount} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-black outline-none" required />
               </div>
               <div>
+                <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Paid Amount (₹)</label>
+                <input type="number" name="paidAmount" value={formData.paidAmount} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-black outline-none" />
+              </div>
+              <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Due Amount (₹)</label>
                 <input type="number" name="dueAmount" value={formData.dueAmount} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-black outline-none" />
               </div>
@@ -341,25 +361,27 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
             <h3 className="text-lg font-bold text-gray-900 mb-4 border-b pb-2">Staffing & Costs</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="p-4 bg-gray-50 rounded-xl">
-                <h4 className="text-sm font-bold mb-3">Photographer</h4>
-                <select 
-                  name="photographerId" 
-                  value={formData.photographerId} 
-                  onChange={(e) => {
-                    const member = teamMembers.find(m => m.uid === e.target.value);
-                    setFormData(prev => ({ 
-                      ...prev, 
-                      photographerId: e.target.value,
-                      photographerName: member ? member.displayName || member.email : ''
-                    }));
-                  }} 
-                  className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-black outline-none mb-2"
-                >
-                  <option value="">Select Photographer</option>
+                <h4 className="text-sm font-bold mb-3">Photographers</h4>
+                <div className="space-y-2 mb-3 max-h-40 overflow-y-auto p-2 bg-white rounded-lg border border-gray-100">
                   {teamMembers.filter(m => m.role === 'photographer' || m.role === 'admin').map(m => (
-                    <option key={m.uid} value={m.uid}>{m.displayName || m.email}</option>
+                    <label key={m.uid} className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-1 rounded transition-colors">
+                      <input 
+                        type="checkbox" 
+                        checked={formData.photographerIds?.includes(m.uid)}
+                        onChange={(e) => {
+                          const ids = formData.photographerIds || [];
+                          if (e.target.checked) {
+                            setFormData(prev => ({ ...prev, photographerIds: [...ids, m.uid] }));
+                          } else {
+                            setFormData(prev => ({ ...prev, photographerIds: ids.filter(id => id !== m.uid) }));
+                          }
+                        }}
+                        className="w-4 h-4 rounded border-gray-300 text-black focus:ring-black"
+                      />
+                      <span className="text-sm">{m.displayName || m.email}</span>
+                    </label>
                   ))}
-                </select>
+                </div>
                 <input type="number" name="photographerPrice" placeholder="Price (₹)/Day" value={formData.photographerPrice} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-black outline-none mb-2" />
                 <div className="flex items-center space-x-2">
                   <input 
@@ -370,30 +392,32 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
                     onChange={(e) => setFormData(prev => ({ ...prev, photographerPaid: e.target.checked }))} 
                     className="w-4 h-4 rounded border-gray-300 text-black focus:ring-black"
                   />
-                  <label htmlFor="photographerPaid" className="text-xs font-bold text-gray-600 uppercase">Paid to Photographer</label>
+                  <label htmlFor="photographerPaid" className="text-xs font-bold text-gray-600 uppercase">Paid to Photographers</label>
                 </div>
               </div>
 
               <div className="p-4 bg-gray-50 rounded-xl">
-                <h4 className="text-sm font-bold mb-3">Editor</h4>
-                <select 
-                  name="editorId" 
-                  value={formData.editorId} 
-                  onChange={(e) => {
-                    const member = teamMembers.find(m => m.uid === e.target.value);
-                    setFormData(prev => ({ 
-                      ...prev, 
-                      editorId: e.target.value,
-                      videographerName: member ? member.displayName || member.email : ''
-                    }));
-                  }} 
-                  className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-black outline-none mb-2"
-                >
-                  <option value="">Select Editor</option>
+                <h4 className="text-sm font-bold mb-3">Editors</h4>
+                <div className="space-y-2 mb-3 max-h-40 overflow-y-auto p-2 bg-white rounded-lg border border-gray-100">
                   {teamMembers.filter(m => m.role === 'editor' || m.role === 'admin').map(m => (
-                    <option key={m.uid} value={m.uid}>{m.displayName || m.email}</option>
+                    <label key={m.uid} className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-1 rounded transition-colors">
+                      <input 
+                        type="checkbox" 
+                        checked={formData.editorIds?.includes(m.uid)}
+                        onChange={(e) => {
+                          const ids = formData.editorIds || [];
+                          if (e.target.checked) {
+                            setFormData(prev => ({ ...prev, editorIds: [...ids, m.uid] }));
+                          } else {
+                            setFormData(prev => ({ ...prev, editorIds: ids.filter(id => id !== m.uid) }));
+                          }
+                        }}
+                        className="w-4 h-4 rounded border-gray-300 text-black focus:ring-black"
+                      />
+                      <span className="text-sm">{m.displayName || m.email}</span>
+                    </label>
                   ))}
-                </select>
+                </div>
                 <input type="number" name="videographerPrice" placeholder="Price (₹)/Day" value={formData.videographerPrice} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-black outline-none mb-2" />
                 <div className="flex items-center space-x-2">
                   <input 
@@ -404,30 +428,32 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
                     onChange={(e) => setFormData(prev => ({ ...prev, editorPaid: e.target.checked }))} 
                     className="w-4 h-4 rounded border-gray-300 text-black focus:ring-black"
                   />
-                  <label htmlFor="editorPaid" className="text-xs font-bold text-gray-600 uppercase">Paid to Editor</label>
+                  <label htmlFor="editorPaid" className="text-xs font-bold text-gray-600 uppercase">Paid to Editors</label>
                 </div>
               </div>
 
               <div className="p-4 bg-gray-50 rounded-xl">
-                <h4 className="text-sm font-bold mb-3">Other Service</h4>
-                <select 
-                  name="otherId" 
-                  value={formData.otherId} 
-                  onChange={(e) => {
-                    const member = teamMembers.find(m => m.uid === e.target.value);
-                    setFormData(prev => ({ 
-                      ...prev, 
-                      otherId: e.target.value,
-                      otherServiceName: member ? member.displayName || member.email : ''
-                    }));
-                  }} 
-                  className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-black outline-none mb-2"
-                >
-                  <option value="">Select Member</option>
+                <h4 className="text-sm font-bold mb-3">Other Services</h4>
+                <div className="space-y-2 mb-3 max-h-40 overflow-y-auto p-2 bg-white rounded-lg border border-gray-100">
                   {teamMembers.filter(m => m.role === 'other' || m.role === 'admin').map(m => (
-                    <option key={m.uid} value={m.uid}>{m.displayName || m.email}</option>
+                    <label key={m.uid} className="flex items-center space-x-2 cursor-pointer hover:bg-gray-50 p-1 rounded transition-colors">
+                      <input 
+                        type="checkbox" 
+                        checked={formData.otherIds?.includes(m.uid)}
+                        onChange={(e) => {
+                          const ids = formData.otherIds || [];
+                          if (e.target.checked) {
+                            setFormData(prev => ({ ...prev, otherIds: [...ids, m.uid] }));
+                          } else {
+                            setFormData(prev => ({ ...prev, otherIds: ids.filter(id => id !== m.uid) }));
+                          }
+                        }}
+                        className="w-4 h-4 rounded border-gray-300 text-black focus:ring-black"
+                      />
+                      <span className="text-sm">{m.displayName || m.email}</span>
+                    </label>
                   ))}
-                </select>
+                </div>
                 <input type="number" name="otherServicePrice" placeholder="Price (₹)" value={formData.otherServicePrice} onChange={handleChange} className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-black outline-none mb-2" />
                 <div className="flex items-center space-x-2">
                   <input 
@@ -438,7 +464,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
                     onChange={(e) => setFormData(prev => ({ ...prev, otherPaid: e.target.checked }))} 
                     className="w-4 h-4 rounded border-gray-300 text-black focus:ring-black"
                   />
-                  <label htmlFor="otherPaid" className="text-xs font-bold text-gray-600 uppercase">Paid to Member</label>
+                  <label htmlFor="otherPaid" className="text-xs font-bold text-gray-600 uppercase">Paid to Members</label>
                 </div>
               </div>
             </div>

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, query, collection, where, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { CheckCircle, ArrowRight, Calendar, CreditCard } from 'lucide-react';
 import { toast } from 'sonner';
@@ -22,16 +22,43 @@ const PaymentSuccess: React.FC = () => {
         
         if (docSnap.exists()) {
           const docData = docSnap.data();
+          const total = docData.finalAmount || docData.totalPackageAmount || docData.totalAmount || 0;
+          
           if (type === 'booking') {
             await updateDoc(docRef, {
+              paidAmount: total,
               dueAmount: 0,
-              paymentStatus: 'paid'
-            });
-          } else {
-            await updateDoc(docRef, {
-              paidAmount: docData.totalAmount,
+              paymentStatus: 'paid',
               status: 'confirmed'
             });
+
+            // Update linked order
+            const ordersQuery = query(collection(db, 'orders'), where('bookingId', '==', orderId));
+            const orderSnapshot = await getDocs(ordersQuery);
+            if (!orderSnapshot.empty) {
+              const orderDoc = orderSnapshot.docs[0];
+              await updateDoc(doc(db, 'orders', orderDoc.id), {
+                paidAmount: total,
+                dueAmount: 0,
+                status: 'confirmed'
+              });
+            }
+          } else {
+            await updateDoc(docRef, {
+              paidAmount: total,
+              dueAmount: 0,
+              status: 'confirmed'
+            });
+
+            // Update linked booking
+            if (docData.bookingId) {
+              await updateDoc(doc(db, 'bookings', docData.bookingId), {
+                paidAmount: total,
+                dueAmount: 0,
+                paymentStatus: 'paid',
+                status: 'confirmed'
+              });
+            }
           }
           setData({ id: docSnap.id, ...docData });
           toast.success('Payment confirmed!');

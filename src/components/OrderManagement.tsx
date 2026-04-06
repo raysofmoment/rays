@@ -19,10 +19,12 @@ interface OrderManagementProps {
 }
 
 import ProjectDetailsModal from './ProjectDetailsModal';
+import EventCostForm from './EventCostForm';
 
 const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
   const { cart, clearCart, totalAmount } = useCart();
   const [orders, setOrders] = useState<any[]>([]);
+  const [requests, setRequests] = useState<any[]>([]);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -52,11 +54,11 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
     if (role === 'admin') {
       ordersQuery = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
     } else if (role === 'photographer') {
-      ordersQuery = query(collection(db, 'orders'), where('photographerId', '==', user.uid), orderBy('createdAt', 'desc'));
+      ordersQuery = query(collection(db, 'orders'), where('photographerIds', 'array-contains', user.uid), orderBy('createdAt', 'desc'));
     } else if (role === 'editor') {
-      ordersQuery = query(collection(db, 'orders'), where('editorId', '==', user.uid), orderBy('createdAt', 'desc'));
+      ordersQuery = query(collection(db, 'orders'), where('editorIds', 'array-contains', user.uid), orderBy('createdAt', 'desc'));
     } else if (role === 'other') {
-      ordersQuery = query(collection(db, 'orders'), where('otherId', '==', user.uid), orderBy('createdAt', 'desc'));
+      ordersQuery = query(collection(db, 'orders'), where('otherIds', 'array-contains', user.uid), orderBy('createdAt', 'desc'));
     } else {
       ordersQuery = query(collection(db, 'orders'), where('clientId', '==', user.uid), orderBy('createdAt', 'desc'));
     }
@@ -86,7 +88,18 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
       handleFirestoreError(error, OperationType.LIST, 'orders');
     });
 
-    return () => unsubscribe();
+    let requestsUnsubscribe = () => {};
+    if (role === 'client') {
+      const requestsQuery = query(collection(db, 'bookings'), where('clientId', '==', user.uid), where('adminStatus', '==', 'requested'));
+      requestsUnsubscribe = onSnapshot(requestsQuery, (snapshot) => {
+        setRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any })));
+      });
+    }
+
+    return () => {
+      unsubscribe();
+      requestsUnsubscribe();
+    };
   }, [user, role]);
 
   const handleCreateOrder = async (e: React.FormEvent) => {
@@ -172,11 +185,50 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
     }
   };
 
-  const handleAssignMember = async (orderId: string, memberId: string, field: 'photographerId' | 'editorId' | 'otherId') => {
+  const handleToggleAssignment = async (orderId: string, memberId: string, field: 'photographerIds' | 'editorIds' | 'otherIds', currentIds: string[] = []) => {
     try {
-      await updateDoc(doc(db, 'orders', orderId), { [field]: memberId });
+      let newIds = [...(currentIds || [])];
+      if (newIds.includes(memberId)) {
+        newIds = newIds.filter(id => id !== memberId);
+      } else {
+        newIds.push(memberId);
+      }
+      
+      const updates: any = { 
+        [field]: newIds,
+        updatedAt: new Date().toISOString(),
+        updatedBy: user.uid
+      };
+      
+      // Update singular field for backward compatibility
+      if (field === 'photographerIds') updates.photographerId = newIds[0] || '';
+      if (field === 'editorIds') updates.editorId = newIds[0] || '';
+      if (field === 'otherIds') updates.otherId = newIds[0] || '';
+      
+      await updateDoc(doc(db, 'orders', orderId), updates);
+      
+      // Also update the booking if linked
+      const order = orders.find(o => o.id === orderId);
+      if (order?.invoiceNumber) {
+        const q = query(collection(db, 'bookings'), where('invoiceNumber', '==', order.invoiceNumber));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          await updateDoc(doc(db, 'bookings', snap.docs[0].id), { 
+            [field]: newIds,
+            // Also update singular fields in booking
+            ...(field === 'photographerIds' ? { photographerId: newIds[0] || '' } : {}),
+            ...(field === 'editorIds' ? { editorId: newIds[0] || '' } : {}),
+            ...(field === 'otherIds' ? { otherId: newIds[0] || '' } : {}),
+            updatedAt: new Date().toISOString(),
+            updatedBy: user.uid
+          });
+        }
+      }
+      
       toast.success('Assignment updated successfully');
     } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `orders/${orderId}`);
+      console.error('Error updating assignment:', error);
       toast.error('Failed to update assignment');
     }
   };
@@ -247,6 +299,45 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
         )}
       </div>
 
+      {role === 'client' && requests.length > 0 && (
+        <div className="mb-12">
+          <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+            <Bell className="w-5 h-5 text-blue-600" />
+            My Pending Requests
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {requests.map((req) => (
+              <div key={req.id} className="bg-white p-6 rounded-2xl border border-blue-100 shadow-sm relative overflow-hidden group">
+                <div className="absolute top-0 right-0 w-24 h-24 bg-blue-50 rounded-bl-full -mr-8 -mt-8 transition-all group-hover:scale-110" />
+                <div className="relative">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h3 className="font-bold text-gray-900">{req.eventType}</h3>
+                      <p className="text-xs text-gray-500">{format(new Date(req.eventDate), 'MMM d, yyyy')}</p>
+                    </div>
+                    <span className="px-2 py-1 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-full uppercase">
+                      Requested
+                    </span>
+                  </div>
+                  <div className="space-y-2 mb-4">
+                    <p className="text-sm text-gray-600 line-clamp-2">{req.requirement}</p>
+                    <p className="text-sm font-bold text-gray-900">Estimated: ₹{req.totalPackageAmount.toLocaleString()}</p>
+                  </div>
+                  {req.discountRequest && (
+                    <div className="p-3 bg-gray-50 rounded-xl text-xs text-gray-500 italic mb-4">
+                      " {req.discountRequest} "
+                    </div>
+                  )}
+                  <p className="text-[10px] text-gray-400">
+                    Submitted on {format(new Date(req.createdAt), 'MMM d, h:mm a')}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
           <div className="flex items-center space-x-4">
@@ -312,44 +403,100 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
                   </td>
                   {role === 'admin' && (
                     <td className="px-6 py-4">
-                      <div className="space-y-2">
-                        <select
-                          onChange={(e) => handleAssignMember(order.id, e.target.value, 'photographerId')}
-                          value={order.photographerId || ''}
-                          className="text-[10px] border border-gray-200 rounded p-1 w-full"
-                        >
-                          <option value="">Assign Photographer</option>
-                          {teamMembers.filter(m => m.role === 'photographer').map(m => (
-                            <option key={m.id} value={m.id}>{m.displayName || m.email}</option>
-                          ))}
-                        </select>
-                        <select
-                          onChange={(e) => handleAssignMember(order.id, e.target.value, 'editorId')}
-                          value={order.editorId || ''}
-                          className="text-[10px] border border-gray-200 rounded p-1 w-full"
-                        >
-                          <option value="">Assign Editor</option>
-                          {teamMembers.filter(m => m.role === 'editor').map(m => (
-                            <option key={m.id} value={m.id}>{m.displayName || m.email}</option>
-                          ))}
-                        </select>
-                        <select
-                          onChange={(e) => handleAssignMember(order.id, e.target.value, 'otherId')}
-                          value={order.otherId || ''}
-                          className="text-[10px] border border-gray-200 rounded p-1 w-full"
-                        >
-                          <option value="">Assign Other</option>
-                          {teamMembers.filter(m => m.role === 'other').map(m => (
-                            <option key={m.id} value={m.id}>{m.displayName || m.email}</option>
-                          ))}
-                        </select>
+                      <div className="space-y-3 min-w-[150px]">
+                        {/* Photographers */}
+                        <div>
+                          <p className="text-[9px] font-bold text-gray-400 uppercase mb-1">Photographers</p>
+                          <div className="flex flex-wrap gap-1 mb-1">
+                            {(order.photographerIds || []).map((id: string) => {
+                              const member = teamMembers.find(m => m.id === id);
+                              return (
+                                <span key={id} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[9px] font-medium flex items-center gap-1">
+                                  {member?.displayName || 'User'}
+                                  <button onClick={() => handleToggleAssignment(order.id, id, 'photographerIds', order.photographerIds)} className="hover:text-red-500 font-bold">×</button>
+                                </span>
+                              );
+                            })}
+                          </div>
+                          <select
+                            onChange={(e) => {
+                              if (e.target.value) handleToggleAssignment(order.id, e.target.value, 'photographerIds', order.photographerIds);
+                              e.target.value = '';
+                            }}
+                            className="text-[10px] border border-gray-200 rounded p-1 w-full bg-white"
+                          >
+                            <option value="">+ Add Photographer</option>
+                            {teamMembers.filter(m => m.role === 'photographer' && !(order.photographerIds || []).includes(m.id)).map(m => (
+                              <option key={m.id} value={m.id}>{m.displayName || m.email}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Editors */}
+                        <div>
+                          <p className="text-[9px] font-bold text-gray-400 uppercase mb-1">Editors</p>
+                          <div className="flex flex-wrap gap-1 mb-1">
+                            {(order.editorIds || []).map((id: string) => {
+                              const member = teamMembers.find(m => m.id === id);
+                              return (
+                                <span key={id} className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded text-[9px] font-medium flex items-center gap-1">
+                                  {member?.displayName || 'User'}
+                                  <button onClick={() => handleToggleAssignment(order.id, id, 'editorIds', order.editorIds)} className="hover:text-red-500 font-bold">×</button>
+                                </span>
+                              );
+                            })}
+                          </div>
+                          <select
+                            onChange={(e) => {
+                              if (e.target.value) handleToggleAssignment(order.id, e.target.value, 'editorIds', order.editorIds);
+                              e.target.value = '';
+                            }}
+                            className="text-[10px] border border-gray-200 rounded p-1 w-full bg-white"
+                          >
+                            <option value="">+ Add Editor</option>
+                            {teamMembers.filter(m => m.role === 'editor' && !(order.editorIds || []).includes(m.id)).map(m => (
+                              <option key={m.id} value={m.id}>{m.displayName || m.email}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Others */}
+                        <div>
+                          <p className="text-[9px] font-bold text-gray-400 uppercase mb-1">Others</p>
+                          <div className="flex flex-wrap gap-1 mb-1">
+                            {(order.otherIds || []).map((id: string) => {
+                              const member = teamMembers.find(m => m.id === id);
+                              return (
+                                <span key={id} className="px-2 py-0.5 bg-gray-50 text-gray-700 rounded text-[9px] font-medium flex items-center gap-1">
+                                  {member?.displayName || 'User'}
+                                  <button onClick={() => handleToggleAssignment(order.id, id, 'otherIds', order.otherIds)} className="hover:text-red-500 font-bold">×</button>
+                                </span>
+                              );
+                            })}
+                          </div>
+                          <select
+                            onChange={(e) => {
+                              if (e.target.value) handleToggleAssignment(order.id, e.target.value, 'otherIds', order.otherIds);
+                              e.target.value = '';
+                            }}
+                            className="text-[10px] border border-gray-200 rounded p-1 w-full bg-white"
+                          >
+                            <option value="">+ Add Other</option>
+                            {teamMembers.filter(m => m.role === 'other' && !(order.otherIds || []).includes(m.id)).map(m => (
+                              <option key={m.id} value={m.id}>{m.displayName || m.email}</option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
                     </td>
                   )}
                   <td className="px-6 py-4">
-                    <div className="text-sm font-bold text-gray-900">₹{order.totalAmount}</div>
+                    <div className="text-sm font-bold text-gray-900">₹{(order.finalAmount || order.totalAmount).toLocaleString()}</div>
+                    {order.finalAmount && order.finalAmount !== order.totalAmount && (
+                      <div className="text-[10px] text-green-600 font-bold line-through opacity-50">₹{order.totalAmount.toLocaleString()}</div>
+                    )}
                     {role === 'client' && (
-                      <div className="text-[10px] text-red-500 font-bold">Due: ₹{order.totalAmount - (order.paidAmount || 0)}</div>
+                      <div className="text-[10px] text-red-500 font-bold">Due: ₹{(order.finalAmount || order.totalAmount) - (order.paidAmount || 0)}</div>
                     )}
                   </td>
                   <td className="px-6 py-4 text-right">
@@ -374,23 +521,33 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
                         </button>
                       )}
                       {role === 'client' && order.status === 'confirmed' && (
-                        <button
-                          onClick={() => {
-                            setSelectedOrder(order);
-                            setShowBookingForm(true);
-                          }}
-                          className="p-2 text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                          title="Fill Event Details"
-                        >
-                          <Edit2 className="w-5 h-5" />
-                        </button>
+                        <div className="flex items-center space-x-2">
+                          {['WEDD BRIDESIDE', 'WEDD GROOM', 'WEDD BOTH', 'BIRTHDAY', 'ANNOPRASAN', 'UPANAYAN'].includes(order.eventType) && (
+                            <span className="animate-pulse flex h-2 w-2 rounded-full bg-red-500"></span>
+                          )}
+                          <button
+                            onClick={() => {
+                              setSelectedOrder(order);
+                              setShowBookingForm(true);
+                            }}
+                            className={`flex items-center space-x-2 px-4 py-2 rounded-xl text-sm font-bold transition-all ${
+                              ['WEDD BRIDESIDE', 'WEDD GROOM', 'WEDD BOTH', 'BIRTHDAY', 'ANNOPRASAN', 'UPANAYAN'].includes(order.eventType)
+                                ? 'bg-black text-white hover:bg-gray-800 shadow-lg shadow-black/20'
+                                : 'text-green-600 hover:bg-green-50'
+                            }`}
+                            title="Fill Event Details"
+                          >
+                            <Edit2 className="w-4 h-4" />
+                            <span>{['WEDD BRIDESIDE', 'WEDD GROOM', 'WEDD BOTH'].includes(order.eventType) ? 'Fill Wedding Details' : 'Fill Event Details'}</span>
+                          </button>
+                        </div>
                       )}
                       {(role === 'admin' || 
-                        (role === 'photographer' && order.photographerId === user.uid) || 
-                        (role === 'editor' && order.editorId === user.uid) || 
-                        (role === 'other' && order.otherId === user.uid)) && (
+                        (order.photographerIds || []).includes(user.uid) || 
+                        (order.editorIds || []).includes(user.uid) || 
+                        (order.otherIds || []).includes(user.uid)) && (
                         <>
-                          {(role === 'admin' || role === 'editor') && (
+                          {(role === 'admin' || role === 'editor' || (order.editorIds || []).includes(user.uid)) && (
                             <button
                               onClick={() => {
                                 setSelectedOrder(order);
@@ -552,6 +709,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
         <ProjectDetailsModal
           order={selectedOrder}
           role={role}
+          user={user}
           onClose={() => {
             setShowDetailsModal(false);
             setSelectedOrder(null);

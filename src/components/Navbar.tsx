@@ -16,7 +16,7 @@ interface NavbarProps {
 const Navbar: React.FC<NavbarProps> = ({ user, role }) => {
   const [isOpen, setIsOpen] = useState(false);
   const navigate = useNavigate();
-  const { cart } = useCart();
+  const { totalItems } = useCart();
 
   const handleLogout = async () => {
     await signOut(auth);
@@ -66,9 +66,9 @@ const Navbar: React.FC<NavbarProps> = ({ user, role }) => {
             <div className="flex items-center space-x-4">
               <Link to="/cart" className="p-2 text-gray-500 hover:text-black transition-colors relative">
                 <ShoppingCart className="w-6 h-6" />
-                {cart.length > 0 && (
+                {totalItems > 0 && (
                   <span className="absolute top-0 right-0 bg-red-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
-                    {cart.length}
+                    {totalItems}
                   </span>
                 )}
               </Link>
@@ -139,7 +139,7 @@ const Navbar: React.FC<NavbarProps> = ({ user, role }) => {
 
               <div className="flex-grow overflow-y-auto py-6 px-4 space-y-1">
                 <SidebarLink to="/" icon={<Home className="w-5 h-5" />} label="Home" onClick={closeMenu} />
-                <SidebarLink to="/cart" icon={<ShoppingCart className="w-5 h-5" />} label={`Cart (${cart.length})`} onClick={closeMenu} />
+                <SidebarLink to="/cart" icon={<ShoppingCart className="w-5 h-5" />} label={`Cart (${totalItems})`} onClick={closeMenu} />
                 <SidebarLink to="/gallery" icon={<ImageIcon className="w-5 h-5" />} label="Gallery" onClick={closeMenu} />
                 <SidebarLink to="/services" icon={<Briefcase className="w-5 h-5" />} label="Services" onClick={closeMenu} />
                 <SidebarLink to="/packages" icon={<Package className="w-5 h-5" />} label="Packages" onClick={closeMenu} />
@@ -156,25 +156,16 @@ const Navbar: React.FC<NavbarProps> = ({ user, role }) => {
                   <>
                     <div className="pt-4 pb-2 px-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Account</div>
                     <SidebarLink to="/profile" icon={<UserIcon className="w-5 h-5" />} label="My Profile" onClick={closeMenu} />
-                    <SidebarLink to="/dashboard" icon={<LayoutDashboard className="w-5 h-5" />} label="Dashboard" onClick={closeMenu} />
-                    <SidebarLink to="/orders" icon={<ClipboardList className="w-5 h-5" />} label="Orders" onClick={closeMenu} />
-                    {role === 'admin' && (
-                      <SidebarLink to="/inquiries" icon={<MessageSquare className="w-5 h-5" />} label="Inquiries" onClick={closeMenu} />
-                    )}
-                    {(role === 'admin' || role === 'photographer' || role === 'editor') && (
+                    <SidebarLink to="/dashboard" icon={<LayoutDashboard className="w-5 h-5" />} label={role === 'client' ? 'Dashboard' : 'Studio Hub'} onClick={closeMenu} />
+                    {role === 'client' && <SidebarLink to="/orders" icon={<ClipboardList className="w-5 h-5" />} label="Orders" onClick={closeMenu} />}
+                    
+                    {(role === 'admin' || role === 'photographer' || role === 'editor' || role === 'other') && (
                       <>
-                        <SidebarLink to="/bookings" icon={<Calendar className="w-5 h-5" />} label="Client Information" onClick={closeMenu} />
-                        <SidebarLink to="/wip" icon={<Clock className="w-5 h-5" />} label="Work in Progress" onClick={closeMenu} />
-                        <SidebarLink to="/event-costs" icon={<DollarSign className="w-5 h-5" />} label="Event Cost" onClick={closeMenu} />
+                        <div className="pt-4 pb-2 px-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Management</div>
+                        <SidebarLink to="/studio" icon={<LayoutDashboard className="w-5 h-5" />} label="Studio Command Center" onClick={closeMenu} />
+                        <SidebarLink to="/orders" icon={<ClipboardList className="w-5 h-5" />} label="Order List" onClick={closeMenu} />
                         <SidebarLink to="/equipment" icon={<Camera className="w-5 h-5" />} label="Equipment" onClick={closeMenu} />
                         <SidebarLink to="/store" icon={<ShoppingBag className="w-5 h-5" />} label="Store" onClick={closeMenu} />
-                        <SidebarLink to="/team" icon={<Users className="w-5 h-5" />} label="Team" onClick={closeMenu} />
-                        {role === 'admin' && (
-                          <>
-                            <SidebarLink to="/payment-management" icon={<DollarSign className="w-5 h-5" />} label="Manage Payments" onClick={closeMenu} />
-                            <SidebarLink to="/financial-overview" icon={<TrendingUp className="w-5 h-5" />} label="Financial Overview" onClick={closeMenu} />
-                          </>
-                        )}
                       </>
                     )}
                   </>

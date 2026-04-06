@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User } from 'firebase/auth';
-import { collection, query, orderBy, onSnapshot, deleteDoc, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, deleteDoc, doc, updateDoc, addDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { Plus, Search, Filter, MoreVertical, Trash2, Edit2, ExternalLink, CheckCircle2, Clock, AlertCircle, TrendingUp, IndianRupee, Calendar as CalendarIcon, PieChart, Image as ImageIcon, ScanFace } from 'lucide-react';
 import { format } from 'date-fns';
@@ -19,6 +19,59 @@ const BookingManagement: React.FC<BookingManagementProps> = ({ user, role }) => 
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
+  const [activeTab, setActiveTab] = useState<'bookings' | 'requests'>('bookings');
+
+  const handleAcceptRequest = async (booking: any) => {
+    const invoiceNumber = `INV-${Date.now().toString().slice(-6)}`;
+    const finalAmount = booking.finalAmount || booking.totalPackageAmount;
+    
+    try {
+      await updateDoc(doc(db, 'bookings', booking.id), {
+        adminStatus: 'accepted',
+        invoiceNumber,
+        finalAmount,
+        status: 'pending', // Main status
+        updatedAt: new Date().toISOString(),
+        updatedBy: user.uid
+      });
+      
+      // Also create an order in the orders collection for the main order management
+      await addDoc(collection(db, 'orders'), {
+        clientId: booking.clientId,
+        clientName: booking.clientName,
+        mobileNumber: booking.clientMobile,
+        invoiceNumber,
+        status: 'pending',
+        date: booking.eventDate,
+        location: booking.eventPlace,
+        packageName: booking.package === 'Customize' ? booking.requirement : booking.package,
+        totalAmount: finalAmount,
+        paidAmount: 0,
+        dueAmount: finalAmount,
+        eventType: booking.eventType,
+        createdAt: new Date().toISOString(),
+        bookingId: booking.id
+      });
+
+      toast.success(`Request accepted! Invoice ${invoiceNumber} generated.`);
+    } catch (error) {
+      console.error('Error accepting request:', error);
+      toast.error('Failed to accept request');
+    }
+  };
+
+  const handleRejectRequest = async (id: string) => {
+    try {
+      await updateDoc(doc(db, 'bookings', id), {
+        adminStatus: 'rejected',
+        updatedAt: new Date().toISOString(),
+        updatedBy: user.uid
+      });
+      toast.success('Request rejected');
+    } catch (error) {
+      toast.error('Failed to reject request');
+    }
+  };
 
   useEffect(() => {
     let q = query(collection(db, 'bookings'), orderBy('createdAt', 'desc'));
@@ -69,7 +122,10 @@ const BookingManagement: React.FC<BookingManagementProps> = ({ user, role }) => 
     const matchesSearch = b.clientName.toLowerCase().includes(searchTerm.toLowerCase()) || 
                          b.eventType.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFilter = filterType === 'all' || b.eventType === filterType;
-    return matchesSearch && matchesFilter;
+    const matchesTab = activeTab === 'bookings' 
+      ? (b.adminStatus === 'accepted' || !b.adminStatus) 
+      : b.adminStatus === 'requested';
+    return matchesSearch && matchesFilter && matchesTab;
   });
 
   // Analytics
@@ -131,6 +187,33 @@ const BookingManagement: React.FC<BookingManagementProps> = ({ user, role }) => 
           )}
         </div>
       </div>
+
+      {/* Tabs */}
+      {role === 'admin' && (
+        <div className="flex space-x-1 bg-gray-100 p-1 rounded-xl mb-8 w-fit">
+          <button
+            onClick={() => setActiveTab('bookings')}
+            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${
+              activeTab === 'bookings' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Bookings
+          </button>
+          <button
+            onClick={() => setActiveTab('requests')}
+            className={`px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center gap-2 ${
+              activeTab === 'requests' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Requests
+            {bookings.filter(b => b.adminStatus === 'requested').length > 0 && (
+              <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded-full">
+                {bookings.filter(b => b.adminStatus === 'requested').length}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
 
       {/* Analytics Overview */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -215,37 +298,75 @@ const BookingManagement: React.FC<BookingManagementProps> = ({ user, role }) => 
                       {booking.invoiceNumber && (
                         <span className="text-[10px] text-blue-600 font-bold mt-1">INV: {booking.invoiceNumber}</span>
                       )}
+                      {booking.discountRequest && (
+                        <div className="mt-2 p-2 bg-blue-50 rounded text-[10px] text-blue-700 border border-blue-100">
+                          <span className="font-bold">Discount Request:</span> {booking.discountRequest}
+                        </div>
+                      )}
                     </div>
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex flex-col">
                       <span className="text-sm font-bold text-gray-900">{booking.package}</span>
                       <span className="text-xs text-gray-500">Total: ₹{booking.totalPackageAmount}</span>
+                      {booking.finalAmount && booking.finalAmount !== booking.totalPackageAmount && (
+                        <span className="text-xs text-green-600 font-bold">Final: ₹{booking.finalAmount}</span>
+                      )}
                       <span className={`text-xs font-bold ${booking.dueAmount > 0 ? 'text-red-500' : 'text-green-500'}`}>
                         Due: ₹{booking.dueAmount}
                       </span>
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    {role === 'admin' ? (
-                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
-                        booking.dueAmount <= 0 ? 'bg-green-100 text-green-700' : 
-                        (booking.paidAmount > 0 ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700')
-                      }`}>
-                        {booking.dueAmount <= 0 ? 'Fully Paid' : (booking.paidAmount > 0 ? 'Partially Paid' : 'Unpaid')}
-                      </span>
+                    {activeTab === 'requests' ? (
+                      <div className="flex flex-col gap-2">
+                        <input
+                          type="number"
+                          placeholder="Final Amount"
+                          defaultValue={booking.finalAmount || booking.totalPackageAmount}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            // Update local state or just use e.target.value in handleAccept
+                            booking.finalAmount = val;
+                          }}
+                          className="text-xs border border-gray-200 rounded px-2 py-1 w-24"
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleAcceptRequest(booking)}
+                            className="bg-green-600 text-white px-3 py-1 rounded text-[10px] font-bold hover:bg-green-700"
+                          >
+                            Accept
+                          </button>
+                          <button
+                            onClick={() => handleRejectRequest(booking.id)}
+                            className="bg-red-600 text-white px-3 py-1 rounded text-[10px] font-bold hover:bg-red-700"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </div>
                     ) : (
-                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
-                        (booking.photographerId === user.uid && booking.photographerPaid) ||
-                        (booking.editorId === user.uid && booking.editorPaid) ||
-                        (booking.otherId === user.uid && booking.otherPaid)
-                        ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                      }`}>
-                        {(booking.photographerId === user.uid && booking.photographerPaid) ||
-                        (booking.editorId === user.uid && booking.editorPaid) ||
-                        (booking.otherId === user.uid && booking.otherPaid)
-                        ? 'Received' : 'Due'}
-                      </span>
+                      role === 'admin' ? (
+                        <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
+                          booking.dueAmount <= 0 ? 'bg-green-100 text-green-700' : 
+                          (booking.paidAmount > 0 ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700')
+                        }`}>
+                          {booking.dueAmount <= 0 ? 'Fully Paid' : (booking.paidAmount > 0 ? 'Partially Paid' : 'Unpaid')}
+                        </span>
+                      ) : (
+                        <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
+                          (booking.photographerId === user.uid && booking.photographerPaid) ||
+                          (booking.editorId === user.uid && booking.editorPaid) ||
+                          (booking.otherId === user.uid && booking.otherPaid)
+                          ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                        }`}>
+                          {(booking.photographerId === user.uid && booking.photographerPaid) ||
+                          (booking.editorId === user.uid && booking.editorPaid) ||
+                          (booking.otherId === user.uid && booking.otherPaid)
+                          ? 'Received' : 'Due'}
+                        </span>
+                      )
                     )}
                   </td>
                   <td className="px-6 py-4">

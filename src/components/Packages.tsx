@@ -6,6 +6,8 @@ import { useCart } from '../context/CartContext';
 
 const categories = [
   { id: "Wedding", name: "Wedding (Groom Side)", icon: <Heart className="w-5 h-5" /> },
+  { id: "WeddingBride", name: "Wedding (Bride Side)", icon: <Heart className="w-5 h-5" /> },
+  { id: "WeddingBoth", name: "Wedding (Both Side)", icon: <Heart className="w-5 h-5" /> },
   { id: "Birthday", name: "Birthday / Rice Ceremony", icon: <Star className="w-5 h-5" /> },
   { id: "Upanayan", name: "Upanayan", icon: <Users className="w-5 h-5" /> },
   { id: "PrePostWedding", name: "Music Video / Pre-Post Wedding", icon: <Camera className="w-5 h-5" /> },
@@ -59,6 +61,136 @@ const packageData: Record<string, any[]> = {
         title: "Diamond Package (Cine cam)",
         price: 120000,
         description: "The ultimate wedding experience with full event coverage.",
+        features: [
+          "Candid photography",
+          "Pre wedding photo",
+          "Pre wedding video",
+          "20 Sheets wedding album premium",
+          "Wedding teaser",
+          "Ritual wise full video (30-40min)",
+          "All Raw backup",
+          "Retouch photography",
+          "Interview of family and friend",
+          "E-invitation",
+          "Vlog & reels",
+          "1 Guest photographer",
+          "Guest photo instant deliver",
+          "15 days complete delivery",
+          "Drone full event"
+        ],
+        color: "bg-purple-50",
+        btnColor: "bg-purple-600 hover:bg-purple-700"
+      }
+    ],
+    "WeddingBride": [
+      {
+        title: "Silver Package (Crop Sensor)",
+        price: 28000,
+        description: "Essential wedding coverage for the bride's side.",
+        features: [
+          "Pre wedding photo",
+          "Pre wedding video",
+          "20 Sheets wedding album (basic)",
+          "Wedding teaser",
+          "Ritual wise full video (30-40min)",
+          "All Raw backup",
+          "Retouch photography",
+          "E-invitation"
+        ],
+        color: "bg-gray-50",
+        btnColor: "bg-gray-800 hover:bg-gray-900"
+      },
+      {
+        title: "Gold Package (Full Sensor)",
+        price: 40000,
+        description: "Professional full sensor coverage for the bride's side.",
+        features: [
+          "Candid photography",
+          "Pre wedding photo",
+          "Pre wedding video",
+          "20 Sheets wedding album Standard",
+          "Wedding teaser",
+          "Ritual wise full video (30-40min)",
+          "All Raw backup",
+          "Retouch photography",
+          "Interview of family and friend",
+          "E-invitation",
+          "Vlog & reels",
+          "Drone 1 day"
+        ],
+        color: "bg-yellow-50",
+        btnColor: "bg-yellow-600 hover:bg-yellow-700",
+        popular: true
+      },
+      {
+        title: "Diamond Package (Cine cam)",
+        price: 100000,
+        description: "The ultimate bride side experience with full event coverage.",
+        features: [
+          "Candid photography",
+          "Pre wedding photo",
+          "Pre wedding video",
+          "20 Sheets wedding album premium",
+          "Wedding teaser",
+          "Ritual wise full video (30-40min)",
+          "All Raw backup",
+          "Retouch photography",
+          "Interview of family and friend",
+          "E-invitation",
+          "Vlog & reels",
+          "1 Guest photographer",
+          "Guest photo instant deliver",
+          "15 days complete delivery",
+          "Drone full event"
+        ],
+        color: "bg-purple-50",
+        btnColor: "bg-purple-600 hover:bg-purple-700"
+      }
+    ],
+    "WeddingBoth": [
+      {
+        title: "Silver Package (Crop Sensor)",
+        price: 55000,
+        description: "Essential wedding coverage for both sides.",
+        features: [
+          "Pre wedding photo",
+          "Pre wedding video",
+          "20 Sheets wedding album (basic)",
+          "Wedding teaser",
+          "Ritual wise full video (30-40min)",
+          "All Raw backup",
+          "Retouch photography",
+          "E-invitation"
+        ],
+        color: "bg-gray-50",
+        btnColor: "bg-gray-800 hover:bg-gray-900"
+      },
+      {
+        title: "Gold Package (Full Sensor)",
+        price: 80000,
+        description: "Professional full sensor coverage for both sides.",
+        features: [
+          "Candid photography",
+          "Pre wedding photo",
+          "Pre wedding video",
+          "20 Sheets wedding album Standard",
+          "Wedding teaser",
+          "Ritual wise full video (30-40min)",
+          "All Raw backup",
+          "Retouch photography",
+          "Interview of family and friend",
+          "E-invitation",
+          "Vlog & reels",
+          "Drone 1 day"
+        ],
+        color: "bg-yellow-50",
+        btnColor: "bg-yellow-600 hover:bg-yellow-700",
+        popular: true
+      },
+      {
+        title: "Diamond Package (Cine cam)",
+        price: 220000,
+        description: "The ultimate both side experience with full event coverage.",
         features: [
           "Candid photography",
           "Pre wedding photo",
@@ -434,7 +566,7 @@ const Packages: React.FC = () => {
 
   const handleBookNow = (pkg: any) => {
     addToCart({
-      id: `${activeCategory}-${pkg.title}-${Date.now()}`,
+      id: `${activeCategory}-${pkg.title}`,
       name: pkg.title,
       price: pkg.price,
       category: activeCategory,
@@ -552,7 +684,7 @@ const Packages: React.FC = () => {
                     <button 
                       onClick={() => {
                         addToCart({
-                          id: `addon-${item.name}-${Date.now()}`,
+                          id: `addon-${item.name}`,
                           name: item.name,
                           price: item.price,
                           category: 'Add-On'
@@ -662,6 +794,8 @@ const CustomPackageForm: React.FC = () => {
     // Rates based on Add-On services
     const rates: Record<string, Record<string, number>> = {
       'Wedding': { 'Crop': 4000, 'Full': 6000, 'Cine': 15000 },
+      'WeddingBride': { 'Crop': 4000, 'Full': 6000, 'Cine': 15000 },
+      'WeddingBoth': { 'Crop': 4000, 'Full': 6000, 'Cine': 15000 },
       'Birthday': { 'Crop': 2500, 'Full': 4500, 'Cine': 12000 },
       'Upanayan': { 'Crop': 3500, 'Full': 5000, 'Cine': 12000 },
       'Event': { 'Crop': 3000, 'Full': 4000, 'Cine': 12000 },
@@ -703,7 +837,9 @@ const CustomPackageForm: React.FC = () => {
                 onChange={(e) => setFormData({...formData, workType: e.target.value})}
                 className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-black transition-all"
               >
-                <option value="Wedding">Wedding</option>
+                <option value="Wedding">Wedding (Groom Side)</option>
+                <option value="WeddingBride">Wedding (Bride Side)</option>
+                <option value="WeddingBoth">Wedding (Both Side)</option>
                 <option value="Birthday">Birthday / Rice Ceremony</option>
                 <option value="Upanayan">Upanayan</option>
                 <option value="Pre-Wedding">Pre-Wedding / Music Video</option>
@@ -930,7 +1066,7 @@ const CustomPackageForm: React.FC = () => {
           <button
             onClick={() => {
               addToCart({
-                id: `custom-${Date.now()}`,
+                id: `custom-${formData.workType}-${formData.days}-${formData.location}`,
                 name: `Custom ${formData.workType} Package`,
                 price: amount,
                 category: 'Custom',

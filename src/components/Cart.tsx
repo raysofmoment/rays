@@ -1,11 +1,11 @@
 import React from 'react';
 import { useCart } from '../context/CartContext';
-import { Trash2, ArrowRight, ShoppingCart, Calendar, MapPin, Camera } from 'lucide-react';
+import { Trash2, ArrowRight, ShoppingCart, Calendar, MapPin, Camera, Plus, Minus } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
 
 const Cart: React.FC = () => {
-  const { cart, removeFromCart, totalAmount, clearCart } = useCart();
+  const { cart, removeFromCart, updateQuantity, totalAmount, clearCart } = useCart();
   const navigate = useNavigate();
 
   if (cart.length === 0) {
@@ -34,13 +34,22 @@ const Cart: React.FC = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between mb-12">
           <h1 className="text-4xl font-bold text-gray-900">Your Booking Cart</h1>
-          <button
-            onClick={clearCart}
-            className="text-red-500 hover:text-red-600 font-medium flex items-center gap-2"
-          >
-            <Trash2 className="w-5 h-5" />
-            Clear Cart
-          </button>
+          <div className="flex items-center gap-6">
+            <Link
+              to="/packages"
+              className="bg-white text-black px-4 py-2 rounded-xl border border-gray-200 font-medium flex items-center gap-2 hover:bg-gray-50 transition-all"
+            >
+              <Plus className="w-4 h-4" />
+              Add More
+            </Link>
+            <button
+              onClick={clearCart}
+              className="text-red-500 hover:text-red-600 font-medium flex items-center gap-2"
+            >
+              <Trash2 className="w-5 h-5" />
+              Clear Cart
+            </button>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-12">
@@ -78,9 +87,24 @@ const Cart: React.FC = () => {
                   </div>
                 </div>
                 <div className="flex items-center justify-between md:justify-end gap-8">
-                  <div className="text-right">
-                    <p className="text-2xl font-bold text-gray-900">₹{item.price.toLocaleString()}</p>
-                    <p className="text-xs text-gray-400">Estimated Price</p>
+                  <div className="flex items-center bg-gray-50 rounded-xl p-1 border border-gray-100">
+                    <button
+                      onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                      className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition-all text-gray-500"
+                    >
+                      <Minus className="w-4 h-4" />
+                    </button>
+                    <span className="w-10 text-center font-bold text-gray-900">{item.quantity}</span>
+                    <button
+                      onClick={() => updateQuantity(item.id, item.quantity + 1)}
+                      className="p-2 hover:bg-white hover:shadow-sm rounded-lg transition-all text-gray-500"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div className="text-right min-w-[120px]">
+                    <p className="text-2xl font-bold text-gray-900">₹{(item.price * item.quantity).toLocaleString()}</p>
+                    <p className="text-xs text-gray-400">₹{item.price.toLocaleString()} each</p>
                   </div>
                   <button
                     onClick={() => removeFromCart(item.id)}
@@ -113,7 +137,7 @@ const Cart: React.FC = () => {
                 </div>
               </div>
               <button
-                onClick={() => navigate('/orders')}
+                onClick={() => navigate('/checkout')}
                 className="w-full bg-white text-black py-4 rounded-xl font-bold hover:bg-gray-200 transition-all flex items-center justify-center gap-2"
               >
                 Proceed to Checkout

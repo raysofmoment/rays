@@ -8,6 +8,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import Navbar from './components/Navbar';
 import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
+import StudioHub from './components/StudioHub';
 import Gallery from './components/Gallery';
 import OrderManagement from './components/OrderManagement';
 import TeamManagement from './components/TeamManagement';
@@ -25,6 +26,7 @@ import FinancialOverview from './components/FinancialOverview';
 import InquiryManagement from './components/InquiryManagement';
 import Profile from './components/Profile';
 import Cart from './components/Cart';
+import Checkout from './components/Checkout';
 import { CartProvider } from './context/CartContext';
 
 import Home from './components/Home';
@@ -98,11 +100,13 @@ export default function App() {
                 <Route path="/auth" element={user ? <Navigate to="/dashboard" /> : <Auth />} />
                 <Route path="/packages" element={<Packages />} />
                 <Route path="/cart" element={<Cart />} />
+                <Route path="/checkout" element={user ? <Checkout /> : <Navigate to="/auth" />} />
                 <Route path="/careers" element={<Careers user={user} role={role} />} />
               <Route path="/gallery" element={<PublicGallery user={user} role={role} />} />
               <Route path="/services" element={<OtherServices />} />
               <Route path="/reviews" element={<Reviews user={user} />} />
-              <Route path="/dashboard" element={user ? <Dashboard user={user} role={role} /> : <Navigate to="/auth" />} />
+              <Route path="/dashboard" element={user ? (role === 'admin' || role === 'photographer' || role === 'editor' || role === 'other' ? <StudioHub user={user} role={role} /> : <Dashboard user={user} role={role} />) : <Navigate to="/auth" />} />
+              <Route path="/studio" element={user && (role === 'admin' || role === 'photographer' || role === 'editor' || role === 'other') ? <StudioHub user={user} role={role} /> : <Navigate to="/auth" />} />
               <Route path="/orders" element={user ? <OrderManagement user={user} role={role} /> : <Navigate to="/auth" />} />
               <Route path="/bookings" element={user && (role === 'admin' || role === 'photographer' || role === 'editor') ? <BookingManagement user={user} role={role} /> : <Navigate to="/auth" />} />
               <Route path="/wip" element={user && (role === 'admin' || role === 'photographer' || role === 'editor') ? <WorkInProgress user={user} role={role} /> : <Navigate to="/auth" />} />

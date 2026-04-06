@@ -24,6 +24,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, role }) => {
   });
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
   const [assignedBookings, setAssignedBookings] = useState<any[]>([]);
+  const [pendingInfoBookings, setPendingInfoBookings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -32,10 +33,36 @@ const Dashboard: React.FC<DashboardProps> = ({ user, role }) => {
         let ordersQuery;
         if (role === 'admin') {
           ordersQuery = query(collection(db, 'orders'), orderBy('createdAt', 'desc'), limit(5));
-        } else if (role === 'photographer' || role === 'editor') {
-          ordersQuery = query(collection(db, 'orders'), where('teamMemberId', '==', user.uid), orderBy('createdAt', 'desc'), limit(5));
+        } else if (role === 'photographer') {
+          ordersQuery = query(collection(db, 'orders'), where('photographerIds', 'array-contains', user.uid), orderBy('createdAt', 'desc'), limit(5));
+        } else if (role === 'editor') {
+          ordersQuery = query(collection(db, 'orders'), where('editorIds', 'array-contains', user.uid), orderBy('createdAt', 'desc'), limit(5));
+        } else if (role === 'other') {
+          ordersQuery = query(collection(db, 'orders'), where('otherIds', 'array-contains', user.uid), orderBy('createdAt', 'desc'), limit(5));
         } else {
           ordersQuery = query(collection(db, 'orders'), where('clientId', '==', user.uid), orderBy('createdAt', 'desc'), limit(5));
+          
+          // Fetch confirmed bookings for client to check for missing info
+          const bookingsQuery = query(
+            collection(db, 'bookings'), 
+            where('clientId', '==', user.uid),
+            where('status', '==', 'confirmed')
+          );
+          const bookingsSnap = await getDocs(bookingsQuery);
+          const missingInfo = bookingsSnap.docs.filter(doc => {
+            const data = doc.data();
+            const isWedding = ['WEDD BRIDESIDE', 'WEDD GROOM', 'WEDD BOTH'].includes(data.eventType);
+            const isChildEvent = ['BIRTHDAY', 'ANNOPRASAN', 'UPANAYAN'].includes(data.eventType);
+            
+            if (isWedding) {
+              return !data.brideName || !data.groomName;
+            }
+            if (isChildEvent) {
+              return !data.childName;
+            }
+            return false;
+          }).map(doc => ({ id: doc.id, ...doc.data() }));
+          setPendingInfoBookings(missingInfo);
         }
 
         const snapshot = await getDocs(ordersQuery);
@@ -62,9 +89,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, role }) => {
         } else if (role === 'photographer' || role === 'editor' || role === 'other') {
           // Fetch assigned bookings
           const bookingsRef = collection(db, 'bookings');
-          const qPhotographer = query(bookingsRef, where('photographerId', '==', user.uid));
-          const qEditor = query(bookingsRef, where('editorId', '==', user.uid));
-          const qOther = query(bookingsRef, where('otherId', '==', user.uid));
+          const qPhotographer = query(bookingsRef, where('photographerIds', 'array-contains', user.uid));
+          const qEditor = query(bookingsRef, where('editorIds', 'array-contains', user.uid));
+          const qOther = query(bookingsRef, where('otherIds', 'array-contains', user.uid));
 
           const [snapP, snapE, snapO] = await Promise.all([
             getDocs(qPhotographer),
@@ -81,15 +108,15 @@ const Dashboard: React.FC<DashboardProps> = ({ user, role }) => {
           let receivedAmount = 0;
 
           uniqueBookings.forEach((booking: any) => {
-            if (booking.photographerId === user.uid) {
+            if ((booking.photographerIds || []).includes(user.uid)) {
               totalEarnings += Number(booking.photographerPrice || 0);
               if (booking.photographerPaid) receivedAmount += Number(booking.photographerPrice || 0);
             }
-            if (booking.editorId === user.uid) {
+            if ((booking.editorIds || []).includes(user.uid)) {
               totalEarnings += Number(booking.videographerPrice || 0); // Using videographerPrice as editor price per current schema
               if (booking.editorPaid) receivedAmount += Number(booking.videographerPrice || 0);
             }
-            if (booking.otherId === user.uid) {
+            if ((booking.otherIds || []).includes(user.uid)) {
               totalEarnings += Number(booking.otherServicePrice || 0);
               if (booking.otherPaid) receivedAmount += Number(booking.otherServicePrice || 0);
             }
@@ -126,6 +153,26 @@ const Dashboard: React.FC<DashboardProps> = ({ user, role }) => {
         <h1 className="text-3xl font-bold text-gray-900">Welcome back, {user.displayName || 'Creator'}</h1>
         <p className="text-gray-500 mt-1">Here's what's happening with your photography business today.</p>
       </header>
+
+      {role === 'client' && pendingInfoBookings.length > 0 && (
+        <div className="mb-8 bg-black text-white p-6 rounded-2xl shadow-lg relative overflow-hidden group">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-bl-full -mr-8 -mt-8 transition-all group-hover:scale-110" />
+          <div className="relative z-10">
+            <div className="flex items-center space-x-3 mb-2">
+              <AlertCircle className="w-6 h-6 text-yellow-400" />
+              <h2 className="text-xl font-bold">Action Required: Complete Event Details</h2>
+            </div>
+            <p className="text-gray-400 text-sm mb-4">You have {pendingInfoBookings.length} confirmed booking(s) that need additional details (Bride/Groom or Child information). Please complete these to help us prepare for your event.</p>
+            <Link 
+              to="/orders" 
+              className="inline-flex items-center space-x-2 bg-white text-black px-6 py-2 rounded-xl font-bold hover:bg-gray-100 transition-colors"
+            >
+              <span>Complete Now</span>
+              <Camera className="w-4 h-4" />
+            </Link>
+          </div>
+        </div>
+      )}
 
       {role === 'admin' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -205,19 +252,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, role }) => {
                         <div className="flex items-center space-x-4 text-right">
                           <div>
                             <p className="text-sm font-bold text-gray-900">
-                              ₹{booking.photographerId === user.uid ? booking.photographerPrice : 
-                                booking.editorId === user.uid ? booking.videographerPrice : 
+                              ₹{(booking.photographerIds || []).includes(user.uid) ? booking.photographerPrice : 
+                                (booking.editorIds || []).includes(user.uid) ? booking.videographerPrice : 
                                 booking.otherServicePrice}
                             </p>
                             <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
-                              (booking.photographerId === user.uid && booking.photographerPaid) ||
-                              (booking.editorId === user.uid && booking.editorPaid) ||
-                              (booking.otherId === user.uid && booking.otherPaid)
+                              ((booking.photographerIds || []).includes(user.uid) && booking.photographerPaid) ||
+                              ((booking.editorIds || []).includes(user.uid) && booking.editorPaid) ||
+                              ((booking.otherIds || []).includes(user.uid) && booking.otherPaid)
                               ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
                             }`}>
-                              {(booking.photographerId === user.uid && booking.photographerPaid) ||
-                              (booking.editorId === user.uid && booking.editorPaid) ||
-                              (booking.otherId === user.uid && booking.otherPaid)
+                              {((booking.photographerIds || []).includes(user.uid) && booking.photographerPaid) ||
+                              ((booking.editorIds || []).includes(user.uid) && booking.editorPaid) ||
+                              ((booking.otherIds || []).includes(user.uid) && booking.otherPaid)
                               ? 'Paid' : 'Due'}
                             </span>
                           </div>
