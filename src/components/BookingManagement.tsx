@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User } from 'firebase/auth';
-import { collection, query, orderBy, onSnapshot, deleteDoc, doc, updateDoc, addDoc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, deleteDoc, doc, updateDoc, addDoc, where, getDocs } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { Plus, Search, Filter, MoreVertical, Trash2, Edit2, ExternalLink, CheckCircle2, Clock, AlertCircle, TrendingUp, IndianRupee, Calendar as CalendarIcon, PieChart, Image as ImageIcon, ScanFace } from 'lucide-react';
 import { format } from 'date-fns';
@@ -52,6 +52,19 @@ const BookingManagement: React.FC<BookingManagementProps> = ({ user, role }) => 
         createdAt: new Date().toISOString(),
         bookingId: booking.id
       });
+
+      // Notify the client
+      if (booking.clientId) {
+        await addDoc(collection(db, 'notifications'), {
+          userId: booking.clientId,
+          title: 'Order Accepted',
+          message: `Your order request has been accepted! Invoice: ${invoiceNumber}. Final Bill: ₹${finalAmount.toLocaleString()}`,
+          type: 'success',
+          link: '/orders',
+          isRead: false,
+          createdAt: new Date().toISOString()
+        });
+      }
 
       toast.success(`Request accepted! Invoice ${invoiceNumber} generated.`);
     } catch (error) {

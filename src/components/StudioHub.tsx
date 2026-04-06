@@ -36,6 +36,7 @@ import FinancialOverview from './FinancialOverview';
 import WorkInProgress from './WorkInProgress';
 import InquiryManagement from './InquiryManagement';
 import CRMModal from './CRMModal';
+import BookingManagement from './BookingManagement';
 
 interface StudioHubProps {
   user: User;
@@ -56,13 +57,16 @@ const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (role !== 'admin' && role !== 'photographer' && role !== 'editor' && role !== 'other') return;
+    if (role !== 'admin') {
+      setLoading(false);
+      return;
+    }
 
     const fetchStats = async () => {
       try {
         const ordersSnap = await getDocs(collection(db, 'orders'));
         const teamSnap = await getDocs(query(collection(db, 'users'), where('role', 'in', ['photographer', 'editor', 'other'])));
-        const inquiriesSnap = await getDocs(query(collection(db, 'inquiries'), where('status', '==', 'pending')));
+        const inquiriesSnap = await getDocs(query(collection(db, 'serviceInquiries')));
 
         const orders = ordersSnap.docs.map(doc => doc.data());
         const totalEarnings = orders.reduce((acc, curr) => acc + (curr.paidAmount || 0), 0);
@@ -134,14 +138,7 @@ const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
           </div>
         );
       case 'clients':
-        return (
-          <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
-            <h3 className="text-lg font-bold mb-4">Client Database</h3>
-            <p className="text-sm text-gray-500 mb-6">Access client history and communication logs.</p>
-            {/* We can use a simplified version of CRM here or just direct them to the modal via OrderManagement */}
-            <OrderManagement user={user} role={role} />
-          </div>
-        );
+        return <BookingManagement user={user} role={role} />;
       case 'inquiries':
         return <InquiryManagement />;
       default:

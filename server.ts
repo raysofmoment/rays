@@ -1,6 +1,5 @@
 import express from "express";
 import path from "path";
-import { fileURLToPath } from "url";
 import Stripe from "stripe";
 import dotenv from "dotenv";
 import { google } from "googleapis";
@@ -9,9 +8,6 @@ import cookieSession from "cookie-session";
 import { Readable } from "stream";
 
 dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_test_placeholder");
 

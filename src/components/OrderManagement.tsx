@@ -94,6 +94,11 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
       requestsUnsubscribe = onSnapshot(requestsQuery, (snapshot) => {
         setRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any })));
       });
+    } else if (role === 'admin') {
+      const requestsQuery = query(collection(db, 'bookings'), where('adminStatus', '==', 'requested'));
+      requestsUnsubscribe = onSnapshot(requestsQuery, (snapshot) => {
+        setRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any })));
+      });
     }
 
     return () => {
@@ -101,6 +106,69 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
       requestsUnsubscribe();
     };
   }, [user, role]);
+
+  const handleAcceptRequest = async (booking: any) => {
+    const invoiceNumber = `INV-${Date.now().toString().slice(-6)}`;
+    const finalAmount = booking.finalAmount || booking.totalPackageAmount;
+    
+    try {
+      await updateDoc(doc(db, 'bookings', booking.id), {
+        adminStatus: 'accepted',
+        invoiceNumber,
+        finalAmount,
+        status: 'pending',
+        updatedAt: new Date().toISOString(),
+        updatedBy: user.uid
+      });
+      
+      await addDoc(collection(db, 'orders'), {
+        clientId: booking.clientId,
+        clientName: booking.clientName,
+        mobileNumber: booking.clientMobile,
+        invoiceNumber,
+        status: 'pending',
+        date: booking.eventDate,
+        location: booking.eventPlace,
+        packageName: booking.package === 'Customize' ? booking.requirement : booking.package,
+        totalAmount: finalAmount,
+        paidAmount: 0,
+        dueAmount: finalAmount,
+        eventType: booking.eventType,
+        createdAt: new Date().toISOString(),
+        bookingId: booking.id
+      });
+
+      if (booking.clientId) {
+        await addDoc(collection(db, 'notifications'), {
+          userId: booking.clientId,
+          title: 'Order Accepted',
+          message: `Your order request has been accepted! Invoice: ${invoiceNumber}. Final Bill: ₹${finalAmount.toLocaleString()}`,
+          type: 'success',
+          link: '/orders',
+          isRead: false,
+          createdAt: new Date().toISOString()
+        });
+      }
+
+      toast.success(`Request accepted! Invoice ${invoiceNumber} generated.`);
+    } catch (error) {
+      console.error('Error accepting request:', error);
+      toast.error('Failed to accept request');
+    }
+  };
+
+  const handleRejectRequest = async (id: string) => {
+    try {
+      await updateDoc(doc(db, 'bookings', id), {
+        adminStatus: 'rejected',
+        updatedAt: new Date().toISOString(),
+        updatedBy: user.uid
+      });
+      toast.success('Request rejected');
+    } catch (error) {
+      toast.error('Failed to reject request');
+    }
+  };
 
   const handleCreateOrder = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -207,24 +275,6 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
       
       await updateDoc(doc(db, 'orders', orderId), updates);
       
-      // Also update the booking if linked
-      const order = orders.find(o => o.id === orderId);
-      if (order?.invoiceNumber) {
-        const q = query(collection(db, 'bookings'), where('invoiceNumber', '==', order.invoiceNumber));
-        const snap = await getDocs(q);
-        if (!snap.empty) {
-          await updateDoc(doc(db, 'bookings', snap.docs[0].id), { 
-            [field]: newIds,
-            // Also update singular fields in booking
-            ...(field === 'photographerIds' ? { photographerId: newIds[0] || '' } : {}),
-            ...(field === 'editorIds' ? { editorId: newIds[0] || '' } : {}),
-            ...(field === 'otherIds' ? { otherId: newIds[0] || '' } : {}),
-            updatedAt: new Date().toISOString(),
-            updatedBy: user.uid
-          });
-        }
-      }
-      
       toast.success('Assignment updated successfully');
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `orders/${orderId}`);
@@ -299,11 +349,11 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
         )}
       </div>
 
-      {role === 'client' && requests.length > 0 && (
+      {(role === 'client' || role === 'admin') && requests.length > 0 && (
         <div className="mb-12">
           <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
             <Bell className="w-5 h-5 text-blue-600" />
-            My Pending Requests
+            {role === 'admin' ? 'New Order Requests' : 'My Pending Requests'}
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {requests.map((req) => (
@@ -320,6 +370,9 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
                     </span>
                   </div>
                   <div className="space-y-2 mb-4">
+                    {role === 'admin' && (
+                      <p className="text-sm font-bold text-black mb-1">Client: {req.clientName}</p>
+                    )}
                     <p className="text-sm text-gray-600 line-clamp-2">{req.requirement}</p>
                     <p className="text-sm font-bold text-gray-900">Estimated: ₹{req.totalPackageAmount.toLocaleString()}</p>
                   </div>
@@ -328,9 +381,27 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
                       " {req.discountRequest} "
                     </div>
                   )}
-                  <p className="text-[10px] text-gray-400">
-                    Submitted on {format(new Date(req.createdAt), 'MMM d, h:mm a')}
-                  </p>
+                  <div className="flex items-center justify-between mt-4">
+                    <p className="text-[10px] text-gray-400">
+                      Submitted on {format(new Date(req.createdAt), 'MMM d, h:mm a')}
+                    </p>
+                    {role === 'admin' && (
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => handleAcceptRequest(req)}
+                          className="px-3 py-1 bg-green-600 text-white text-[10px] font-bold rounded-lg hover:bg-green-700 transition-colors"
+                        >
+                          Accept
+                        </button>
+                        <button 
+                          onClick={() => handleRejectRequest(req.id)}
+                          className="px-3 py-1 bg-red-600 text-white text-[10px] font-bold rounded-lg hover:bg-red-700 transition-colors"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}

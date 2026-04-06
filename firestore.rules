@@ -137,9 +137,10 @@ service cloud.firestore {
     }
 
     function isValidNotification(data) {
-      return hasOnlyAllowedFields(['id', 'userId', 'title', 'message', 'type', 'isRead', 'createdAt']) &&
+      return hasOnlyAllowedFields(['id', 'userId', 'title', 'message', 'type', 'isRead', 'createdAt', 'link']) &&
              data.userId is string && data.title is string && data.message is string &&
-             data.type in ['info', 'success', 'warning', 'error'] && data.isRead is bool;
+             data.type in ['info', 'success', 'warning', 'error'] && data.isRead is bool &&
+             (!('link' in data) || data.link == null || data.link is string);
     }
 
     function isValidBlogPost(data) {

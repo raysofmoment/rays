@@ -127,6 +127,25 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
           updatedBy: user.uid,
         });
         
+        // Also update the order if it exists
+        const q = query(collection(db, 'orders'), where('invoiceNumber', '==', invoiceNumber));
+        const snap = await getDocs(q);
+        if (!snap.empty) {
+          await updateDoc(doc(db, 'orders', snap.docs[0].id), {
+            clientName: formData.clientName,
+            mobileNumber: formData.clientMobile,
+            date: formData.eventDate,
+            location: formData.eventPlace,
+            packageName: formData.package === 'Customize' ? formData.requirement : formData.package,
+            totalAmount: formData.totalPackageAmount,
+            paidAmount: formData.paidAmount || 0,
+            dueAmount: formData.dueAmount || (formData.totalPackageAmount - (formData.paidAmount || 0)),
+            eventType: formData.eventType,
+            updatedAt: new Date().toISOString(),
+            updatedBy: user.uid
+          });
+        }
+
         await notifyAdmins(
           'Booking Updated',
           `Booking for ${formData.clientName} (Invoice: ${invoiceNumber}) was updated by ${user.displayName || user.email}.`,
@@ -137,13 +156,45 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
         toast.success('Information updated successfully!');
       } else {
         const newInvoiceNumber = invoiceNumber || `INV-${Date.now().toString().slice(-6)}`;
-        await addDoc(collection(db, 'bookings'), {
+        const bookingRef = await addDoc(collection(db, 'bookings'), {
           ...formData,
           invoiceNumber: newInvoiceNumber,
           clientId: clientId || null,
+          adminStatus: (role === 'admin' || role === 'photographer' || role === 'editor' || role === 'other') ? 'accepted' : 'requested',
           createdAt: new Date().toISOString(),
           createdBy: user.uid,
         });
+
+        // Also create or update the order
+        const q = query(collection(db, 'orders'), where('invoiceNumber', '==', newInvoiceNumber));
+        const snap = await getDocs(q);
+        
+        const orderData = {
+          clientId: clientId || null,
+          clientName: formData.clientName,
+          mobileNumber: formData.clientMobile,
+          invoiceNumber: newInvoiceNumber,
+          status: 'pending',
+          date: formData.eventDate,
+          location: formData.eventPlace,
+          packageName: formData.package === 'Customize' ? formData.requirement : formData.package,
+          totalAmount: formData.totalPackageAmount,
+          paidAmount: formData.paidAmount || 0,
+          dueAmount: formData.dueAmount || (formData.totalPackageAmount - (formData.paidAmount || 0)),
+          eventType: formData.eventType,
+          createdAt: new Date().toISOString(),
+          bookingId: bookingRef.id
+        };
+
+        if (!snap.empty) {
+          await updateDoc(doc(db, 'orders', snap.docs[0].id), {
+            ...orderData,
+            updatedAt: new Date().toISOString(),
+            updatedBy: user.uid
+          });
+        } else {
+          await addDoc(collection(db, 'orders'), orderData);
+        }
 
         await notifyAdmins(
           'New Booking Created',
