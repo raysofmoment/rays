@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc, doc, where, getDocs, setDoc, getDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { Plus, Search, Trash2, Edit2, Phone, Mail, Briefcase, Globe, User, Users, X, Save } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, Phone, Mail, Briefcase, Globe, User, Users, X, Save, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -26,7 +26,9 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ userRole }) => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+  const [transferringEmployee, setTransferringEmployee] = useState<Employee | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     designation: '',
@@ -35,6 +37,12 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ userRole }) => {
     workAssigned: '',
     portfolioUrl: '',
     photoURL: ''
+  });
+
+  const [transferFormData, setTransferFormData] = useState({
+    role: 'other' as 'photographer' | 'editor' | 'admin' | 'other',
+    specialization: '',
+    bio: ''
   });
 
   const isAdmin = userRole === 'admin';
@@ -81,7 +89,81 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ userRole }) => {
 
   const handleCloseModal = () => {
     setIsModalOpen(false);
+    setIsTransferModalOpen(false);
     setEditingEmployee(null);
+    setTransferringEmployee(null);
+  };
+
+  const handleOpenTransferModal = (employee: Employee) => {
+    setTransferringEmployee(employee);
+    
+    let initialRole: 'photographer' | 'editor' | 'admin' | 'other' = 'other';
+    const designation = employee.designation.toLowerCase();
+    if (designation.includes('photographer')) initialRole = 'photographer';
+    else if (designation.includes('editor') || designation.includes('retoucher')) initialRole = 'editor';
+    else if (designation.includes('admin')) initialRole = 'admin';
+
+    setTransferFormData({
+      role: initialRole,
+      specialization: employee.designation,
+      bio: `Joined as ${employee.designation}`
+    });
+    setIsTransferModalOpen(true);
+  };
+
+  const confirmTransfer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!transferringEmployee) return;
+
+    try {
+      setLoading(true);
+      
+      // Find user by email
+      const userQuery = query(collection(db, 'users'), where('email', '==', transferringEmployee.email));
+      const userSnapshot = await getDocs(userQuery);
+      
+      if (!userSnapshot.empty) {
+        const userDoc = userSnapshot.docs[0];
+        const userId = userDoc.id;
+        
+        // 1. Update User Role
+        await updateDoc(doc(db, 'users', userId), {
+          role: transferFormData.role,
+          updatedAt: new Date().toISOString()
+        });
+
+        // 2. Add/Update TeamMember details
+        const teamMemberRef = doc(db, 'teamMembers', userId);
+        const teamMemberSnap = await getDoc(teamMemberRef);
+        
+        const teamMemberData = {
+          uid: userId,
+          specialization: transferFormData.specialization,
+          bio: transferFormData.bio,
+          availability: true,
+          updatedAt: new Date().toISOString()
+        };
+
+        if (teamMemberSnap.exists()) {
+          await updateDoc(teamMemberRef, teamMemberData);
+        } else {
+          await setDoc(teamMemberRef, {
+            ...teamMemberData,
+            createdAt: new Date().toISOString()
+          });
+        }
+
+        toast.success(`${transferringEmployee.name} has been successfully transferred to the team!`);
+        handleCloseModal();
+      } else {
+        toast.error(`${transferringEmployee.name} does not have a registered account with email ${transferringEmployee.email}. Please ask them to sign up first.`);
+      }
+    } catch (error) {
+      console.error('Error transferring employee:', error);
+      toast.error('Failed to transfer employee to team');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -189,6 +271,13 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ userRole }) => {
                 </div>
                 {isAdmin && (
                   <div className="flex items-center space-x-1">
+                    <button
+                      onClick={() => handleOpenTransferModal(emp)}
+                      className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-all"
+                      title="Transfer to Team"
+                    >
+                      <Check className="w-4 h-4" />
+                    </button>
                     <button
                       onClick={() => handleOpenModal(emp)}
                       className="p-2 text-gray-400 hover:text-black hover:bg-gray-50 rounded-lg transition-all"
@@ -361,6 +450,93 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ userRole }) => {
                   >
                     <Save className="w-5 h-5" />
                     <span>{editingEmployee ? 'Update Profile' : 'Save Profile'}</span>
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Transfer Modal */}
+      <AnimatePresence>
+        {isTransferModalOpen && transferringEmployee && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={handleCloseModal}
+              className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="relative bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden"
+            >
+              <div className="p-6 border-b border-gray-100 flex items-center justify-between bg-green-50">
+                <h2 className="text-xl font-bold text-green-900">Transfer to Team</h2>
+                <button onClick={handleCloseModal} className="p-2 hover:bg-green-100 rounded-full transition-colors">
+                  <X className="w-6 h-6 text-green-900" />
+                </button>
+              </div>
+
+              <form onSubmit={confirmTransfer} className="p-6 space-y-4">
+                <div className="bg-gray-50 p-4 rounded-2xl mb-4">
+                  <p className="text-sm text-gray-600">Transferring <span className="font-bold text-black">{transferringEmployee.name}</span> to the active team. This will update their system permissions and profile.</p>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">System Role</label>
+                  <select
+                    value={transferFormData.role}
+                    onChange={(e) => setTransferFormData({ ...transferFormData, role: e.target.value as any })}
+                    className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-green-500 outline-none"
+                  >
+                    <option value="photographer">Photographer</option>
+                    <option value="editor">Editor</option>
+                    <option value="admin">Admin</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Specialization</label>
+                  <input
+                    required
+                    type="text"
+                    value={transferFormData.specialization}
+                    onChange={(e) => setTransferFormData({ ...transferFormData, specialization: e.target.value })}
+                    className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-green-500 outline-none"
+                    placeholder="e.g. Cinematic Videography"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Short Bio</label>
+                  <textarea
+                    required
+                    value={transferFormData.bio}
+                    onChange={(e) => setTransferFormData({ ...transferFormData, bio: e.target.value })}
+                    className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-green-500 outline-none resize-none"
+                    rows={3}
+                    placeholder="Brief introduction for the team page..."
+                  />
+                </div>
+
+                <div className="pt-4">
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="w-full bg-green-600 text-white py-3 rounded-2xl font-bold flex items-center justify-center space-x-2 hover:bg-green-700 transition-all shadow-lg shadow-green-600/20 disabled:opacity-50"
+                  >
+                    {loading ? (
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Check className="w-5 h-5" />
+                    )}
+                    <span>Confirm Transfer</span>
                   </button>
                 </div>
               </form>

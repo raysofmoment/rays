@@ -45,39 +45,55 @@ export default function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (!isMounted) return;
+
       if (currentUser) {
-        setUser(currentUser);
-        const userDoc = await getDoc(doc(db, 'users', currentUser.uid));
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          if (currentUser.email === 'saikatbanerjee139@gmail.com' && userData.role !== 'admin') {
-            await setDoc(doc(db, 'users', currentUser.uid), { ...userData, role: 'admin' }, { merge: true });
-            setRole('admin');
+        try {
+          const userDocRef = doc(db, 'users', currentUser.uid);
+          const userDoc = await getDoc(userDocRef);
+          
+          if (!isMounted) return;
+
+          if (userDoc.exists()) {
+            const userData = userDoc.data();
+            if (currentUser.email === 'saikatbanerjee139@gmail.com' && userData.role !== 'admin') {
+              await setDoc(userDocRef, { ...userData, role: 'admin' }, { merge: true });
+              if (isMounted) setRole('admin');
+            } else {
+              if (isMounted) setRole(userData.role);
+            }
           } else {
-            setRole(userData.role);
+            const newRole = currentUser.email === 'saikatbanerjee139@gmail.com' ? 'admin' : 'client';
+            const userData = {
+              uid: currentUser.uid,
+              email: currentUser.email,
+              displayName: currentUser.displayName,
+              photoURL: currentUser.photoURL,
+              role: newRole,
+              createdAt: new Date().toISOString()
+            };
+            await setDoc(userDocRef, userData);
+            if (isMounted) setRole(newRole);
           }
-        } else {
-          // Default role for new users
-          const newRole = currentUser.email === 'saikatbanerjee139@gmail.com' ? 'admin' : 'client';
-          await setDoc(doc(db, 'users', currentUser.uid), {
-            uid: currentUser.uid,
-            email: currentUser.email,
-            displayName: currentUser.displayName,
-            photoURL: currentUser.photoURL,
-            role: newRole,
-            createdAt: new Date().toISOString()
-          });
-          setRole(newRole);
+          if (isMounted) setUser(currentUser);
+        } catch (error) {
+          console.error("Error fetching user data:", error);
         }
       } else {
-        setUser(null);
-        setRole(null);
+        if (isMounted) {
+          setUser(null);
+          setRole(null);
+        }
       }
-      setLoading(false);
+      if (isMounted) setLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
   }, []);
 
   if (loading) {

@@ -25,6 +25,7 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
   const [applications, setApplications] = useState<JobApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [sortConfig, setSortConfig] = useState<{ key: keyof JobApplication; direction: 'asc' | 'desc' } | null>(null);
   const [isApplyModalOpen, setIsApplyModalOpen] = useState(false);
   const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
   const [isAcceptModalOpen, setIsAcceptModalOpen] = useState(false);
@@ -275,6 +276,24 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
     app.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const sortedApplications = [...filteredApplications].sort((a, b) => {
+    if (!sortConfig) return 0;
+    const { key, direction } = sortConfig;
+    const aValue = (a[key] || '').toString().toLowerCase();
+    const bValue = (b[key] || '').toString().toLowerCase();
+    if (aValue < bValue) return direction === 'asc' ? -1 : 1;
+    if (aValue > bValue) return direction === 'asc' ? 1 : -1;
+    return 0;
+  });
+
+  const handleSort = (key: keyof JobApplication) => {
+    let direction: 'asc' | 'desc' = 'asc';
+    if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setSortConfig({ key, direction });
+  };
+
   const jobs = [
     {
       title: "Lead Wedding Photographer",
@@ -284,11 +303,53 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
       description: "We're looking for an experienced wedding photographer with a keen eye for storytelling and emotional moments."
     },
     {
+      title: "Videographer & Cinematographer",
+      location: "Berhampore, West Bengal",
+      type: "Full-time",
+      salary: "₹5,00,000 - ₹9,00,000 / year",
+      description: "Capture cinematic wedding films and event highlights with high-end production value and storytelling."
+    },
+    {
+      title: "Video Editor",
+      location: "Remote / Hybrid",
+      type: "Full-time",
+      salary: "₹4,00,000 - ₹7,00,000 / year",
+      description: "Craft compelling stories from raw footage, specializing in wedding highlights and cinematic films."
+    },
+    {
       title: "Photo Editor & Retoucher",
       location: "Remote / Hybrid",
       type: "Full-time",
       salary: "₹3,00,000 - ₹5,00,000 / year",
       description: "Join our post-production team to bring our captures to life with professional editing and retouching."
+    },
+    {
+      title: "Drone Pilot",
+      location: "Berhampore, West Bengal",
+      type: "Contract",
+      salary: "₹3,000 - ₹7,000 / day",
+      description: "Provide breathtaking aerial perspectives for our outdoor events and cinematic productions."
+    },
+    {
+      title: "Makeup Artist",
+      location: "Berhampore, West Bengal",
+      type: "Part-time / Contract",
+      salary: "₹5,000 - ₹15,000 / project",
+      description: "Join our bridal team to provide professional makeup services for our clients' special moments."
+    },
+    {
+      title: "Decorators",
+      location: "Berhampore, West Bengal",
+      type: "Contract",
+      salary: "₹10,000 - ₹50,000 / project",
+      description: "Help us create stunning visual environments for our studio shoots and event setups."
+    },
+    {
+      title: "Catering",
+      location: "Berhampore, West Bengal",
+      type: "Contract",
+      salary: "₹20,000 - ₹1,00,000 / event",
+      description: "Join our event management team to provide exceptional culinary experiences for our high-end productions."
     },
     {
       title: "Event Photography Assistant",
@@ -303,6 +364,13 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
       type: "Full-time",
       salary: "₹4,00,000 - ₹6,00,000 / year",
       description: "Help us share our stories with the world across Instagram, TikTok, and Pinterest."
+    },
+    {
+      title: "Other Creative Roles",
+      location: "Flexible",
+      type: "Full-time / Part-time",
+      salary: "Competitive",
+      description: "Have a unique skill that fits our creative studio? We're always open to meeting talented people across various disciplines."
     }
   ];
 
@@ -405,15 +473,35 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
                 <table className="w-full text-left">
                   <thead className="bg-gray-50 border-b border-gray-100">
                     <tr>
-                      <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Applicant</th>
-                      <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Designation</th>
+                      <th 
+                        className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-black transition-colors"
+                        onClick={() => handleSort('name')}
+                      >
+                        <div className="flex items-center space-x-1">
+                          <span>Applicant</span>
+                          {sortConfig?.key === 'name' && (
+                            <span className="text-[10px]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                          )}
+                        </div>
+                      </th>
+                      <th 
+                        className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider cursor-pointer hover:text-black transition-colors"
+                        onClick={() => handleSort('designation')}
+                      >
+                        <div className="flex items-center space-x-1">
+                          <span>Designation</span>
+                          {sortConfig?.key === 'designation' && (
+                            <span className="text-[10px]">{sortConfig.direction === 'asc' ? '↑' : '↓'}</span>
+                          )}
+                        </div>
+                      </th>
                       <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Portfolio</th>
                       <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Contact</th>
                       <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {filteredApplications.map((app) => (
+                    {sortedApplications.map((app) => (
                       <tr key={app.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-6 py-4">
                           <div className="font-bold text-gray-900">{app.name}</div>
@@ -479,7 +567,7 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
                   </tbody>
                 </table>
               </div>
-              {filteredApplications.length === 0 && (
+              {sortedApplications.length === 0 && (
                 <div className="text-center py-20">
                   <FileText className="w-12 h-12 text-gray-200 mx-auto mb-4" />
                   <p className="text-gray-500">No applications found.</p>

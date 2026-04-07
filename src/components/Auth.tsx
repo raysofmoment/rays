@@ -14,25 +14,18 @@ const Auth: React.FC = () => {
   const [loading, setLoading] = useState(false);
 
   const handleGoogleSignIn = async () => {
+    if (loading) return;
+    setLoading(true);
     const provider = new GoogleAuthProvider();
     try {
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-      
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      if (!userDoc.exists()) {
-        await setDoc(doc(db, 'users', user.uid), {
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName,
-          photoURL: user.photoURL,
-          role: 'client',
-          createdAt: new Date().toISOString()
-        });
-      }
+      await signInWithPopup(auth, provider);
       toast.success('Successfully signed in!');
     } catch (error: any) {
-      toast.error(error.message);
+      if (error.code !== 'auth/popup-closed-by-user') {
+        toast.error(error.message);
+      }
+    } finally {
+      setLoading(false);
     }
   };
 
