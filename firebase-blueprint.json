@@ -434,6 +434,23 @@
         "eventDate": { "type": "string", "format": "date" }
       },
       "required": ["bookingId", "sentAt", "eventDate"]
+    },
+    "SampleWork": {
+      "title": "Sample Work",
+      "description": "Sample work (photo, video, link) added by team members",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userRole": { "type": "string", "enum": ["admin", "photographer", "editor", "other"] },
+        "type": { "type": "string", "enum": ["image", "video", "link"] },
+        "url": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "userRole", "type", "url", "createdAt"]
     }
   },
   "firestore": {
@@ -508,6 +525,10 @@
     "/reminders_sent/{reminderId}": {
       "schema": "ReminderSent",
       "description": "Sent reminder tracking"
+    },
+    "/sampleWorks/{sampleId}": {
+      "schema": "SampleWork",
+      "description": "Sample work from team members"
     }
   }
 }

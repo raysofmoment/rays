@@ -20,7 +20,8 @@ import {
   MoreVertical,
   DollarSign,
   PieChart,
-  Calendar
+  Calendar,
+  Camera
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -38,13 +39,14 @@ import InquiryManagement from './InquiryManagement';
 import CRMModal from './CRMModal';
 import BookingManagement from './BookingManagement';
 import ProjectOverview from './ProjectOverview';
+import TeamPortfolio from './TeamPortfolio';
 
 interface StudioHubProps {
   user: User;
   role: string | null;
 }
 
-type ActiveTab = 'overview' | 'projects' | 'team' | 'financials' | 'clients' | 'wip' | 'inquiries' | 'project-overview';
+type ActiveTab = 'overview' | 'projects' | 'team' | 'financials' | 'clients' | 'wip' | 'inquiries' | 'project-overview' | 'portfolio';
 
 const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
@@ -94,6 +96,7 @@ const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
     { id: 'projects', label: 'Orders & Projects', icon: Briefcase, roles: ['admin', 'photographer', 'editor', 'other'] },
     { id: 'project-overview', label: 'Project Status', icon: TrendingUp, roles: ['admin', 'editor'] },
     { id: 'wip', label: 'Work in Progress', icon: Clock, roles: ['admin', 'photographer', 'editor', 'other'] },
+    { id: 'portfolio', label: 'Team Portfolio', icon: Camera, roles: ['admin', 'photographer', 'editor', 'other'] },
     { id: 'financials', label: 'Payments & Costs', icon: CreditCard, roles: ['admin'] },
     { id: 'team', label: 'Team & Employees', icon: Users, roles: ['admin'] },
     { id: 'clients', label: 'Client CRM', icon: UserSquare2, roles: ['admin'] },
@@ -145,6 +148,8 @@ const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
         return <ProjectOverview />;
       case 'inquiries':
         return <InquiryManagement />;
+      case 'portfolio':
+        return <TeamPortfolio />;
       default:
         return <Dashboard user={user} role={role} />;
     }

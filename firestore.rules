@@ -154,6 +154,12 @@ service cloud.firestore {
              data.authorId is string;
     }
 
+    function isValidSampleWork(data) {
+      return hasOnlyAllowedFields(['id', 'userId', 'userName', 'userRole', 'type', 'url', 'title', 'description', 'createdAt']) &&
+             data.userId is string && data.userRole in ['admin', 'photographer', 'editor', 'other'] &&
+             data.type in ['image', 'video', 'link'] && data.url is string;
+    }
+
     // ===============================================================
     // Rules
     // ===============================================================
@@ -324,6 +330,14 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated();
       allow update: if isAdmin();
+    }
+
+    match /sampleWorks/{sampleId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && (isAdmin() || isPhotographer() || isEditor() || isOther()) && 
+                    request.resource.data.userId == request.auth.uid && isValidSampleWork(request.resource.data);
+      allow update: if isAuthenticated() && (isAdmin() || isOwner(resource.data.userId)) && isValidSampleWork(request.resource.data);
+      allow delete: if isAuthenticated() && (isAdmin() || isOwner(resource.data.userId));
     }
 
     match /{path=**} {

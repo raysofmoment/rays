@@ -26,6 +26,7 @@ import PaymentManagement from './components/PaymentManagement';
 import FinancialOverview from './components/FinancialOverview';
 import InquiryManagement from './components/InquiryManagement';
 import Profile from './components/Profile';
+import TeamPortfolio from './components/TeamPortfolio';
 import Cart from './components/Cart';
 import Checkout from './components/Checkout';
 import { CartProvider } from './context/CartContext';
@@ -140,6 +141,7 @@ export default function App() {
               <Route path="/employees" element={user && role === 'admin' ? <EmployeeList userRole={role} /> : <Navigate to="/auth" />} />
               <Route path="/inquiries" element={user && role === 'admin' ? <InquiryManagement /> : <Navigate to="/auth" />} />
               <Route path="/team" element={user && (role === 'admin' || role === 'photographer' || role === 'editor') ? <TeamManagement user={user} role={role} /> : <Navigate to="/auth" />} />
+              <Route path="/team-portfolio" element={user && (role === 'admin' || role === 'photographer' || role === 'editor' || role === 'other') ? <TeamPortfolio /> : <Navigate to="/auth" />} />
               <Route path="/profile" element={user ? <Profile user={user} role={role} /> : <Navigate to="/auth" />} />
               <Route path="/gallery/:galleryId" element={<Gallery user={user} role={role} />} />
               <Route path="/blog" element={<Blog user={user} role={role} />} />

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { User, updateProfile } from 'firebase/auth';
-import { doc, getDoc, updateDoc, collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, query, where, getDocs, onSnapshot, addDoc, deleteDoc } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
-import { User as UserIcon, Mail, Shield, Calendar, Camera, Save, Loader2, Camera as CameraIcon, ShoppingBag, Package, CheckCircle2, Clock, ExternalLink, ChevronRight, Info, Phone } from 'lucide-react';
+import { User as UserIcon, Mail, Shield, Calendar, Camera, Save, Loader2, Camera as CameraIcon, ShoppingBag, Package, CheckCircle2, Clock, ExternalLink, ChevronRight, Info, Phone, Plus, Trash2, Link as LinkIcon, Video, Image as ImageIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
@@ -14,7 +14,7 @@ interface ProfileProps {
 }
 
 const Profile: React.FC<ProfileProps> = ({ user, role }) => {
-  const [activeTab, setActiveTab] = useState<'profile' | 'orders' | 'assignments'>('profile');
+  const [activeTab, setActiveTab] = useState<'profile' | 'orders' | 'assignments' | 'samples'>('profile');
   const [displayName, setDisplayName] = useState(user.displayName || '');
   const [loading, setLoading] = useState(false);
   const [userData, setUserData] = useState<any>(null);
@@ -22,6 +22,15 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [assignments, setAssignments] = useState<any[]>([]);
   const [assignmentsLoading, setAssignmentsLoading] = useState(false);
+  const [samples, setSamples] = useState<any[]>([]);
+  const [samplesLoading, setSamplesLoading] = useState(false);
+  const [showAddSample, setShowAddSample] = useState(false);
+  const [newSample, setNewSample] = useState({
+    title: '',
+    description: '',
+    type: 'image' as 'image' | 'video' | 'link',
+    url: ''
+  });
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -91,6 +100,57 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
     }, 0);
   };
 
+  useEffect(() => {
+    if (activeTab === 'samples') {
+      setSamplesLoading(true);
+      const q = query(collection(db, 'sampleWorks'), where('userId', '==', user.uid));
+      const unsubscribe = onSnapshot(q, (snapshot) => {
+        const samplesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        setSamples(samplesData.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+        setSamplesLoading(false);
+      }, (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'sampleWorks');
+        setSamplesLoading(false);
+      });
+      return () => unsubscribe();
+    }
+  }, [activeTab, user.uid]);
+
+  const handleAddSample = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newSample.url) {
+      toast.error('Please provide a URL');
+      return;
+    }
+    setLoading(true);
+    try {
+      await addDoc(collection(db, 'sampleWorks'), {
+        ...newSample,
+        userId: user.uid,
+        userName: user.displayName || 'Anonymous',
+        userRole: role,
+        createdAt: new Date().toISOString()
+      });
+      toast.success('Sample work added successfully!');
+      setNewSample({ title: '', description: '', type: 'image', url: '' });
+      setShowAddSample(false);
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'sampleWorks');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteSample = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this sample?')) return;
+    try {
+      await deleteDoc(doc(db, 'sampleWorks', id));
+      toast.success('Sample deleted');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'sampleWorks');
+    }
+  };
+
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -158,12 +218,12 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
         >
           My Orders
         </button>
-        {(role === 'photographer' || role === 'editor' || role === 'other') && (
+        {(role === 'photographer' || role === 'editor' || role === 'other' || role === 'admin') && (
           <button
-            onClick={() => setActiveTab('assignments')}
-            className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === 'assignments' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-black'}`}
+            onClick={() => setActiveTab('samples')}
+            className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === 'samples' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-black'}`}
           >
-            My Assignments
+            Sample Work
           </button>
         )}
       </div>
@@ -485,6 +545,178 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
                 </Link>
               </div>
             )}
+          </motion.div>
+        ) : activeTab === 'samples' ? (
+          <motion.div
+            key="samples"
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -20 }}
+            className="space-y-8"
+          >
+            <div className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100">
+              <div className="flex items-center justify-between mb-8">
+                <div>
+                  <h2 className="text-3xl font-black text-gray-900">Sample Work</h2>
+                  <p className="text-gray-500 font-medium">Showcase your best work to the team and clients.</p>
+                </div>
+                <button
+                  onClick={() => setShowAddSample(!showAddSample)}
+                  className="flex items-center space-x-2 bg-black text-white px-6 py-3 rounded-xl font-bold hover:bg-gray-800 transition-all shadow-lg"
+                >
+                  <Plus className="w-5 h-5" />
+                  <span>Add Sample</span>
+                </button>
+              </div>
+
+              {showAddSample && (
+                <motion.form
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  className="mb-12 p-8 bg-gray-50 rounded-3xl border border-gray-100 space-y-6 overflow-hidden"
+                  onSubmit={handleAddSample}
+                >
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Title</label>
+                      <input
+                        type="text"
+                        value={newSample.title}
+                        onChange={(e) => setNewSample({ ...newSample, title: e.target.value })}
+                        className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-black outline-none transition-all"
+                        placeholder="e.g. Wedding Cinematic Teaser"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Type</label>
+                      <select
+                        value={newSample.type}
+                        onChange={(e) => setNewSample({ ...newSample, type: e.target.value as any })}
+                        className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-black outline-none transition-all"
+                      >
+                        <option value="image">Photo</option>
+                        <option value="video">Video</option>
+                        <option value="link">External Link</option>
+                      </select>
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">URL (Image/Video/Link)</label>
+                      <input
+                        type="url"
+                        value={newSample.url}
+                        onChange={(e) => setNewSample({ ...newSample, url: e.target.value })}
+                        className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-black outline-none transition-all"
+                        placeholder="https://..."
+                        required
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Description</label>
+                      <textarea
+                        value={newSample.description}
+                        onChange={(e) => setNewSample({ ...newSample, description: e.target.value })}
+                        className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-black outline-none transition-all min-h-[100px]"
+                        placeholder="Briefly describe this work..."
+                      />
+                    </div>
+                  </div>
+                  <div className="flex justify-end space-x-4">
+                    <button
+                      type="button"
+                      onClick={() => setShowAddSample(false)}
+                      className="px-6 py-2 text-gray-500 font-bold hover:text-black transition-all"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="bg-black text-white px-8 py-2 rounded-xl font-bold flex items-center space-x-2 hover:bg-gray-800 transition-all disabled:opacity-50"
+                    >
+                      {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+                      <span>Save Sample</span>
+                    </button>
+                  </div>
+                </motion.form>
+              )}
+
+              {samplesLoading ? (
+                <div className="flex justify-center py-12">
+                  <Loader2 className="w-8 h-8 animate-spin text-black" />
+                </div>
+              ) : samples.length > 0 ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {samples.map((sample) => (
+                    <div key={sample.id} className="bg-gray-50 rounded-3xl border border-gray-100 overflow-hidden group hover:shadow-xl transition-all">
+                      <div className="aspect-video bg-gray-200 relative overflow-hidden">
+                        {sample.type === 'image' ? (
+                          <img src={sample.url} alt={sample.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" referrerPolicy="no-referrer" />
+                        ) : sample.type === 'video' ? (
+                          <div className="w-full h-full flex items-center justify-center bg-black">
+                            <Video className="w-12 h-12 text-white opacity-50" />
+                            <a href={sample.url} target="_blank" rel="noopener noreferrer" className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <ExternalLink className="w-8 h-8 text-white" />
+                            </a>
+                          </div>
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                            <LinkIcon className="w-12 h-12 text-gray-300" />
+                            <a href={sample.url} target="_blank" rel="noopener noreferrer" className="absolute inset-0 flex items-center justify-center bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <ExternalLink className="w-8 h-8 text-black" />
+                            </a>
+                          </div>
+                        )}
+                        <div className="absolute top-4 right-4 flex space-x-2">
+                          <button
+                            onClick={() => handleDeleteSample(sample.id)}
+                            className="p-2 bg-white/90 backdrop-blur-sm text-red-500 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500 hover:text-white"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                        <div className="absolute bottom-4 left-4">
+                          <span className="px-2 py-1 bg-black/60 backdrop-blur-sm text-white text-[10px] font-bold uppercase tracking-widest rounded-md flex items-center">
+                            {sample.type === 'image' ? <ImageIcon className="w-3 h-3 mr-1" /> : sample.type === 'video' ? <Video className="w-3 h-3 mr-1" /> : <LinkIcon className="w-3 h-3 mr-1" />}
+                            {sample.type}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="p-6">
+                        <h3 className="font-bold text-gray-900 mb-1 line-clamp-1">{sample.title}</h3>
+                        <p className="text-sm text-gray-500 line-clamp-2 mb-4">{sample.description || 'No description provided.'}</p>
+                        <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                            {format(new Date(sample.createdAt), 'MMM d, yyyy')}
+                          </span>
+                          <a
+                            href={sample.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs font-bold text-black hover:underline flex items-center"
+                          >
+                            View Work
+                            <ChevronRight className="w-3 h-3 ml-1" />
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-24 bg-gray-50 rounded-3xl border border-dashed border-gray-200">
+                  <CameraIcon className="w-16 h-16 text-gray-200 mx-auto mb-4" />
+                  <h3 className="text-xl font-bold text-gray-900">No Samples Added</h3>
+                  <p className="text-gray-500 mt-2">Start showcasing your work by adding your first sample.</p>
+                  <button
+                    onClick={() => setShowAddSample(true)}
+                    className="mt-6 text-black font-bold underline hover:text-gray-600"
+                  >
+                    Add Sample Now
+                  </button>
+                </div>
+              )}
+            </div>
           </motion.div>
         ) : (
           <motion.div

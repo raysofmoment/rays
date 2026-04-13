@@ -163,6 +163,7 @@ const Navbar: React.FC<NavbarProps> = ({ user, role }) => {
                       <>
                         <div className="pt-4 pb-2 px-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Management</div>
                         <SidebarLink to="/studio" icon={<LayoutDashboard className="w-5 h-5" />} label="Studio Command Center" onClick={closeMenu} />
+                        <SidebarLink to="/team-portfolio" icon={<Camera className="w-5 h-5" />} label="Team Portfolio" onClick={closeMenu} />
                         <SidebarLink to="/orders" icon={<ClipboardList className="w-5 h-5" />} label="Order List" onClick={closeMenu} />
                         <SidebarLink to="/equipment" icon={<Camera className="w-5 h-5" />} label="Equipment" onClick={closeMenu} />
                         <SidebarLink to="/store" icon={<ShoppingBag className="w-5 h-5" />} label="Store" onClick={closeMenu} />
