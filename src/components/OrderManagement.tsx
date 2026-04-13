@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User } from 'firebase/auth';
-import { collection, query, where, getDocs, addDoc, updateDoc, doc, deleteDoc, orderBy, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, updateDoc, doc, deleteDoc, orderBy, onSnapshot, writeBatch } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { notifyAdmins, notifyUser } from '../services/notificationService';
 import { Calendar, Plus, Search, Filter, MoreVertical, Trash2, Edit2, CreditCard, Image as ImageIcon, User as UserIcon, Eye, Bell, ShoppingCart } from 'lucide-react';
@@ -32,6 +32,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
+  const [requestFinalAmounts, setRequestFinalAmounts] = useState<Record<string, number>>({});
   const [newOrder, setNewOrder] = useState({
     packageName: '',
     date: format(new Date(), 'yyyy-MM-dd'),
@@ -109,19 +110,25 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
 
   const handleAcceptRequest = async (booking: any) => {
     const invoiceNumber = `INV-${Date.now().toString().slice(-6)}`;
-    const finalAmount = booking.finalAmount || booking.totalPackageAmount;
+    const finalAmount = requestFinalAmounts[booking.id] || booking.finalAmount || booking.totalPackageAmount;
+    const discount = booking.totalPackageAmount - finalAmount;
     
     try {
-      await updateDoc(doc(db, 'bookings', booking.id), {
+      const batch = writeBatch(db);
+      
+      const bookingRef = doc(db, 'bookings', booking.id);
+      batch.update(bookingRef, {
         adminStatus: 'accepted',
         invoiceNumber,
         finalAmount,
+        discount,
         status: 'pending',
         updatedAt: new Date().toISOString(),
         updatedBy: user.uid
       });
       
-      await addDoc(collection(db, 'orders'), {
+      const orderRef = doc(collection(db, 'orders'));
+      batch.set(orderRef, {
         clientId: booking.clientId,
         clientName: booking.clientName,
         mobileNumber: booking.clientMobile,
@@ -130,7 +137,9 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
         date: booking.eventDate,
         location: booking.eventPlace,
         packageName: booking.package === 'Customize' ? booking.requirement : booking.package,
-        totalAmount: finalAmount,
+        totalAmount: booking.totalPackageAmount,
+        discount,
+        finalAmount: finalAmount,
         paidAmount: 0,
         dueAmount: finalAmount,
         eventType: booking.eventType,
@@ -139,7 +148,8 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
       });
 
       if (booking.clientId) {
-        await addDoc(collection(db, 'notifications'), {
+        const notificationRef = doc(collection(db, 'notifications'));
+        batch.set(notificationRef, {
           userId: booking.clientId,
           title: 'Order Accepted',
           message: `Your order request has been accepted! Invoice: ${invoiceNumber}. Final Bill: ₹${finalAmount.toLocaleString()}`,
@@ -150,6 +160,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
         });
       }
 
+      await batch.commit();
       toast.success(`Request accepted! Invoice ${invoiceNumber} generated.`);
     } catch (error) {
       console.error('Error accepting request:', error);
@@ -374,7 +385,21 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
                       <p className="text-sm font-bold text-black mb-1">Client: {req.clientName}</p>
                     )}
                     <p className="text-sm text-gray-600 line-clamp-2">{req.requirement}</p>
-                    <p className="text-sm font-bold text-gray-900">Estimated: ₹{req.totalPackageAmount.toLocaleString()}</p>
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-bold text-gray-900">Package: ₹{req.totalPackageAmount.toLocaleString()}</p>
+                      {role === 'admin' && (
+                        <div className="flex flex-col items-end">
+                          <label className="text-[10px] font-bold text-gray-400 uppercase">Final Amount</label>
+                          <input 
+                            type="number" 
+                            placeholder="Final ₹"
+                            value={requestFinalAmounts[req.id] ?? (req.finalAmount || req.totalPackageAmount)}
+                            onChange={(e) => setRequestFinalAmounts(prev => ({ ...prev, [req.id]: Number(e.target.value) }))}
+                            className="w-24 px-2 py-1 text-xs border border-gray-200 rounded-lg focus:border-black outline-none font-bold text-green-600"
+                          />
+                        </div>
+                      )}
+                    </div>
                   </div>
                   {req.discountRequest && (
                     <div className="p-3 bg-gray-50 rounded-xl text-xs text-gray-500 italic mb-4">
@@ -446,7 +471,15 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
               {orders.map((order) => (
                 <tr key={order.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-6 py-4">
-                    <p className="text-sm font-bold text-gray-900">{order.packageName}</p>
+                    <button 
+                      onClick={() => {
+                        setSelectedOrder(order);
+                        setShowDetailsModal(true);
+                      }}
+                      className="text-sm font-bold text-gray-900 hover:text-blue-600 transition-colors text-left"
+                    >
+                      {order.packageName}
+                    </button>
                     <p className="text-xs text-gray-500">{order.location}</p>
                     <p className="text-xs text-gray-400">{format(new Date(order.date), 'MMM d, yyyy')}</p>
                     {order.invoiceNumber && (

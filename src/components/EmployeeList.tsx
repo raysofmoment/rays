@@ -102,6 +102,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ userRole }) => {
     if (designation.includes('photographer')) initialRole = 'photographer';
     else if (designation.includes('editor') || designation.includes('retoucher')) initialRole = 'editor';
     else if (designation.includes('admin')) initialRole = 'admin';
+    else if (designation.includes('vlog') || designation.includes('content creator')) initialRole = 'editor';
 
     setTransferFormData({
       role: initialRole,

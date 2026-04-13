@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Briefcase, MapPin, Clock, ArrowRight, Camera, Users, Award, Star, Search, Plus, Trash2, Edit2, Phone, Mail, X, Save, FileText, Globe, Check } from 'lucide-react';
+import { Briefcase, MapPin, Clock, ArrowRight, Camera, Users, Award, Star, Search, Plus, Trash2, Edit2, Phone, Mail, X, Save, FileText, Globe, Check, ShieldCheck } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc, doc, where, getDocs, getDoc, setDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { notifyAdmins } from '../services/notificationService';
 import { toast } from 'sonner';
+import Captcha from './Captcha';
 
 interface JobApplication {
   id: string;
@@ -32,6 +33,7 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
   const [editingApplication, setEditingApplication] = useState<JobApplication | null>(null);
   const [acceptingApplication, setAcceptingApplication] = useState<JobApplication | null>(null);
   const [selectedJob, setSelectedJob] = useState<string>('');
+  const [isCaptchaVerified, setIsCaptchaVerified] = useState(false);
   
   const [formData, setFormData] = useState({
     name: '',
@@ -116,6 +118,10 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
 
   const handleApplySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isCaptchaVerified) {
+      toast.error('Please complete the security verification');
+      return;
+    }
     try {
       await addDoc(collection(db, 'jobApplications'), {
         ...formData,
@@ -180,6 +186,7 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
     if (designation.includes('photographer')) initialRole = 'photographer';
     else if (designation.includes('editor') || designation.includes('retoucher')) initialRole = 'editor';
     else if (designation.includes('admin')) initialRole = 'admin';
+    else if (designation.includes('vlog') || designation.includes('content creator')) initialRole = 'editor'; // Vlogger usually involves editing
 
     setAcceptFormData({
       name: app.name,
@@ -296,80 +303,81 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
 
   const jobs = [
     {
+      title: "Vlogger & Content Creator",
+      location: "Berhampore, West Bengal",
+      type: "Full-time / Contract",
+      description: "Create engaging behind-the-scenes content, vlogs, and social media shorts to showcase our creative process and event highlights."
+    },
+    {
       title: "Lead Wedding Photographer",
       location: "Berhampore, West Bengal",
       type: "Full-time",
-      salary: "₹5,00,000 - ₹8,00,000 / year",
       description: "We're looking for an experienced wedding photographer with a keen eye for storytelling and emotional moments."
     },
     {
       title: "Videographer & Cinematographer",
       location: "Berhampore, West Bengal",
       type: "Full-time",
-      salary: "₹5,00,000 - ₹9,00,000 / year",
       description: "Capture cinematic wedding films and event highlights with high-end production value and storytelling."
     },
     {
       title: "Video Editor",
       location: "Remote / Hybrid",
       type: "Full-time",
-      salary: "₹4,00,000 - ₹7,00,000 / year",
       description: "Craft compelling stories from raw footage, specializing in wedding highlights and cinematic films."
     },
     {
       title: "Photo Editor & Retoucher",
       location: "Remote / Hybrid",
       type: "Full-time",
-      salary: "₹3,00,000 - ₹5,00,000 / year",
       description: "Join our post-production team to bring our captures to life with professional editing and retouching."
     },
     {
       title: "Drone Pilot",
       location: "Berhampore, West Bengal",
       type: "Contract",
-      salary: "₹3,000 - ₹7,000 / day",
       description: "Provide breathtaking aerial perspectives for our outdoor events and cinematic productions."
     },
     {
       title: "Makeup Artist",
       location: "Berhampore, West Bengal",
       type: "Part-time / Contract",
-      salary: "₹5,000 - ₹15,000 / project",
       description: "Join our bridal team to provide professional makeup services for our clients' special moments."
     },
     {
       title: "Decorators",
       location: "Berhampore, West Bengal",
       type: "Contract",
-      salary: "₹10,000 - ₹50,000 / project",
       description: "Help us create stunning visual environments for our studio shoots and event setups."
     },
     {
       title: "Catering",
       location: "Berhampore, West Bengal",
       type: "Contract",
-      salary: "₹20,000 - ₹1,00,000 / event",
       description: "Join our event management team to provide exceptional culinary experiences for our high-end productions."
+    },
+    {
+      title: "Other",
+      location: "Berhampore, West Bengal",
+      type: "Freelance",
+      description: "Other creative or event-related services. We are always looking for talented individuals to join our network."
     },
     {
       title: "Event Photography Assistant",
       location: "Berhampore, West Bengal",
       type: "Part-time / Contract",
-      salary: "₹1,000 - ₹2,500 / day",
       description: "Perfect for aspiring photographers looking to gain experience in high-end event coverage."
     },
     {
       title: "Social Media Manager",
       location: "Remote",
       type: "Full-time",
-      salary: "₹4,00,000 - ₹6,00,000 / year",
       description: "Help us share our stories with the world across Instagram, TikTok, and Pinterest."
     },
     {
       title: "Other Creative Roles",
       location: "Flexible",
       type: "Full-time / Part-time",
-      salary: "Competitive",
       description: "Have a unique skill that fits our creative studio? We're always open to meeting talented people across various disciplines."
     }
   ];
@@ -420,10 +428,6 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
                       <MapPin className="w-4 h-4" />
                       <span>{job.location}</span>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      <Briefcase className="w-4 h-4" />
-                      <span>{job.salary}</span>
-                    </div>
                   </div>
                   <p className="text-gray-600 max-w-3xl">{job.description}</p>
                 </div>
@@ -448,6 +452,18 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
               </div>
               
               <div className="flex items-center space-x-4">
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs font-bold text-gray-400 uppercase">Sort by:</span>
+                  <select 
+                    value={sortConfig?.key || 'createdAt'}
+                    onChange={(e) => handleSort(e.target.value as any)}
+                    className="text-xs border border-gray-200 rounded-lg px-2 py-1 outline-none focus:border-black"
+                  >
+                    <option value="createdAt">Date</option>
+                    <option value="name">Name</option>
+                    <option value="designation">Designation</option>
+                  </select>
+                </div>
                 <div className="relative flex-grow md:w-64">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                   <input
@@ -660,10 +676,14 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
                     placeholder="https://drive.google.com/..."
                   />
                 </div>
+                
+                <Captcha onVerify={setIsCaptchaVerified} className="bg-white" />
+
                 <div className="pt-4">
                   <button
                     type="submit"
-                    className="w-full bg-black text-white py-3 rounded-2xl font-bold flex items-center justify-center space-x-2 hover:bg-gray-800 transition-all shadow-lg shadow-black/20"
+                    disabled={!isCaptchaVerified}
+                    className="w-full bg-black text-white py-3 rounded-2xl font-bold flex items-center justify-center space-x-2 hover:bg-gray-800 transition-all shadow-lg shadow-black/20 disabled:opacity-50"
                   >
                     <span>Submit Application</span>
                     <ArrowRight className="w-5 h-5" />

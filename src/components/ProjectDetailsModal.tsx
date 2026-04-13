@@ -6,6 +6,8 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { User } from 'firebase/auth';
 import EventCostForm from './EventCostForm';
+import Invoice from './Invoice';
+import { generateInvoicePDF } from '../services/invoiceService';
 
 interface ProjectDetailsModalProps {
   order: any;
@@ -18,7 +20,7 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
   const [booking, setBooking] = useState<any>(null);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'details' | 'financials'>('details');
+  const [activeTab, setActiveTab] = useState<'details' | 'financials' | 'invoice'>('details');
   const [payments, setPayments] = useState<any[]>([]);
   const [costs, setCosts] = useState<any[]>([]);
   const [showAddCost, setShowAddCost] = useState(false);
@@ -133,6 +135,50 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
         <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Address</h4>
         <p className="text-sm font-medium text-gray-900">{booking?.address || 'Not provided'}</p>
       </div>
+
+      {booking?.eventType?.includes('WEDD') && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-gray-50 rounded-xl border border-gray-100">
+          <div className="space-y-3">
+            <h5 className="text-[10px] font-bold text-gray-500 uppercase">Bride Side</h5>
+            <div>
+              <p className="text-[10px] text-gray-400 uppercase">Name</p>
+              <p className="text-xs font-bold text-gray-900">{booking.brideName} {booking.brideBengaliName && `(${booking.brideBengaliName})`}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-gray-400 uppercase">Father's Name</p>
+              <p className="text-xs font-medium text-gray-900">{booking.brideFatherName || 'N/A'}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-gray-400 uppercase">Mobile</p>
+              <p className="text-xs font-medium text-gray-900">{booking.brideNumber || 'N/A'}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-gray-400 uppercase">Address</p>
+              <p className="text-xs font-medium text-gray-900">{booking.brideAddress || 'N/A'}</p>
+            </div>
+          </div>
+          <div className="space-y-3">
+            <h5 className="text-[10px] font-bold text-gray-500 uppercase">Groom Side</h5>
+            <div>
+              <p className="text-[10px] text-gray-400 uppercase">Name</p>
+              <p className="text-xs font-bold text-gray-900">{booking.groomName} {booking.groomBengaliName && `(${booking.groomBengaliName})`}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-gray-400 uppercase">Father's Name</p>
+              <p className="text-xs font-medium text-gray-900">{booking.groomFatherName || 'N/A'}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-gray-400 uppercase">Mobile</p>
+              <p className="text-xs font-medium text-gray-900">{booking.groomNumber || 'N/A'}</p>
+            </div>
+            <div>
+              <p className="text-[10px] text-gray-400 uppercase">Address</p>
+              <p className="text-xs font-medium text-gray-900">{booking.groomAddress || 'N/A'}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div>
         <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Package</h4>
         <p className="text-sm font-medium text-gray-900">{order.packageName}</p>
@@ -141,6 +187,7 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
         <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Special Requirements</h4>
         <p className="text-sm font-medium text-gray-900">{booking?.requirement || 'None'}</p>
       </div>
+      {renderPackageDetails()}
       <div className="pt-4 border-t border-gray-100">
         <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Assigned Team</h4>
         <div className="space-y-2">
@@ -176,9 +223,28 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
         </div>
         <div>
           <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Bengali Name</h4>
-          <p className="text-sm font-medium text-gray-900">{booking?.brideBengaliName || booking?.groomBengaliName || booking?.childBengaliName || 'Not provided'}</p>
+          <p className="text-sm font-medium text-gray-900">
+            {booking?.brideBengaliName && `Bride: ${booking.brideBengaliName}`}
+            {booking?.brideBengaliName && booking?.groomBengaliName && ' | '}
+            {booking?.groomBengaliName && `Groom: ${booking.groomBengaliName}`}
+            {!(booking?.brideBengaliName || booking?.groomBengaliName) && 'Not provided'}
+          </p>
         </div>
       </div>
+
+      {booking?.eventType?.includes('WEDD') && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold text-gray-500 uppercase">Bride Father</p>
+            <p className="text-xs text-gray-900">{booking.brideFatherName || 'N/A'}</p>
+          </div>
+          <div className="space-y-1">
+            <p className="text-[10px] font-bold text-gray-500 uppercase">Groom Father</p>
+            <p className="text-xs text-gray-900">{booking.groomFatherName || 'N/A'}</p>
+          </div>
+        </div>
+      )}
+
       <div>
         <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Raw File Link</h4>
         {booking?.rawFileLink ? (
@@ -202,6 +268,7 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
         <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Special Requirements</h4>
         <p className="text-sm font-medium text-gray-900">{booking?.requirement || 'None'}</p>
       </div>
+      {renderPackageDetails()}
       <div className="pt-4 border-t border-gray-100">
         <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Assigned Team</h4>
         <div className="space-y-2">
@@ -229,21 +296,99 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
   );
 
   const handleDownloadInvoice = () => {
-    toast.success('Invoice download started...');
-    // In a real app, this would generate a PDF or redirect to a download link
+    try {
+      generateInvoicePDF({
+        invoiceNumber: order.invoiceNumber,
+        clientName: order.clientName,
+        clientMobile: order.mobileNumber,
+        clientEmail: booking?.clientEmail,
+        clientAddress: booking?.address,
+        date: order.date,
+        invoiceDate: booking?.createdAt,
+        paymentMethod: booking?.paymentMode || 'CASH',
+        eventType: order.eventType,
+        packageName: order.packageName,
+        totalAmount: order.totalAmount || order.finalAmount,
+        discount: order.discount || 0,
+        paidAmount: order.paidAmount || 0,
+        dueAmount: (order.finalAmount || order.totalAmount) - (order.paidAmount || 0),
+        location: order.location,
+        packageDetails: booking?.requirement ? [booking.requirement] : undefined,
+        items: booking?.extraCosts?.map((c: any) => ({ name: c.label, price: c.amount }))
+      });
+      toast.success('Invoice generated successfully!');
+    } catch (error) {
+      console.error('Error generating invoice:', error);
+      toast.error('Failed to generate invoice');
+    }
   };
+
+  const renderPackageDetails = () => (
+    <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100">
+      <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
+        <FileText className="w-4 h-4 text-blue-600" />
+        Package Inclusions
+      </h3>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-3">
+          <div>
+            <p className="text-[10px] text-gray-500 uppercase font-bold">Package Name</p>
+            <p className="text-sm font-bold text-gray-900">{order.packageName}</p>
+          </div>
+          <div>
+            <p className="text-[10px] text-gray-500 uppercase font-bold">Event Type</p>
+            <p className="text-sm font-medium text-gray-900">{order.eventType}</p>
+          </div>
+        </div>
+        <div className="space-y-2">
+          <p className="text-[10px] text-gray-500 uppercase font-bold">What's Included</p>
+          <ul className="space-y-1">
+            {booking?.requirement ? (
+              <li className="flex items-start gap-2 text-xs text-gray-600">
+                <CheckCircle2 className="w-3 h-3 text-green-500 mt-0.5" />
+                <span>{booking.requirement}</span>
+              </li>
+            ) : (
+              <li className="text-xs text-gray-400 italic">No specific inclusions listed.</li>
+            )}
+            {/* Common inclusions based on event type if not explicitly listed */}
+            {order.eventType.includes('WEDD') && (
+              <>
+                <li className="flex items-start gap-2 text-xs text-gray-600">
+                  <CheckCircle2 className="w-3 h-3 text-green-500 mt-0.5" />
+                  <span>Candid & Traditional Photography</span>
+                </li>
+                <li className="flex items-start gap-2 text-xs text-gray-600">
+                  <CheckCircle2 className="w-3 h-3 text-green-500 mt-0.5" />
+                  <span>Cinematic Wedding Film & Teaser</span>
+                </li>
+              </>
+            )}
+          </ul>
+        </div>
+      </div>
+    </div>
+  );
 
   const renderClientView = () => (
     <div className="space-y-8">
+      {renderPackageDetails()}
       <div className="bg-gray-50 p-4 rounded-xl">
         <h3 className="text-sm font-bold text-gray-900 mb-4">Payment Summary</h3>
         <div className="grid grid-cols-3 gap-4">
           <div>
             <p className="text-[10px] text-gray-500 uppercase">Total</p>
+            <p className="text-lg font-bold text-gray-900">₹{(order.totalAmount || 0).toLocaleString()}</p>
+          </div>
+          {order.discount > 0 && (
+            <div>
+              <p className="text-[10px] text-gray-500 uppercase">Discount</p>
+              <p className="text-lg font-bold text-blue-600">-₹{(order.discount || 0).toLocaleString()}</p>
+            </div>
+          )}
+          <div>
+            <p className="text-[10px] text-gray-500 uppercase">Final Bill</p>
             <p className="text-lg font-bold text-gray-900">₹{(order.finalAmount || order.totalAmount).toLocaleString()}</p>
-            {order.finalAmount && order.finalAmount !== order.totalAmount && (
-              <p className="text-[10px] text-green-600 line-through">₹{order.totalAmount.toLocaleString()}</p>
-            )}
           </div>
           <div>
             <p className="text-[10px] text-gray-500 uppercase">Paid</p>
@@ -302,7 +447,11 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-black text-white p-6 rounded-2xl shadow-xl shadow-black/10">
           <p className="text-gray-400 text-xs font-bold uppercase mb-1">Total Project Value</p>
-          <p className="text-2xl font-bold">₹{(order.finalAmount || order.totalAmount || 0).toLocaleString()}</p>
+          <p className="text-2xl font-bold">₹{(order.totalAmount || 0).toLocaleString()}</p>
+          {order.discount > 0 && (
+            <p className="text-xs text-blue-400 font-bold mt-1">Discount: -₹{order.discount.toLocaleString()}</p>
+          )}
+          <p className="text-sm font-bold mt-2 pt-2 border-t border-white/10">Final: ₹{(order.finalAmount || order.totalAmount || 0).toLocaleString()}</p>
         </div>
         <div className="bg-green-50 p-6 rounded-2xl border border-green-100">
           <p className="text-green-600 text-xs font-bold uppercase mb-1">Total Received</p>
@@ -449,6 +598,14 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
             >
               Financials
             </button>
+            <button
+              onClick={() => setActiveTab('invoice')}
+              className={`px-6 py-4 text-sm font-bold transition-all border-b-2 ${
+                activeTab === 'invoice' ? 'border-black text-black' : 'border-transparent text-gray-400 hover:text-gray-600'
+              }`}
+            >
+              Invoice Preview
+            </button>
           </div>
         )}
 
@@ -479,8 +636,43 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
               {role === 'editor' && renderEditorView()}
               {role === 'client' && renderClientView()}
             </div>
-          ) : (
+          ) : activeTab === 'financials' ? (
             renderFinancialsView()
+          ) : (
+            <div className="bg-gray-100 p-8 rounded-2xl">
+              <div className="flex justify-end mb-4">
+                <button 
+                  onClick={handleDownloadInvoice}
+                  className="flex items-center space-x-2 px-4 py-2 bg-black text-white rounded-xl text-sm font-bold hover:bg-gray-800 transition-all"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Download PDF</span>
+                </button>
+              </div>
+              <div className="shadow-2xl scale-90 origin-top">
+                <Invoice 
+                  data={{
+                    invoiceNumber: order.invoiceNumber,
+                    clientName: order.clientName,
+                    clientMobile: order.mobileNumber,
+                    clientEmail: booking?.clientEmail,
+                    clientAddress: booking?.address,
+                    date: order.date,
+                    invoiceDate: booking?.createdAt,
+                    paymentMethod: booking?.paymentMode || 'CASH',
+                    eventType: order.eventType,
+                    packageName: order.packageName,
+                    totalAmount: order.totalAmount || order.finalAmount,
+                    discount: order.discount || 0,
+                    paidAmount: order.paidAmount || 0,
+                    dueAmount: (order.finalAmount || order.totalAmount) - (order.paidAmount || 0),
+                    location: order.location,
+                    packageDetails: booking?.requirement ? [booking.requirement] : undefined,
+                    items: booking?.extraCosts?.map((c: any) => ({ name: c.label, price: c.amount }))
+                  }} 
+                />
+              </div>
+            </div>
           )}
         </div>
 

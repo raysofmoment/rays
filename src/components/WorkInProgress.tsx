@@ -9,6 +9,7 @@ interface Booking {
   clientName: string;
   eventDate: string;
   eventType: string;
+  package: string;
   teaserStatus: string;
   teaserLink?: string;
   fullVideoStatus: string;
@@ -106,6 +107,14 @@ const WorkInProgress: React.FC<{ user: any; role: string | null }> = ({ user, ro
     b.clientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     b.eventType.toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const getDeliverablesByPackage = (pkg: string) => {
+    const common = ['rawFileLink', 'editPhotoStatus', 'albumDesignStatus'];
+    if (pkg === 'Silver') return common;
+    if (pkg === 'Gold') return [...common, 'teaserStatus', 'fullVideoStatus'];
+    if (pkg === 'Diamond') return [...common, 'teaserStatus', 'fullVideoStatus', 'reelsStatus', 'eInviteStatus', 'preWeddingPhotoStatus', 'preWeddingVideoStatus'];
+    return [...common, 'teaserStatus', 'fullVideoStatus', 'reelsStatus', 'eInviteStatus', 'preWeddingPhotoStatus', 'preWeddingVideoStatus'];
+  };
 
   const ProgressItem = ({ booking, label, statusField, linkField }: { booking: Booking; label: string; statusField: keyof Booking; linkField: keyof Booking }) => {
     const status = (booking[statusField] as string) || 'pending';
@@ -210,14 +219,28 @@ const WorkInProgress: React.FC<{ user: any; role: string | null }> = ({ user, ro
             {expandedBooking === booking.id && (
               <div className="px-6 pb-6 bg-gray-50/50 border-t border-gray-50">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-6">
-                  <ProgressItem booking={booking} label="Teaser" statusField="teaserStatus" linkField="teaserLink" />
-                  <ProgressItem booking={booking} label="Full Video" statusField="fullVideoStatus" linkField="fullVideoLink" />
-                  <ProgressItem booking={booking} label="Album Design" statusField="albumDesignStatus" linkField="albumLink" />
-                  <ProgressItem booking={booking} label="E-Invite" statusField="eInviteStatus" linkField="eInviteLink" />
+                  {getDeliverablesByPackage(booking.package).includes('teaserStatus') && (
+                    <ProgressItem booking={booking} label="Teaser" statusField="teaserStatus" linkField="teaserLink" />
+                  )}
+                  {getDeliverablesByPackage(booking.package).includes('fullVideoStatus') && (
+                    <ProgressItem booking={booking} label="Full Video" statusField="fullVideoStatus" linkField="fullVideoLink" />
+                  )}
+                  {getDeliverablesByPackage(booking.package).includes('albumDesignStatus') && (
+                    <ProgressItem booking={booking} label="Album Design" statusField="albumDesignStatus" linkField="albumLink" />
+                  )}
+                  {getDeliverablesByPackage(booking.package).includes('eInviteStatus') && (
+                    <ProgressItem booking={booking} label="E-Invite" statusField="eInviteStatus" linkField="eInviteLink" />
+                  )}
                   <ProgressItem booking={booking} label="Photo Selection" statusField="photoSelectionStatus" linkField="photoSelectionLink" />
-                  <ProgressItem booking={booking} label="Photo Edit" statusField="editPhotoStatus" linkField="photoEditLink" />
-                  <ProgressItem booking={booking} label="Pre-Wedding Video" statusField="preWeddingVideoStatus" linkField="preWeddingVideoLink" />
-                  <ProgressItem booking={booking} label="Pre-Wedding Photo" statusField="preWeddingPhotoStatus" linkField="preWeddingPhotoLink" />
+                  {getDeliverablesByPackage(booking.package).includes('editPhotoStatus') && (
+                    <ProgressItem booking={booking} label="Photo Edit" statusField="editPhotoStatus" linkField="photoEditLink" />
+                  )}
+                  {getDeliverablesByPackage(booking.package).includes('preWeddingVideoStatus') && (
+                    <ProgressItem booking={booking} label="Pre-Wedding Video" statusField="preWeddingVideoStatus" linkField="preWeddingVideoLink" />
+                  )}
+                  {getDeliverablesByPackage(booking.package).includes('preWeddingPhotoStatus') && (
+                    <ProgressItem booking={booking} label="Pre-Wedding Photo" statusField="preWeddingPhotoStatus" linkField="preWeddingPhotoLink" />
+                  )}
                   <ProgressItem booking={booking} label="Other" statusField="otherStatus" linkField="otherLink" />
                 </div>
               </div>

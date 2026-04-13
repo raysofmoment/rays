@@ -5,8 +5,9 @@ import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
-import { ArrowLeft, Send, Calendar, MapPin, Phone, Mail, User, Tag } from 'lucide-react';
+import { ArrowLeft, Send, Calendar, MapPin, Phone, Mail, User, Tag, ShieldCheck } from 'lucide-react';
 import { notifyAdmins } from '../services/notificationService';
+import Captcha from './Captcha';
 
 const Checkout: React.FC = () => {
   const { cart, totalAmount, clearCart } = useCart();
@@ -17,7 +18,7 @@ const Checkout: React.FC = () => {
     if (cart.length === 0) return 'WEDD GROOM';
     const category = cart[0].category;
     const mapping: Record<string, string> = {
-      'Wedding': 'WEDD GROOM',
+      'WeddingGroom': 'WEDD GROOM',
       'WeddingBride': 'WEDD BRIDESIDE',
       'WeddingBoth': 'WEDD BOTH',
       'Birthday': 'BIRTHDAY',
@@ -25,6 +26,7 @@ const Checkout: React.FC = () => {
       'PrePostWedding': 'CINEMATIC',
       'ShortFilm': 'SHORT FILM',
       'Event': 'EVENT',
+      'ModelShoot': 'MODEL SHOOT',
       'AddOn': 'EVENT'
     };
     return mapping[category] || 'WEDD GROOM';
@@ -40,9 +42,23 @@ const Checkout: React.FC = () => {
     address: '',
     requirement: cart.map(item => `${item.name} (x${item.quantity})`).join(', '),
     discountRequest: '',
+    brideName: '',
+    brideBengaliName: '',
+    brideFatherName: '',
+    brideNumber: '',
+    brideAddress: '',
+    groomName: '',
+    groomBengaliName: '',
+    groomFatherName: '',
+    groomNumber: '',
+    groomAddress: '',
+    childName: '',
+    modelName: '',
+    makeupArtist: '',
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCaptchaVerified, setIsCaptchaVerified] = useState(false);
 
   if (cart.length === 0) {
     return (
@@ -67,6 +83,11 @@ const Checkout: React.FC = () => {
       return;
     }
 
+    if (!isCaptchaVerified) {
+      toast.error('Please complete the security verification');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const bookingData = {
@@ -80,6 +101,11 @@ const Checkout: React.FC = () => {
         createdBy: user.uid,
         package: 'Customize',
         items: cart,
+        emiCount: 0,
+        emiAmounts: {},
+        extraCosts: [],
+        songLinks: [],
+        staffDetails: {},
       };
 
       await addDoc(collection(db, 'bookings'), bookingData);
@@ -145,10 +171,11 @@ const Checkout: React.FC = () => {
                     <input
                       type="tel"
                       required
+                      maxLength={10}
                       value={formData.clientMobile}
-                      onChange={(e) => setFormData({ ...formData, clientMobile: e.target.value })}
+                      onChange={(e) => setFormData({ ...formData, clientMobile: e.target.value.replace(/\D/g, '').slice(0, 10) })}
                       className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-black transition-all"
-                      placeholder="Enter mobile number"
+                      placeholder="10-digit number"
                     />
                   </div>
                 </div>
@@ -229,6 +256,141 @@ const Checkout: React.FC = () => {
                   />
                 </div>
 
+                {/* Conditional Sections */}
+                {['WEDD BRIDESIDE', 'WEDD GROOM', 'WEDD BOTH'].includes(formData.eventType) && (
+                  <div className="space-y-6 p-6 bg-gray-50 rounded-2xl border border-gray-100">
+                    <h3 className="font-bold text-gray-900 border-b pb-2">Wedding Details</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-4">
+                        <h4 className="text-sm font-bold text-gray-500 uppercase">Bride Details</h4>
+                        <input
+                          type="text"
+                          placeholder="Bride Name"
+                          value={formData.brideName}
+                          onChange={(e) => setFormData({ ...formData, brideName: e.target.value })}
+                          className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-black transition-all"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Bengali Name (Optional)"
+                          value={formData.brideBengaliName}
+                          onChange={(e) => setFormData({ ...formData, brideBengaliName: e.target.value })}
+                          className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-black transition-all"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Father's Name"
+                          value={formData.brideFatherName}
+                          onChange={(e) => setFormData({ ...formData, brideFatherName: e.target.value })}
+                          className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-black transition-all"
+                        />
+                        <input
+                          type="tel"
+                          placeholder="Bride Mobile (10 digits)"
+                          maxLength={10}
+                          value={formData.brideNumber}
+                          onChange={(e) => setFormData({ ...formData, brideNumber: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                          className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-black transition-all"
+                        />
+                        <textarea
+                          placeholder="Bride Address"
+                          rows={2}
+                          value={formData.brideAddress}
+                          onChange={(e) => setFormData({ ...formData, brideAddress: e.target.value })}
+                          className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-black transition-all resize-none"
+                        />
+                      </div>
+                      <div className="space-y-4">
+                        <h4 className="text-sm font-bold text-gray-500 uppercase">Groom Details</h4>
+                        <input
+                          type="text"
+                          placeholder="Groom Name"
+                          value={formData.groomName}
+                          onChange={(e) => setFormData({ ...formData, groomName: e.target.value })}
+                          className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-black transition-all"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Bengali Name (Optional)"
+                          value={formData.groomBengaliName}
+                          onChange={(e) => setFormData({ ...formData, groomBengaliName: e.target.value })}
+                          className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-black transition-all"
+                        />
+                        <input
+                          type="text"
+                          placeholder="Father's Name"
+                          value={formData.groomFatherName}
+                          onChange={(e) => setFormData({ ...formData, groomFatherName: e.target.value })}
+                          className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-black transition-all"
+                        />
+                        <input
+                          type="tel"
+                          placeholder="Groom Mobile (10 digits)"
+                          maxLength={10}
+                          value={formData.groomNumber}
+                          onChange={(e) => setFormData({ ...formData, groomNumber: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                          className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-black transition-all"
+                        />
+                        <textarea
+                          placeholder="Groom Address"
+                          rows={2}
+                          value={formData.groomAddress}
+                          onChange={(e) => setFormData({ ...formData, groomAddress: e.target.value })}
+                          className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-black transition-all resize-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {['BIRTHDAY', 'ANNOPRASAN', 'UPANAYAN'].includes(formData.eventType) && (
+                  <div className="space-y-4 p-6 bg-gray-50 rounded-2xl border border-gray-100">
+                    <h3 className="font-bold text-gray-900 border-b pb-2">Event Details</h3>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        {formData.eventType === 'BIRTHDAY' ? 'Birthday Person Name' : 'Name'}
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={formData.childName}
+                        onChange={(e) => setFormData({ ...formData, childName: e.target.value })}
+                        className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-black transition-all"
+                        placeholder="Enter name"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {formData.eventType === 'MODEL SHOOT' && (
+                  <div className="space-y-6 p-6 bg-gray-50 rounded-2xl border border-gray-100">
+                    <h3 className="font-bold text-gray-900 border-b pb-2">Model Shoot Details</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Model Name</label>
+                        <input
+                          type="text"
+                          required
+                          value={formData.modelName}
+                          onChange={(e) => setFormData({ ...formData, modelName: e.target.value })}
+                          className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-black transition-all"
+                          placeholder="Enter model name"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Makeup Artist</label>
+                        <input
+                          type="text"
+                          value={formData.makeupArtist}
+                          onChange={(e) => setFormData({ ...formData, makeupArtist: e.target.value })}
+                          className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-black transition-all"
+                          placeholder="Enter makeup artist name"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 <div className="bg-blue-50 p-6 rounded-2xl border border-blue-100">
                   <label className="block text-sm font-bold text-blue-900 mb-2 flex items-center gap-2">
                     <Tag className="w-4 h-4" /> Request Discount
@@ -245,9 +407,11 @@ const Checkout: React.FC = () => {
                   </p>
                 </div>
 
+                <Captcha onVerify={setIsCaptchaVerified} />
+
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || !isCaptchaVerified}
                   className="w-full bg-black text-white py-4 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-gray-800 transition-all disabled:opacity-50"
                 >
                   {isSubmitting ? (

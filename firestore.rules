@@ -24,6 +24,9 @@ service cloud.firestore {
     // Collection: employees
     // Fields: id, name, designation, email, phoneNumber, workAssigned, portfolioUrl, photoURL, createdAt
     //
+    // Collection: reminders_sent
+    // Fields: bookingId, sentAt, eventDate
+    //
     // ===============================================================
 
     // ===============================================================
@@ -88,7 +91,7 @@ service cloud.firestore {
     }
 
     function isValidOrder(data) {
-      return hasOnlyAllowedFields(['id', 'clientId', 'clientName', 'clientEmail', 'mobileNumber', 'clientMobile', 'invoiceNumber', 'photographerId', 'editorId', 'otherId', 'photographerIds', 'editorIds', 'otherIds', 'photographerName', 'videographerName', 'otherServiceName', 'photographerPrice', 'videographerPrice', 'otherServicePrice', 'photographerPaid', 'editorPaid', 'otherPaid', 'status', 'date', 'location', 'eventPlace', 'eventType', 'address', 'requirement', 'packageName', 'totalAmount', 'paidAmount', 'dueAmount', 'finalAmount', 'bookingId', 'items', 'createdAt', 'updatedAt', 'updatedBy']) &&
+      return hasOnlyAllowedFields(['id', 'clientId', 'clientName', 'clientEmail', 'mobileNumber', 'clientMobile', 'invoiceNumber', 'photographerId', 'editorId', 'otherId', 'photographerIds', 'editorIds', 'otherIds', 'photographerName', 'videographerName', 'otherServiceName', 'photographerPrice', 'videographerPrice', 'otherServicePrice', 'photographerPaid', 'editorPaid', 'otherPaid', 'status', 'date', 'location', 'eventPlace', 'eventType', 'address', 'requirement', 'packageName', 'totalAmount', 'paidAmount', 'dueAmount', 'finalAmount', 'discount', 'bookingId', 'items', 'createdAt', 'updatedAt', 'updatedBy']) &&
              (!('clientId' in data) || data.clientId is string) && 
              (!('status' in data) || data.status in ['pending', 'confirmed', 'in-progress', 'completed', 'cancelled']) &&
              (!('totalAmount' in data) || data.totalAmount is number);
@@ -110,11 +113,12 @@ service cloud.firestore {
     }
 
     function isValidBooking(data) {
-      return hasOnlyAllowedFields(['id', 'invoiceNumber', 'clientId', 'clientName', 'clientMobile', 'clientEmail', 'eventDate', 'package', 'eventType', 'eventPlace', 'address', 'requirement', 'brideAddress', 'brideNumber', 'brideName', 'brideBengaliName', 'groomAddress', 'groomNumber', 'groomName', 'groomBengaliName', 'childName', 'childBengaliName', 'modelName', 'modelIdLink', 'makeupArtist', 'makeupArtistIdLink', 'channel', 'ourWeddingSong', 'eventSong', 'reelsSong', 'totalPackageAmount', 'paidAmount', 'dueAmount', 'paymentStatus', 'emi1Date', 'emi2Date', 'emi3Date', 'emi4Date', 'emi5Date', 'paymentMode', 'photographerName', 'photographerPrice', 'photographerId', 'photographerIds', 'photographerPaid', 'videographerName', 'videographerPrice', 'editorId', 'editorIds', 'editorPaid', 'otherServiceName', 'otherServicePrice', 'otherId', 'otherIds', 'otherPaid', 'rawFileLink', 'teaserStatus', 'teaserLink', 'fullVideoStatus', 'fullVideoLink', 'videoStatus', 'editPhotoStatus', 'photoEditLink', 'albumDesignStatus', 'albumLink', 'eInviteStatus', 'eInviteLink', 'photoSelectionStatus', 'photoSelectionLink', 'preWeddingVideoStatus', 'preWeddingVideoLink', 'preWeddingPhotoStatus', 'preWeddingPhotoLink', 'otherStatus', 'otherLink', 'reelsStatus', 'vlogStatus', 'outputLink', 'googleDriveFolderId', 'faceRecognitionPhotos', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy', 'discountRequest', 'adminStatus', 'finalAmount', 'items', 'status']) &&
+      return hasOnlyAllowedFields(['id', 'invoiceNumber', 'clientId', 'clientName', 'clientMobile', 'clientEmail', 'eventDate', 'package', 'eventType', 'eventPlace', 'address', 'requirement', 'brideAddress', 'brideNumber', 'brideName', 'brideBengaliName', 'brideFatherName', 'groomAddress', 'groomNumber', 'groomName', 'groomBengaliName', 'groomFatherName', 'childName', 'childBengaliName', 'modelName', 'modelIdLink', 'makeupArtist', 'makeupArtistIdLink', 'channel', 'ourWeddingSong', 'eventSong', 'reelsSong', 'songLinks', 'totalPackageAmount', 'paidAmount', 'dueAmount', 'paymentStatus', 'emi1Date', 'emi2Date', 'emi3Date', 'emi4Date', 'emi5Date', 'emiCount', 'emiAmounts', 'paymentMode', 'photographerName', 'photographerPrice', 'photographerId', 'photographerIds', 'photographerPaid', 'videographerName', 'videographerPrice', 'editorId', 'editorIds', 'editorPaid', 'otherServiceName', 'otherServicePrice', 'otherId', 'otherIds', 'otherPaid', 'staffDetails', 'travelCost', 'accommodationCost', 'albumCost', 'katmaniCost', 'pendriveCost', 'boxCost', 'otherCost', 'extraCosts', 'rawFileLink', 'teaserStatus', 'teaserLink', 'fullVideoStatus', 'fullVideoLink', 'videoStatus', 'editPhotoStatus', 'photoEditLink', 'albumDesignStatus', 'albumLink', 'eInviteStatus', 'eInviteLink', 'photoSelectionStatus', 'photoSelectionLink', 'preWeddingVideoStatus', 'preWeddingVideoLink', 'preWeddingPhotoStatus', 'preWeddingPhotoLink', 'otherStatus', 'otherLink', 'reelsStatus', 'vlogStatus', 'outputLink', 'googleDriveFolderId', 'faceRecognitionPhotos', 'createdAt', 'createdBy', 'updatedAt', 'updatedBy', 'discountRequest', 'adminStatus', 'finalAmount', 'discount', 'items', 'status', 'priority', 'specialRequirement']) &&
              data.clientName is string && data.eventDate is string &&
              data.package is string &&
              data.eventType in ['WEDD BRIDESIDE', 'WEDD GROOM', 'WEDD BOTH', 'ANNOPRASAN', 'BIRTHDAY', 'MODEL SHOOT', 'CINEMATIC', 'EVENT', 'SHORT FILM', 'MUSIC VIDEO', 'OUTDOOR', 'UPANAYAN'] &&
-             (!('adminStatus' in data) || data.adminStatus in ['requested', 'accepted', 'rejected']);
+             (!('adminStatus' in data) || data.adminStatus in ['requested', 'accepted', 'rejected']) &&
+             (!('priority' in data) || data.priority in ['low', 'medium', 'high', 'urgent']);
     }
 
     function isValidEmployee(data) {
@@ -191,16 +195,18 @@ service cloud.firestore {
         (request.auth.uid in resource.data.get('otherIds', []))
       );
       allow create: if isAuthenticated() && isValidBooking(request.resource.data) && (isAdmin() || isTeam() || request.resource.data.clientId == request.auth.uid);
-      allow update: if isAuthenticated() && isValidBooking(request.resource.data) && (
+      allow update: if isAuthenticated() && (
         isAdmin() || 
-        isTeam() ||
-        (resource.data.photographerId == request.auth.uid) || 
-        (resource.data.editorId == request.auth.uid) || 
-        (resource.data.otherId == request.auth.uid) ||
-        (request.auth.uid in resource.data.get('photographerIds', [])) ||
-        (request.auth.uid in resource.data.get('editorIds', [])) ||
-        (request.auth.uid in resource.data.get('otherIds', [])) ||
-        (resource.data.clientId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['discountRequest', 'clientMobile', 'clientEmail', 'address', 'eventPlace', 'eventDate']))
+        (isValidBooking(request.resource.data) && (
+          isTeam() ||
+          (resource.data.photographerId == request.auth.uid) || 
+          (resource.data.editorId == request.auth.uid) || 
+          (resource.data.otherId == request.auth.uid) ||
+          (request.auth.uid in resource.data.get('photographerIds', [])) ||
+          (request.auth.uid in resource.data.get('editorIds', [])) ||
+          (request.auth.uid in resource.data.get('otherIds', [])) ||
+          (resource.data.clientId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['discountRequest', 'clientMobile', 'clientEmail', 'address', 'eventPlace', 'eventDate']))
+        ))
       );
       allow delete: if isAdmin();
     }
@@ -312,6 +318,12 @@ service cloud.firestore {
       allow create: if isAdmin() && isValidBlogPost(request.resource.data);
       allow update: if isAdmin() && isValidBlogPost(request.resource.data);
       allow delete: if isAdmin();
+    }
+
+    match /reminders_sent/{reminderId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      allow update: if isAdmin();
     }
 
     match /{path=**} {

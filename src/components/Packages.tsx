@@ -4,570 +4,18 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 
-const categories = [
-  { id: "Wedding", name: "Wedding (Groom Side)", icon: <Heart className="w-5 h-5" /> },
-  { id: "WeddingBride", name: "Wedding (Bride Side)", icon: <Heart className="w-5 h-5" /> },
-  { id: "WeddingBoth", name: "Wedding (Both Side)", icon: <Heart className="w-5 h-5" /> },
-  { id: "Birthday", name: "Birthday / Rice Ceremony", icon: <Star className="w-5 h-5" /> },
-  { id: "Upanayan", name: "Upanayan", icon: <Users className="w-5 h-5" /> },
-  { id: "PrePostWedding", name: "Music Video / Pre-Post Wedding", icon: <Camera className="w-5 h-5" /> },
-  { id: "ShortFilm", name: "Short Film", icon: <Briefcase className="w-5 h-5" /> },
-  { id: "Event", name: "Event", icon: <LayoutDashboard className="w-5 h-5" /> },
-  { id: "AddOn", name: "Add-On Services", icon: <Plus className="w-5 h-5" /> }
-];
-
-const packageData: Record<string, any[]> = {
-  "Wedding": [
-      {
-        title: "Silver Package (Crop Sensor)",
-        price: 30000,
-        description: "Essential wedding coverage with crop sensor equipment.",
-        features: [
-          "Pre wedding photo",
-          "Pre wedding video",
-          "20 Sheets wedding album (basic)",
-          "Wedding teaser",
-          "Ritual wise full video (30-40min)",
-          "All Raw backup",
-          "Retouch photography",
-          "E-invitation"
-        ],
-        color: "bg-gray-50",
-        btnColor: "bg-gray-800 hover:bg-gray-900"
-      },
-      {
-        title: "Gold Package (Full Sensor)",
-        price: 45000,
-        description: "Professional full sensor coverage with enhanced features.",
-        features: [
-          "Candid photography",
-          "Pre wedding photo",
-          "Pre wedding video",
-          "20 Sheets wedding album Standard",
-          "Wedding teaser",
-          "Ritual wise full video (30-40min)",
-          "All Raw backup",
-          "Retouch photography",
-          "Interview of family and friend",
-          "E-invitation",
-          "Vlog & reels",
-          "Drone 1 day"
-        ],
-        color: "bg-yellow-50",
-        btnColor: "bg-yellow-600 hover:bg-yellow-700",
-        popular: true
-      },
-      {
-        title: "Diamond Package (Cine cam)",
-        price: 120000,
-        description: "The ultimate wedding experience with full event coverage.",
-        features: [
-          "Candid photography",
-          "Pre wedding photo",
-          "Pre wedding video",
-          "20 Sheets wedding album premium",
-          "Wedding teaser",
-          "Ritual wise full video (30-40min)",
-          "All Raw backup",
-          "Retouch photography",
-          "Interview of family and friend",
-          "E-invitation",
-          "Vlog & reels",
-          "1 Guest photographer",
-          "Guest photo instant deliver",
-          "15 days complete delivery",
-          "Drone full event"
-        ],
-        color: "bg-purple-50",
-        btnColor: "bg-purple-600 hover:bg-purple-700"
-      }
-    ],
-    "WeddingBride": [
-      {
-        title: "Silver Package (Crop Sensor)",
-        price: 28000,
-        description: "Essential wedding coverage for the bride's side.",
-        features: [
-          "Pre wedding photo",
-          "Pre wedding video",
-          "20 Sheets wedding album (basic)",
-          "Wedding teaser",
-          "Ritual wise full video (30-40min)",
-          "All Raw backup",
-          "Retouch photography",
-          "E-invitation"
-        ],
-        color: "bg-gray-50",
-        btnColor: "bg-gray-800 hover:bg-gray-900"
-      },
-      {
-        title: "Gold Package (Full Sensor)",
-        price: 40000,
-        description: "Professional full sensor coverage for the bride's side.",
-        features: [
-          "Candid photography",
-          "Pre wedding photo",
-          "Pre wedding video",
-          "20 Sheets wedding album Standard",
-          "Wedding teaser",
-          "Ritual wise full video (30-40min)",
-          "All Raw backup",
-          "Retouch photography",
-          "Interview of family and friend",
-          "E-invitation",
-          "Vlog & reels",
-          "Drone 1 day"
-        ],
-        color: "bg-yellow-50",
-        btnColor: "bg-yellow-600 hover:bg-yellow-700",
-        popular: true
-      },
-      {
-        title: "Diamond Package (Cine cam)",
-        price: 100000,
-        description: "The ultimate bride side experience with full event coverage.",
-        features: [
-          "Candid photography",
-          "Pre wedding photo",
-          "Pre wedding video",
-          "20 Sheets wedding album premium",
-          "Wedding teaser",
-          "Ritual wise full video (30-40min)",
-          "All Raw backup",
-          "Retouch photography",
-          "Interview of family and friend",
-          "E-invitation",
-          "Vlog & reels",
-          "1 Guest photographer",
-          "Guest photo instant deliver",
-          "15 days complete delivery",
-          "Drone full event"
-        ],
-        color: "bg-purple-50",
-        btnColor: "bg-purple-600 hover:bg-purple-700"
-      }
-    ],
-    "WeddingBoth": [
-      {
-        title: "Silver Package (Crop Sensor)",
-        price: 55000,
-        description: "Essential wedding coverage for both sides.",
-        features: [
-          "Pre wedding photo",
-          "Pre wedding video",
-          "20 Sheets wedding album (basic)",
-          "Wedding teaser",
-          "Ritual wise full video (30-40min)",
-          "All Raw backup",
-          "Retouch photography",
-          "E-invitation"
-        ],
-        color: "bg-gray-50",
-        btnColor: "bg-gray-800 hover:bg-gray-900"
-      },
-      {
-        title: "Gold Package (Full Sensor)",
-        price: 80000,
-        description: "Professional full sensor coverage for both sides.",
-        features: [
-          "Candid photography",
-          "Pre wedding photo",
-          "Pre wedding video",
-          "20 Sheets wedding album Standard",
-          "Wedding teaser",
-          "Ritual wise full video (30-40min)",
-          "All Raw backup",
-          "Retouch photography",
-          "Interview of family and friend",
-          "E-invitation",
-          "Vlog & reels",
-          "Drone 1 day"
-        ],
-        color: "bg-yellow-50",
-        btnColor: "bg-yellow-600 hover:bg-yellow-700",
-        popular: true
-      },
-      {
-        title: "Diamond Package (Cine cam)",
-        price: 220000,
-        description: "The ultimate both side experience with full event coverage.",
-        features: [
-          "Candid photography",
-          "Pre wedding photo",
-          "Pre wedding video",
-          "20 Sheets wedding album premium",
-          "Wedding teaser",
-          "Ritual wise full video (30-40min)",
-          "All Raw backup",
-          "Retouch photography",
-          "Interview of family and friend",
-          "E-invitation",
-          "Vlog & reels",
-          "1 Guest photographer",
-          "Guest photo instant deliver",
-          "15 days complete delivery",
-          "Drone full event"
-        ],
-        color: "bg-purple-50",
-        btnColor: "bg-purple-600 hover:bg-purple-700"
-      }
-    ],
-    "Birthday": [
-      {
-        title: "Silver Package (Crop Sensor)",
-        price: 10000,
-        description: "Basic coverage for birthday or rice ceremony.",
-        features: [
-          "15 Sheets wedding album",
-          "Ritual wise full video (10-20min)",
-          "All Raw backup",
-          "Retouch photography",
-          "E-invitation"
-        ],
-        color: "bg-gray-50",
-        btnColor: "bg-gray-800 hover:bg-gray-900"
-      },
-      {
-        title: "Gold Package (Full Sensor)",
-        price: 15000,
-        description: "Enhanced coverage with portrait photography.",
-        features: [
-          "Portrait photography",
-          "20 Sheets wedding album",
-          "Ritual wise full video (10-20min)",
-          "All Raw backup",
-          "Retouch photography",
-          "E-invitation",
-          "Reels"
-        ],
-        color: "bg-yellow-50",
-        btnColor: "bg-yellow-600 hover:bg-yellow-700",
-        popular: true
-      },
-      {
-        title: "Diamond Package (Cine cam)",
-        price: 40000,
-        description: "Comprehensive coverage with candid shots and vlog.",
-        features: [
-          "Candid photography",
-          "Portrait",
-          "20 Sheets wedding album",
-          "Teaser",
-          "Ritual wise full video (10-20min)",
-          "All Raw backup",
-          "Retouch photography",
-          "Interview of family and friend",
-          "E-invitation",
-          "Vlog & reels"
-        ],
-        color: "bg-purple-50",
-        btnColor: "bg-purple-600 hover:bg-purple-700"
-      }
-    ],
-    "Upanayan": [
-      {
-        title: "Silver Package (Crop Sensor)",
-        price: 20000,
-        description: "Essential Upanayan ceremony coverage.",
-        features: [
-          "Candid photography",
-          "20 Sheets wedding album",
-          "Ritual wise full video (20-30min)",
-          "All Raw backup",
-          "Retouch photography",
-          "E-invitation"
-        ],
-        color: "bg-gray-50",
-        btnColor: "bg-gray-800 hover:bg-gray-900"
-      },
-      {
-        title: "Gold Package (Full Sensor)",
-        price: 30000,
-        description: "Professional coverage with portrait and teaser.",
-        features: [
-          "Candid photography",
-          "Portrait photography",
-          "20 Sheets wedding album",
-          "Teaser",
-          "Ritual wise full video (30-40min)",
-          "All Raw backup",
-          "Retouch photography",
-          "E-invitation",
-          "Reels"
-        ],
-        color: "bg-yellow-50",
-        btnColor: "bg-yellow-600 hover:bg-yellow-700",
-        popular: true
-      },
-      {
-        title: "Diamond Package (Cine cam)",
-        price: 80000,
-        description: "Full ceremony documentation with all premium features.",
-        features: [
-          "Candid photography",
-          "20 Sheets wedding album",
-          "Teaser",
-          "Ritual wise full video (30-40min)",
-          "All Raw backup",
-          "Retouch photography",
-          "Interview of family and friend",
-          "E-invitation",
-          "Vlog & reels"
-        ],
-        color: "bg-purple-50",
-        btnColor: "bg-purple-600 hover:bg-purple-700"
-      }
-    ],
-    "PrePostWedding": [
-      {
-        title: "Silver Package (Crop Sensor)",
-        price: 7000,
-        description: "Basic pre or post wedding shoot.",
-        features: [
-          "1 Day shoot",
-          "1 Photographer",
-          "1 Videographer"
-        ],
-        color: "bg-gray-50",
-        btnColor: "bg-gray-800 hover:bg-gray-900"
-      },
-      {
-        title: "Gold Package (Full Sensor)",
-        price: 10000,
-        description: "Enhanced shoot with an assistant.",
-        features: [
-          "1 Day shoot",
-          "1 Photographer",
-          "1 Videographer",
-          "1 Assistant"
-        ],
-        color: "bg-yellow-50",
-        btnColor: "bg-yellow-600 hover:bg-yellow-700",
-        popular: true
-      },
-      {
-        title: "Diamond Package (Cine cam)",
-        price: 35000,
-        description: "Premium pre or post wedding experience.",
-        features: [
-          "1 Day shoot",
-          "1 Photographer",
-          "1 Videographer",
-          "1 Assistant"
-        ],
-        color: "bg-purple-50",
-        btnColor: "bg-purple-600 hover:bg-purple-700"
-      }
-    ],
-    "ShortFilm": [
-      {
-        title: "Silver Package (Crop Sensor)",
-        price: 3000,
-        unit: "/ day",
-        description: "Basic short film production.",
-        features: [
-          "1 Videographer"
-        ],
-        color: "bg-gray-50",
-        btnColor: "bg-gray-800 hover:bg-gray-900"
-      },
-      {
-        title: "Gold Package (Full Sensor)",
-        price: 4500,
-        unit: "/ day",
-        description: "Professional short film production.",
-        features: [
-          "1 Videographer",
-          "1 Assistant"
-        ],
-        color: "bg-yellow-50",
-        btnColor: "bg-yellow-600 hover:bg-yellow-700",
-        popular: true
-      },
-      {
-        title: "Diamond Package (Cine cam)",
-        price: 15000,
-        unit: "/ day",
-        description: "High-end short film production.",
-        features: [
-          "1 Videographer",
-          "1 Assistant"
-        ],
-        color: "bg-purple-50",
-        btnColor: "bg-purple-600 hover:bg-purple-700"
-      }
-    ],
-    "Event": [
-      {
-        title: "Silver Package (Crop Sensor)",
-        price: 6000,
-        description: "Essential event coverage.",
-        features: [
-          "1 Videographer",
-          "1 Photographer"
-        ],
-        color: "bg-gray-50",
-        btnColor: "bg-gray-800 hover:bg-gray-900"
-      },
-      {
-        title: "Gold Package (Full Sensor)",
-        price: 8000,
-        description: "Professional event coverage.",
-        features: [
-          "1 Videographer",
-          "1 Photographer"
-        ],
-        color: "bg-yellow-50",
-        btnColor: "bg-yellow-600 hover:bg-yellow-700",
-        popular: true
-      },
-      {
-        title: "Diamond Package (Cine cam)",
-        price: 30000,
-        description: "Comprehensive event coverage with assistant.",
-        features: [
-          "1 Videographer",
-          "1 Photographer",
-          "1 Assistant"
-        ],
-        color: "bg-purple-50",
-        btnColor: "bg-purple-600 hover:bg-purple-700"
-      }
-    ],
-    "AddOn": [
-      { name: "Wedding Photographer (Crop)", price: 4000 },
-      { name: "Wedding Videographer (Crop)", price: 4000 },
-      { name: "Wedding Photographer (Full)", price: 6000 },
-      { name: "Wedding Videographer (Full)", price: 6000 },
-      { name: "Wedding Photographer (Cine)", price: 15000 },
-      { name: "Wedding Videographer (Cine)", price: 15000 },
-      { name: "Wedding Editor (Crop)", price: 3000 },
-      { name: "Wedding Editor (Full)", price: 6000 },
-      { name: "Wedding Editor (Cine)", price: 18000 },
-      { name: "Birthday & Rice Ceremony Photographer (Crop)", price: 2500 },
-      { name: "Birthday & Rice Ceremony Videographer (Crop)", price: 3000 },
-      { name: "Birthday & Rice Ceremony Photographer (Full)", price: 4500 },
-      { name: "Birthday & Rice Ceremony Videographer (Full)", price: 4500 },
-      { name: "Birthday & Rice Ceremony Photographer (Cine)", price: 12000 },
-      { name: "Birthday & Rice Ceremony Videographer (Cine)", price: 12000 },
-      { name: "Birthday & Rice Ceremony Editor (Crop)", price: 2000 },
-      { name: "Birthday & Rice Ceremony Editor (Full)", price: 3000 },
-      { name: "Birthday & Rice Ceremony Editor (Cine)", price: 8000 },
-      { name: "Upanayan Photographer (Crop)", price: 3500 },
-      { name: "Upanayan Videographer (Crop)", price: 3500 },
-      { name: "Upanayan Photographer (Full)", price: 5000 },
-      { name: "Upanayan Videographer (Full)", price: 5000 },
-      { name: "Upanayan Photographer (Cine)", price: 12000 },
-      { name: "Upanayan Videographer (Cine)", price: 12000 },
-      { name: "Upanayan Editor (Crop)", price: 3500 },
-      { name: "Upanayan Editor (Full)", price: 5500 },
-      { name: "Upanayan Editor (Cine)", price: 8000 },
-      { name: "Event Photographer (Crop)", price: 3000 },
-      { name: "Event Videographer (Crop)", price: 3000 },
-      { name: "Event Photographer (Full)", price: 4000 },
-      { name: "Event Videographer (Full)", price: 4000 },
-      { name: "Event Photographer (Cine)", price: 12000 },
-      { name: "Event Videographer (Cine)", price: 12000 },
-      { name: "Event Editor (Crop)", price: 2000 },
-      { name: "Event Editor (Full)", price: 3000 },
-      { name: "Event Editor (Cine)", price: 4000 },
-      { name: "Music & Pre Wedd Photographer (Crop)", price: 3500 },
-      { name: "Music & Pre Wedd Videographer (Crop)", price: 3500 },
-      { name: "Music & Pre Wedd Photographer (Full)", price: 4500 },
-      { name: "Music & Pre Wedd Videographer (Full)", price: 4500 },
-      { name: "Music & Pre Wedd Photographer (Cine)", price: 12000 },
-      { name: "Music & Pre Wedd Videographer (Cine)", price: 12000 },
-      { name: "Music & Pre Wedd Editor (Crop)", price: 2000 },
-      { name: "Music & Pre Wedd Editor (Full)", price: 3000 },
-      { name: "Music & Pre Wedd Editor (Cine)", price: 5000 },
-      { name: "Short Film Photographer (Crop)", price: 3500 },
-      { name: "Short Film Videographer (Crop)", price: 3500 },
-      { name: "Short Film Photographer (Full)", price: 5500 },
-      { name: "Short Film Videographer (Full)", price: 5500 },
-      { name: "Short Film Photographer (Cine)", price: 15000 },
-      { name: "Short Film Videographer (Cine)", price: 15000 },
-      { name: "Short Film Editor (Crop)", price: 3000 },
-      { name: "Short Film Editor (Full)", price: 4000 },
-      { name: "Short Film Editor (Cine)", price: 8000 },
-      { name: "Other Photographer (Crop)", price: 3500 },
-      { name: "Other Videographer (Crop)", price: 3500 },
-      { name: "Other Photographer (Full)", price: 5500 },
-      { name: "Other Videographer (Full)", price: 5500 },
-      { name: "Other Photographer (Cine)", price: 13000 },
-      { name: "Other Videographer (Cine)", price: 13000 },
-      { name: "Other Editor (Crop)", price: 3500 },
-      { name: "Other Editor (Full)", price: 4500 },
-      { name: "Other Editor (Cine)", price: 8000 },
-      { name: "Model Photographer (Crop)", price: 2000 },
-      { name: "Model Videographer (Crop)", price: 2500 },
-      { name: "Model Photographer (Full)", price: 2500 },
-      { name: "Model Videographer (Full)", price: 3000 },
-      { name: "Model Photographer (Cine)", price: 5000 },
-      { name: "Model Videographer (Cine)", price: 12000 },
-      { name: "Model Editor (Crop)", price: 2000 },
-      { name: "Model Editor (Full)", price: 2500 },
-      { name: "Model Editor (Cine)", price: 4500 },
-      { name: "Assistant", price: 1000 },
-      { name: "TV 52\"", price: 2500 },
-      { name: "15ft Screen", price: 12000 },
-      { name: "Projector", price: 2500 },
-      { name: "E-Invite (Basic)", price: 500 },
-      { name: "E-Invite (Premium)", price: 2000 },
-      { name: "Drone Mini", price: 4000 },
-      { name: "Drone Air", price: 6000 },
-      { name: "Drone Phantom", price: 7000 },
-      { name: "Model/Portrait Shoot", price: 800 },
-      { name: "Model/Portrait Edit", price: 500 },
-      { name: "Movie Portfolio", price: 3500 },
-      { name: "Director for Short Film", price: 6000 },
-      { name: "Director for Short Film (Assistant)", price: 2000 },
-      { name: "Director for Music Video", price: 6000 },
-      { name: "Director for Music Video (Assistant)", price: 2000 },
-      { name: "Script Writer for Music", price: 1500 },
-      { name: "Script Writer for Short Film", price: 2000 },
-      { name: "Reels Shoot (Basic)", price: 1000 },
-      { name: "Reels Shoot (Standard)", price: 3000 },
-      { name: "Reels Shoot (Premium)", price: 6000 },
-      { name: "Reel Edit (Premium)", price: 2500 },
-      { name: "Reel Edit (Standard)", price: 1000 },
-      { name: "Reel Edit (Basic)", price: 500 },
-      { name: "Vlog Shoot", price: 2000 },
-      { name: "Vlog Edit", price: 1500 },
-      { name: "Vlogger", price: 2500 },
-      { name: "Photo Edit (Basic)", price: 50 },
-      { name: "Photo Edit (Premium)", price: 100 },
-      { name: "Wedding Teaser", price: 5000 },
-      { name: "Album 20 Sheets (Basic)", price: 4500 },
-      { name: "Album 20 Sheets (Standard)", price: 7500 },
-      { name: "Album 20 Sheets (Premium)", price: 12000 },
-      { name: "Album Page NTR High Glossy", price: 200 },
-      { name: "Album Page NTR Matte", price: 220 },
-      { name: "Album Page Premium", price: 300 },
-      { name: "Pendrive", price: 500 },
-      { name: "Live Screen Video", price: 3000 },
-      { name: "Mix Machine", price: 3000 },
-      { name: "Online Live", price: 5000 },
-      { name: "Internet", price: 20000 },
-      { name: "Travel (15-40km)", price: 2000 },
-      { name: "Travel (40-70km)", price: 3500 },
-      { name: "Travel (70-110km)", price: 4500 },
-      { name: "Travel (110-220km)", price: 5000 },
-      { name: "Travel (>220km) per person", price: 4000 },
-      { name: "Accommodation (2 men)", price: 2000 },
-      { name: "Collab Shoot", price: 0 }
-    ]
-  };
+import { categories, packageData } from '../constants/packages';
 
 const Packages: React.FC = () => {
-  const [activeCategory, setActiveCategory] = useState("Wedding");
+  const [activeCategory, setActiveCategory] = useState("WeddingGroom");
   const [searchQuery, setSearchQuery] = useState("");
   const { addToCart } = useCart();
   const navigate = useNavigate();
 
   const handleBookNow = (pkg: any) => {
     addToCart({
-      id: `${activeCategory}-${pkg.title}`,
-      name: pkg.title,
+      id: `${activeCategory}-${pkg.name}`,
+      name: pkg.name,
       price: pkg.price,
       category: activeCategory,
     });
@@ -624,7 +72,7 @@ const Packages: React.FC = () => {
                     </div>
                   )}
                   
-                  <h3 className="text-2xl font-bold text-gray-900 mb-2">{pkg.title}</h3>
+                  <h3 className="text-2xl font-bold text-gray-900 mb-2">{pkg.name}</h3>
                   <p className="text-gray-500 text-sm mb-6">{pkg.description}</p>
                   
                   <div className="mb-8">
@@ -749,7 +197,7 @@ const CustomPackageForm: React.FC = () => {
       if (category !== "AddOn") {
         pkgs.forEach(pkg => {
           services.push({
-            name: `${category} - ${pkg.title}`,
+            name: `${category} - ${pkg.name}`,
             price: pkg.price,
             category: category
           });
@@ -793,14 +241,15 @@ const CustomPackageForm: React.FC = () => {
   const calculateAmount = () => {
     // Rates based on Add-On services
     const rates: Record<string, Record<string, number>> = {
-      'Wedding': { 'Crop': 4000, 'Full': 6000, 'Cine': 15000 },
+      'WeddingGroom': { 'Crop': 4000, 'Full': 6000, 'Cine': 15000 },
       'WeddingBride': { 'Crop': 4000, 'Full': 6000, 'Cine': 15000 },
       'WeddingBoth': { 'Crop': 4000, 'Full': 6000, 'Cine': 15000 },
       'Birthday': { 'Crop': 2500, 'Full': 4500, 'Cine': 12000 },
       'Upanayan': { 'Crop': 3500, 'Full': 5000, 'Cine': 12000 },
       'Event': { 'Crop': 3000, 'Full': 4000, 'Cine': 12000 },
-      'Pre-Wedding': { 'Crop': 3500, 'Full': 4500, 'Cine': 12000 },
-      'Short Film': { 'Crop': 3500, 'Full': 5500, 'Cine': 15000 },
+      'ModelShoot': { 'Crop': 1500, 'Full': 2000, 'Cine': 2500 },
+      'PreWedding': { 'Crop': 3500, 'Full': 4500, 'Cine': 12000 },
+      'ShortFilm': { 'Crop': 3500, 'Full': 5500, 'Cine': 15000 },
       'Other': { 'Crop': 3500, 'Full': 5500, 'Cine': 13000 }
     };
 
@@ -837,14 +286,15 @@ const CustomPackageForm: React.FC = () => {
                 onChange={(e) => setFormData({...formData, workType: e.target.value})}
                 className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-black transition-all"
               >
-                <option value="Wedding">Wedding (Groom Side)</option>
+                <option value="WeddingGroom">Wedding (Groom Side)</option>
                 <option value="WeddingBride">Wedding (Bride Side)</option>
                 <option value="WeddingBoth">Wedding (Both Side)</option>
                 <option value="Birthday">Birthday / Rice Ceremony</option>
                 <option value="Upanayan">Upanayan</option>
-                <option value="Pre-Wedding">Pre-Wedding / Music Video</option>
-                <option value="Short Film">Short Film</option>
+                <option value="PreWedding">Pre-Wedding / Music Video</option>
+                <option value="ShortFilm">Short Film</option>
                 <option value="Event">Event</option>
+                <option value="ModelShoot">Model Shoot</option>
                 <option value="Other">Other</option>
               </select>
             </div>

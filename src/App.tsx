@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
+import { checkUpcomingEvents } from './services/notificationService';
 import { Toaster } from 'sonner';
 import ErrorBoundary from './components/ErrorBoundary';
 import Navbar from './components/Navbar';
@@ -64,6 +65,9 @@ export default function App() {
             } else {
               if (isMounted) setRole(userData.role);
             }
+            
+            // Check for upcoming events when a user logs in
+            checkUpcomingEvents();
           } else {
             const newRole = currentUser.email === 'saikatbanerjee139@gmail.com' ? 'admin' : 'client';
             const userData = {

@@ -1,9 +1,11 @@
 import React, { useState, useRef } from 'react';
 import { collection, query, where, getDocs, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase';
-import { Search, CreditCard, Loader2, CheckCircle2, AlertCircle, Mail, Phone, User, Calendar, IndianRupee, FileText, Upload, Image as ImageIcon, X } from 'lucide-react';
+import { Search, CreditCard, Loader2, CheckCircle2, AlertCircle, Mail, Phone, User, Calendar, IndianRupee, FileText, Upload, Image as ImageIcon, X, Download, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
 import { loadStripe } from '@stripe/stripe-js';
+import { generateInvoicePDF } from '../services/invoiceService';
+import Captcha from './Captcha';
 
 const stripePromise = loadStripe((import.meta as any).env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_test_placeholder');
 
@@ -20,11 +22,18 @@ const Payment: React.FC = () => {
   const [manualDate, setManualDate] = useState(new Date().toISOString().split('T')[0]);
   const [manualSlip, setManualSlip] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [isCaptchaVerified, setIsCaptchaVerified] = useState(false);
+  const [isManualCaptchaVerified, setIsManualCaptchaVerified] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFindBooking = async () => {
     if (!searchQuery) {
       toast.error('Please enter your mobile number or invoice number');
+      return;
+    }
+
+    if (!isCaptchaVerified) {
+      toast.error('Please complete the security verification');
       return;
     }
 
@@ -62,13 +71,16 @@ const Payment: React.FC = () => {
           id: querySnapshot.docs[0].id,
           clientName: data.clientName,
           clientEmail: data.clientEmail || data.email,
+          clientMobile: data.clientMobile || data.mobileNumber,
           clientId: data.clientId || '',
           eventType: data.eventType || data.packageName,
           eventDate: data.eventDate || data.date,
           package: data.package || data.packageName,
           totalPackageAmount: data.totalPackageAmount || data.totalAmount,
+          paidAmount: data.paidAmount || 0,
           dueAmount: data.dueAmount !== undefined ? data.dueAmount : (data.totalAmount - (data.paidAmount || 0)),
-          invoiceNumber: data.invoiceNumber
+          invoiceNumber: data.invoiceNumber,
+          location: data.location || data.eventPlace
         };
         setBooking(normalizedData);
         setManualAmount(normalizedData.dueAmount.toString());
@@ -110,6 +122,11 @@ const Payment: React.FC = () => {
       return;
     }
 
+    if (!isManualCaptchaVerified) {
+      toast.error('Please complete the security verification for payment');
+      return;
+    }
+
     setPaying(true);
     try {
       const newPayment = {
@@ -134,6 +151,35 @@ const Payment: React.FC = () => {
       toast.error('Failed to submit payment');
     } finally {
       setPaying(false);
+    }
+  };
+
+  const handleDownloadInvoice = () => {
+    if (!booking) return;
+    try {
+      generateInvoicePDF({
+        invoiceNumber: booking.invoiceNumber,
+        clientName: booking.clientName,
+        clientMobile: booking.clientMobile,
+        clientEmail: booking.clientEmail,
+        clientAddress: booking.address,
+        date: booking.eventDate,
+        invoiceDate: booking.createdAt,
+        paymentMethod: booking.paymentMode || 'CASH',
+        eventType: booking.eventType,
+        packageName: booking.package,
+        totalAmount: booking.totalPackageAmount,
+        discount: booking.discount || 0,
+        paidAmount: booking.totalPackageAmount - (booking.discount || 0) - booking.dueAmount,
+        dueAmount: booking.dueAmount,
+        location: booking.location,
+        packageDetails: booking.requirement ? [booking.requirement] : undefined,
+        items: booking.extraCosts?.map((c: any) => ({ name: c.label, price: c.amount }))
+      });
+      toast.success('Invoice generated successfully!');
+    } catch (error) {
+      console.error('Error generating invoice:', error);
+      toast.error('Failed to generate invoice');
     }
   };
 
@@ -212,10 +258,13 @@ const Payment: React.FC = () => {
                   />
                 </div>
               </div>
+              
+              <Captcha onVerify={setIsCaptchaVerified} className="bg-white" />
+
               <button
                 onClick={handleFindBooking}
-                disabled={loading}
-                className="w-full bg-black text-white py-4 rounded-xl font-bold hover:bg-gray-800 transition-all flex items-center justify-center space-x-2"
+                disabled={loading || !isCaptchaVerified}
+                className="w-full bg-black text-white py-4 rounded-xl font-bold hover:bg-gray-800 transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
               >
                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
                 <span>Find My Booking</span>
@@ -391,9 +440,12 @@ const Payment: React.FC = () => {
                         className="hidden" 
                       />
                     </div>
+
+                    <Captcha onVerify={setIsManualCaptchaVerified} className="bg-gray-50" />
+
                     <button
                       onClick={handleManualSubmit}
-                      disabled={paying || !manualSlip}
+                      disabled={paying || !manualSlip || !isManualCaptchaVerified}
                       className="w-full bg-black text-white py-4 rounded-xl font-bold hover:bg-gray-800 transition-all flex items-center justify-center space-x-2 disabled:bg-gray-200 disabled:cursor-not-allowed"
                     >
                       {paying ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />}
@@ -414,10 +466,10 @@ const Payment: React.FC = () => {
                   </h3>
                   {payments.some(p => p.status === 'confirmed') && (
                     <button 
-                      onClick={() => toast.info('Invoice generation feature coming soon! Your payments are confirmed.')}
+                      onClick={handleDownloadInvoice}
                       className="text-sm font-bold text-blue-600 hover:underline flex items-center space-x-1"
                     >
-                      <FileText className="w-4 h-4" />
+                      <Download className="w-4 h-4" />
                       <span>Download Invoice</span>
                     </button>
                   )}

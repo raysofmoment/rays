@@ -7,9 +7,11 @@ import { collection, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { notifyAdmins } from '../services/notificationService';
 import Logo from './Logo';
+import Captcha from './Captcha';
 
 const Home: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCaptchaVerified, setIsCaptchaVerified] = useState(false);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -20,6 +22,10 @@ const Home: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isCaptchaVerified) {
+      toast.error('Please complete the security verification');
+      return;
+    }
     setIsSubmitting(true);
     try {
       await addDoc(collection(db, 'serviceInquiries'), {
@@ -357,8 +363,11 @@ const Home: React.FC = () => {
                     className="w-full bg-white/10 border border-white/10 rounded-xl px-4 py-3 outline-none focus:border-white transition-all text-white"
                   ></textarea>
                 </div>
+                
+                <Captcha onVerify={setIsCaptchaVerified} className="bg-white/5 border-white/10" />
+
                 <button 
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || !isCaptchaVerified}
                   className="w-full bg-white text-black py-4 rounded-xl font-bold hover:bg-gray-200 transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
                 >
                   {isSubmitting ? (

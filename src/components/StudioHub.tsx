@@ -37,13 +37,14 @@ import WorkInProgress from './WorkInProgress';
 import InquiryManagement from './InquiryManagement';
 import CRMModal from './CRMModal';
 import BookingManagement from './BookingManagement';
+import ProjectOverview from './ProjectOverview';
 
 interface StudioHubProps {
   user: User;
   role: string | null;
 }
 
-type ActiveTab = 'overview' | 'projects' | 'team' | 'financials' | 'clients' | 'wip' | 'inquiries';
+type ActiveTab = 'overview' | 'projects' | 'team' | 'financials' | 'clients' | 'wip' | 'inquiries' | 'project-overview';
 
 const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
@@ -91,6 +92,7 @@ const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
   const menuItems = [
     { id: 'overview', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'photographer', 'editor', 'other'] },
     { id: 'projects', label: 'Orders & Projects', icon: Briefcase, roles: ['admin', 'photographer', 'editor', 'other'] },
+    { id: 'project-overview', label: 'Project Status', icon: TrendingUp, roles: ['admin', 'editor'] },
     { id: 'wip', label: 'Work in Progress', icon: Clock, roles: ['admin', 'photographer', 'editor', 'other'] },
     { id: 'financials', label: 'Payments & Costs', icon: CreditCard, roles: ['admin'] },
     { id: 'team', label: 'Team & Employees', icon: Users, roles: ['admin'] },
@@ -139,6 +141,8 @@ const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
         );
       case 'clients':
         return <BookingManagement user={user} role={role} />;
+      case 'project-overview':
+        return <ProjectOverview />;
       case 'inquiries':
         return <InquiryManagement />;
       default:

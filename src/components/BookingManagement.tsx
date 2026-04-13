@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User } from 'firebase/auth';
-import { collection, query, orderBy, onSnapshot, deleteDoc, doc, updateDoc, addDoc, where, getDocs } from 'firebase/firestore';
+import { collection, query, orderBy, onSnapshot, deleteDoc, doc, updateDoc, addDoc, where, getDocs, writeBatch } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { Plus, Search, Filter, MoreVertical, Trash2, Edit2, ExternalLink, CheckCircle2, Clock, AlertCircle, TrendingUp, IndianRupee, Calendar as CalendarIcon, PieChart, Image as ImageIcon, ScanFace } from 'lucide-react';
 import { format } from 'date-fns';
@@ -20,23 +20,30 @@ const BookingManagement: React.FC<BookingManagementProps> = ({ user, role }) => 
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [activeTab, setActiveTab] = useState<'bookings' | 'requests'>('bookings');
+  const [requestFinalAmounts, setRequestFinalAmounts] = useState<Record<string, number>>({});
 
   const handleAcceptRequest = async (booking: any) => {
     const invoiceNumber = `INV-${Date.now().toString().slice(-6)}`;
-    const finalAmount = booking.finalAmount || booking.totalPackageAmount;
+    const finalAmount = requestFinalAmounts[booking.id] || booking.finalAmount || booking.totalPackageAmount;
+    const discount = booking.totalPackageAmount - finalAmount;
     
     try {
-      await updateDoc(doc(db, 'bookings', booking.id), {
+      const batch = writeBatch(db);
+      
+      const bookingRef = doc(db, 'bookings', booking.id);
+      batch.update(bookingRef, {
         adminStatus: 'accepted',
         invoiceNumber,
         finalAmount,
+        discount,
         status: 'pending', // Main status
         updatedAt: new Date().toISOString(),
         updatedBy: user.uid
       });
       
       // Also create an order in the orders collection for the main order management
-      await addDoc(collection(db, 'orders'), {
+      const orderRef = doc(collection(db, 'orders'));
+      batch.set(orderRef, {
         clientId: booking.clientId,
         clientName: booking.clientName,
         mobileNumber: booking.clientMobile,
@@ -45,7 +52,9 @@ const BookingManagement: React.FC<BookingManagementProps> = ({ user, role }) => 
         date: booking.eventDate,
         location: booking.eventPlace,
         packageName: booking.package === 'Customize' ? booking.requirement : booking.package,
-        totalAmount: finalAmount,
+        totalAmount: booking.totalPackageAmount,
+        discount,
+        finalAmount,
         paidAmount: 0,
         dueAmount: finalAmount,
         eventType: booking.eventType,
@@ -55,7 +64,8 @@ const BookingManagement: React.FC<BookingManagementProps> = ({ user, role }) => 
 
       // Notify the client
       if (booking.clientId) {
-        await addDoc(collection(db, 'notifications'), {
+        const notificationRef = doc(collection(db, 'notifications'));
+        batch.set(notificationRef, {
           userId: booking.clientId,
           title: 'Order Accepted',
           message: `Your order request has been accepted! Invoice: ${invoiceNumber}. Final Bill: ₹${finalAmount.toLocaleString()}`,
@@ -66,6 +76,7 @@ const BookingManagement: React.FC<BookingManagementProps> = ({ user, role }) => 
         });
       }
 
+      await batch.commit();
       toast.success(`Request accepted! Invoice ${invoiceNumber} generated.`);
     } catch (error) {
       console.error('Error accepting request:', error);
@@ -322,6 +333,9 @@ const BookingManagement: React.FC<BookingManagementProps> = ({ user, role }) => 
                     <div className="flex flex-col">
                       <span className="text-sm font-bold text-gray-900">{booking.package}</span>
                       <span className="text-xs text-gray-500">Total: ₹{booking.totalPackageAmount}</span>
+                      {booking.discount > 0 && (
+                        <span className="text-xs text-blue-600 font-bold">Discount: -₹{booking.discount}</span>
+                      )}
                       {booking.finalAmount && booking.finalAmount !== booking.totalPackageAmount && (
                         <span className="text-xs text-green-600 font-bold">Final: ₹{booking.finalAmount}</span>
                       )}
@@ -333,17 +347,16 @@ const BookingManagement: React.FC<BookingManagementProps> = ({ user, role }) => 
                   <td className="px-6 py-4">
                     {activeTab === 'requests' ? (
                       <div className="flex flex-col gap-2">
-                        <input
-                          type="number"
-                          placeholder="Final Amount"
-                          defaultValue={booking.finalAmount || booking.totalPackageAmount}
-                          onChange={(e) => {
-                            const val = Number(e.target.value);
-                            // Update local state or just use e.target.value in handleAccept
-                            booking.finalAmount = val;
-                          }}
-                          className="text-xs border border-gray-200 rounded px-2 py-1 w-24"
-                        />
+                        <div className="flex flex-col">
+                          <label className="text-[9px] font-bold text-gray-400 uppercase">Final Amount</label>
+                          <input
+                            type="number"
+                            placeholder="Final Amount"
+                            value={requestFinalAmounts[booking.id] ?? (booking.finalAmount || booking.totalPackageAmount)}
+                            onChange={(e) => setRequestFinalAmounts(prev => ({ ...prev, [booking.id]: Number(e.target.value) }))}
+                            className="text-xs border border-gray-200 rounded px-2 py-1 w-24 font-bold text-green-600"
+                          />
+                        </div>
                         <div className="flex gap-2">
                           <button
                             onClick={() => handleAcceptRequest(booking)}

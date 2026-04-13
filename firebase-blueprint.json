@@ -51,6 +51,8 @@
         "location": { "type": "string" },
         "packageName": { "type": "string" },
         "totalAmount": { "type": "number" },
+        "discount": { "type": "number" },
+        "finalAmount": { "type": "number" },
         "paidAmount": { "type": "number" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
@@ -147,10 +149,12 @@
         "brideNumber": { "type": "string" },
         "brideName": { "type": "string" },
         "brideBengaliName": { "type": "string" },
+        "brideFatherName": { "type": "string" },
         "groomAddress": { "type": "string" },
         "groomNumber": { "type": "string" },
         "groomName": { "type": "string" },
         "groomBengaliName": { "type": "string" },
+        "groomFatherName": { "type": "string" },
         "childName": { "type": "string" },
         "childBengaliName": { "type": "string" },
         "modelName": { "type": "string" },
@@ -161,13 +165,29 @@
         "ourWeddingSong": { "type": "string" },
         "eventSong": { "type": "string" },
         "reelsSong": { "type": "string" },
+        "songLinks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "title": { "type": "string" },
+              "link": { "type": "string" }
+            }
+          }
+        },
         "totalPackageAmount": { "type": "number" },
+        "discount": { "type": "number" },
         "dueAmount": { "type": "number" },
         "emi1Date": { "type": "string" },
         "emi2Date": { "type": "string" },
         "emi3Date": { "type": "string" },
         "emi4Date": { "type": "string" },
         "emi5Date": { "type": "string" },
+        "emiCount": { "type": "number" },
+        "emiAmounts": {
+          "type": "object",
+          "additionalProperties": { "type": "number" }
+        },
         "paymentMode": { "type": "string" },
         "photographerName": { "type": "string" },
         "photographerPrice": { "type": "number" },
@@ -192,6 +212,8 @@
         "eInviteLink": { "type": "string" },
         "photoSelectionStatus": { "type": "string", "enum": ["delivered", "review", "pending"] },
         "photoSelectionLink": { "type": "string" },
+        "priority": { "type": "string", "enum": ["low", "medium", "high", "urgent"] },
+        "specialRequirement": { "type": "string" },
         "preWeddingVideoStatus": { "type": "string", "enum": ["delivered", "review", "pending"] },
         "preWeddingVideoLink": { "type": "string" },
         "preWeddingPhotoStatus": { "type": "string", "enum": ["delivered", "review", "pending"] },
@@ -210,10 +232,40 @@
         "photographerPaid": { "type": "boolean" },
         "editorPaid": { "type": "boolean" },
         "otherPaid": { "type": "boolean" },
+        "staffDetails": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "paymentAmount": { "type": "number" },
+              "workQuality": { "type": "string" },
+              "review": { "type": "string" },
+              "isPaid": { "type": "boolean" }
+            }
+          }
+        },
+        "travelCost": { "type": "number" },
+        "accommodationCost": { "type": "number" },
+        "albumCost": { "type": "number" },
+        "katmaniCost": { "type": "number" },
+        "pendriveCost": { "type": "number" },
+        "boxCost": { "type": "number" },
+        "otherCost": { "type": "number" },
+        "extraCosts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": { "type": "string" },
+              "amount": { "type": "number" }
+            }
+          }
+        },
         "faceRecognitionPhotos": {
           "type": "array",
           "items": { "type": "string" }
         },
+        "priority": { "type": "string", "enum": ["low", "medium", "high", "urgent"] },
         "createdAt": { "type": "string", "format": "date-time" },
         "createdBy": { "type": "string" },
         "updatedAt": { "type": "string", "format": "date-time" },
@@ -371,6 +423,17 @@
         "updatedAt": { "type": "string", "format": "date-time" }
       },
       "required": ["title", "content", "authorId", "createdAt"]
+    },
+    "ReminderSent": {
+      "title": "Reminder Sent",
+      "description": "Tracking for sent event reminders",
+      "type": "object",
+      "properties": {
+        "bookingId": { "type": "string" },
+        "sentAt": { "type": "string", "format": "date" },
+        "eventDate": { "type": "string", "format": "date" }
+      },
+      "required": ["bookingId", "sentAt", "eventDate"]
     }
   },
   "firestore": {
@@ -441,6 +504,10 @@
     "/blogPosts/{postId}": {
       "schema": "BlogPost",
       "description": "Blog posts"
+    },
+    "/reminders_sent/{reminderId}": {
+      "schema": "ReminderSent",
+      "description": "Sent reminder tracking"
     }
   }
 }
