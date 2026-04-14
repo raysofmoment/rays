@@ -72,18 +72,20 @@ const Packages: React.FC = () => {
                     </div>
                   )}
                   
-                  <h3 className="text-2xl font-bold text-gray-900 mb-2">{pkg.name}</h3>
-                  <p className="text-gray-500 text-sm mb-6">{pkg.description}</p>
+                  <h3 className="text-3xl font-black text-gray-900 mb-1">{pkg.name}</h3>
+                  <p className="text-gray-500 text-sm font-medium mb-8">{pkg.description}</p>
                   
-                  <div className="mb-8">
-                    <span className="text-4xl font-bold text-gray-900">₹{pkg.price}</span>
-                    {pkg.unit && <span className="text-gray-500 ml-1">{pkg.unit}</span>}
-                    <span className="text-gray-500 block text-xs mt-1">Starting from</span>
+                  <div className="mb-10">
+                    <div className="flex items-baseline">
+                      <span className="text-5xl font-black text-gray-900">₹{pkg.price}</span>
+                      {pkg.unit && <span className="text-gray-500 ml-1 font-bold">{pkg.unit}</span>}
+                    </div>
+                    <span className="text-gray-400 block text-sm font-bold mt-1">Starting from</span>
                   </div>
                   
-                  <ul className="space-y-4 mb-8 flex-grow">
+                  <ul className="space-y-5 mb-10 flex-grow">
                     {pkg.features.map((feature, idx) => (
-                      <li key={idx} className="flex items-start space-x-3 text-sm text-gray-600">
+                      <li key={idx} className="flex items-center space-x-4 text-sm font-bold text-gray-600">
                         <Check className="w-5 h-5 text-green-500 flex-shrink-0" />
                         <span>{feature}</span>
                       </li>

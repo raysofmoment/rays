@@ -50,20 +50,26 @@ export const notifyUser = async (userId: string, title: string, message: string,
   }
 };
 
-export const checkUpcomingEvents = async () => {
+export const checkUpcomingEvents = async (userId: string, role: string | null) => {
   try {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const todayStr = today.toISOString().split('T')[0];
 
-    const bookingsQuery = query(collection(db, 'bookings'));
+    let bookingsQuery;
+    if (role === 'admin' || role === 'photographer' || role === 'editor' || role === 'other') {
+      bookingsQuery = query(collection(db, 'bookings'));
+    } else {
+      bookingsQuery = query(collection(db, 'bookings'), where('clientId', '==', userId));
+    }
+    
     const bookingsSnapshot = await getDocs(bookingsQuery);
 
     const batch = writeBatch(db);
     let hasUpdates = false;
 
     for (const bookingDoc of bookingsSnapshot.docs) {
-      const booking = bookingDoc.data();
+      const booking = bookingDoc.data() as any;
       if (!booking.eventDate) continue;
 
       // Parse eventDate (assuming YYYY-MM-DD)

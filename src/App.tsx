@@ -68,7 +68,7 @@ export default function App() {
             }
             
             // Check for upcoming events when a user logs in
-            checkUpcomingEvents();
+            checkUpcomingEvents(currentUser.uid, userData.role);
           } else {
             const newRole = currentUser.email === 'saikatbanerjee139@gmail.com' ? 'admin' : 'client';
             const userData = {
@@ -81,6 +81,9 @@ export default function App() {
             };
             await setDoc(userDocRef, userData);
             if (isMounted) setRole(newRole);
+            
+            // Check for upcoming events for new user
+            checkUpcomingEvents(currentUser.uid, newRole);
           }
           if (isMounted) setUser(currentUser);
         } catch (error) {

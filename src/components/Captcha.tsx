@@ -44,8 +44,11 @@ const Captcha: React.FC<CaptchaProps> = ({ onVerify, className = "" }) => {
     onVerify(isValid);
   };
 
+  const defaultStyles = "bg-gray-50 border-gray-200";
+  const containerStyles = className.includes('bg-') ? className : `${defaultStyles} ${className}`;
+
   return (
-    <div className={`p-4 bg-gray-50 rounded-2xl border border-gray-200 ${className}`}>
+    <div className={`p-4 rounded-2xl border ${containerStyles}`}>
       <div className="flex items-center justify-between mb-3">
         <label className="text-xs font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
           <ShieldCheck className="w-4 h-4 text-green-600" />
@@ -61,7 +64,7 @@ const Captcha: React.FC<CaptchaProps> = ({ onVerify, className = "" }) => {
         </button>
       </div>
       <div className="flex items-center gap-4">
-        <div className="flex-shrink-0 bg-white px-4 py-2 rounded-xl border border-gray-200 font-mono font-bold text-lg shadow-sm select-none">
+        <div className="flex-shrink-0 bg-white px-4 py-2 rounded-xl border border-gray-200 font-mono font-bold text-lg shadow-sm select-none text-black">
           {num1} {operator} {num2} = ?
         </div>
         <input
@@ -69,8 +72,8 @@ const Captcha: React.FC<CaptchaProps> = ({ onVerify, className = "" }) => {
           value={userInput}
           onChange={(e) => checkCaptcha(e.target.value)}
           placeholder="Answer"
-          className={`flex-grow px-4 py-2 rounded-xl border outline-none transition-all font-bold ${
-            isVerified ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-200 focus:border-black'
+          className={`flex-grow px-4 py-2 rounded-xl border outline-none transition-all font-bold text-black ${
+            isVerified ? 'border-green-500 bg-green-50 !text-green-700' : 'border-gray-200 focus:border-black'
           }`}
         />
       </div>
