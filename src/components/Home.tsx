@@ -27,14 +27,20 @@ const Home: React.FC = () => {
     const fetchPortfolio = async () => {
       try {
         const response = await fetch(`/api/drive/list/${FOLDER_ID}`);
-        if (response.ok) {
-          const data = await response.json();
-          // Filter for images and take first 9 for a 3x3 grid
-          const images = data.filter((f: any) => f.mimeType.startsWith('image/')).slice(0, 9);
-          setPortfolioItems(images);
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.error || `Server responded with ${response.status}`);
         }
-      } catch (error) {
+        const data = await response.json();
+        // Filter for images and take first 9 for a 3x3 grid
+        const images = data.filter((f: any) => f.mimeType.startsWith('image/')).slice(0, 9);
+        setPortfolioItems(images);
+      } catch (error: any) {
         console.error('Error fetching portfolio:', error);
+        // If it's a network error, it might be "Failed to fetch"
+        if (error.message === 'Failed to fetch') {
+          console.warn('Network error detected. This might be due to the server starting up or a connection issue.');
+        }
       } finally {
         setLoadingPortfolio(false);
       }

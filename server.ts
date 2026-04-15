@@ -1,5 +1,9 @@
 import express from "express";
 import path from "path";
+import cors from "cors";
+
+console.log("Starting server.ts...");
+
 import Stripe from "stripe";
 import dotenv from "dotenv";
 import { google } from "googleapis";
@@ -23,7 +27,15 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  app.use(cors());
   app.use(express.json());
+  
+  // Request logging middleware
+  app.use((req, res, next) => {
+    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    next();
+  });
+
   app.use(
     cookieSession({
       name: "session",
