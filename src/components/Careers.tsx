@@ -6,6 +6,7 @@ import { db, handleFirestoreError, OperationType } from '../firebase';
 import { notifyAdmins } from '../services/notificationService';
 import { toast } from 'sonner';
 import Captcha from './Captcha';
+import ConfirmModal from './ConfirmModal';
 
 interface JobApplication {
   id: string;
@@ -34,6 +35,8 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
   const [acceptingApplication, setAcceptingApplication] = useState<JobApplication | null>(null);
   const [selectedJob, setSelectedJob] = useState<string>('');
   const [isCaptchaVerified, setIsCaptchaVerified] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
   
   const [formData, setFormData] = useState({
     name: '',
@@ -167,13 +170,21 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this application?')) return;
+    setItemToDelete(id);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
     try {
-      await deleteDoc(doc(db, 'jobApplications', id));
+      await deleteDoc(doc(db, 'jobApplications', itemToDelete));
       toast.success('Application deleted');
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, 'jobApplications');
       toast.error('Failed to delete application');
+    } finally {
+      setDeleteConfirmOpen(false);
+      setItemToDelete(null);
     }
   };
 
@@ -887,6 +898,19 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
           </div>
         )}
       </AnimatePresence>
+
+      <ConfirmModal
+        isOpen={deleteConfirmOpen}
+        onClose={() => {
+          setDeleteConfirmOpen(false);
+          setItemToDelete(null);
+        }}
+        onConfirm={confirmDelete}
+        title="Delete Application"
+        message="Are you sure you want to delete this application? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   );
 };

@@ -4,6 +4,7 @@ import { db } from '../firebase';
 import { Mail, Phone, MapPin, Calendar, Trash2, Search, Filter, Loader2, MessageSquare } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
+import ConfirmModal from './ConfirmModal';
 
 interface Inquiry {
   id: string;
@@ -21,6 +22,8 @@ const InquiryManagement: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterService, setFilterService] = useState('All');
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'serviceInquiries'), orderBy('createdAt', 'desc'));
@@ -41,13 +44,21 @@ const InquiryManagement: React.FC = () => {
   }, []);
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this inquiry?')) return;
+    setItemToDelete(id);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
     try {
-      await deleteDoc(doc(db, 'serviceInquiries', id));
+      await deleteDoc(doc(db, 'serviceInquiries', itemToDelete));
       toast.success('Inquiry deleted successfully');
     } catch (error) {
       console.error('Error deleting inquiry:', error);
       toast.error('Failed to delete inquiry');
+    } finally {
+      setDeleteConfirmOpen(false);
+      setItemToDelete(null);
     }
   };
 
@@ -171,6 +182,19 @@ const InquiryManagement: React.FC = () => {
           <p className="text-gray-500">Try adjusting your search or filter.</p>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={deleteConfirmOpen}
+        onClose={() => {
+          setDeleteConfirmOpen(false);
+          setItemToDelete(null);
+        }}
+        onConfirm={confirmDelete}
+        title="Delete Inquiry"
+        message="Are you sure you want to delete this inquiry? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   );
 };

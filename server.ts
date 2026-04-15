@@ -155,6 +155,27 @@ async function startServer() {
     }
   });
 
+  app.get("/api/proxy-image", async (req, res) => {
+    const imageUrl = req.query.url as string;
+    if (!imageUrl) {
+      return res.status(400).send("URL is required");
+    }
+
+    try {
+      const response = await fetch(imageUrl);
+      if (!response.ok) throw new Error(`Failed to fetch image: ${response.statusText}`);
+      
+      const contentType = response.headers.get("content-type");
+      if (contentType) res.setHeader("Content-Type", contentType);
+      
+      const arrayBuffer = await response.arrayBuffer();
+      res.send(Buffer.from(arrayBuffer));
+    } catch (error: any) {
+      console.error("Proxy error:", error);
+      res.status(500).send(error.message);
+    }
+  });
+
   // Log environment status (without secrets)
   console.log("--- Environment Status ---");
   console.log(`NODE_ENV: ${process.env.NODE_ENV}`);

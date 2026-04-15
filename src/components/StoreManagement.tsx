@@ -3,6 +3,7 @@ import { collection, query, orderBy, onSnapshot, deleteDoc, doc, addDoc, serverT
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { Plus, Search, Trash2, ShoppingBag, Calendar, IndianRupee, Package, Briefcase, X, Save } from 'lucide-react';
 import { toast } from 'sonner';
+import ConfirmModal from './ConfirmModal';
 
 interface StoreItem {
   id: string;
@@ -19,6 +20,8 @@ const StoreManagement: React.FC<{ userRole: string | null }> = ({ userRole }) =>
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'store'), orderBy('createdAt', 'desc'));
@@ -32,12 +35,20 @@ const StoreManagement: React.FC<{ userRole: string | null }> = ({ userRole }) =>
   }, []);
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this item?')) return;
+    setItemToDelete(id);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
     try {
-      await deleteDoc(doc(db, 'store', id));
+      await deleteDoc(doc(db, 'store', itemToDelete));
       toast.success('Item deleted successfully');
     } catch (error) {
       toast.error('Failed to delete item');
+    } finally {
+      setDeleteConfirmOpen(false);
+      setItemToDelete(null);
     }
   };
 
@@ -128,6 +139,19 @@ const StoreManagement: React.FC<{ userRole: string | null }> = ({ userRole }) =>
       {showAddModal && (
         <AddItemModal onClose={() => setShowAddModal(false)} />
       )}
+
+      <ConfirmModal
+        isOpen={deleteConfirmOpen}
+        onClose={() => {
+          setDeleteConfirmOpen(false);
+          setItemToDelete(null);
+        }}
+        onConfirm={confirmDelete}
+        title="Delete Store Item"
+        message="Are you sure you want to delete this item? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   );
 };

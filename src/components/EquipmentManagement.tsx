@@ -3,6 +3,7 @@ import { collection, query, orderBy, onSnapshot, deleteDoc, doc, addDoc, serverT
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { Plus, Search, Trash2, Camera, Calendar, DollarSign, Activity, Briefcase, X, Save } from 'lucide-react';
 import { toast } from 'sonner';
+import ConfirmModal from './ConfirmModal';
 
 interface Equipment {
   id: string;
@@ -19,6 +20,8 @@ const EquipmentManagement: React.FC<{ userRole: string | null }> = ({ userRole }
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'equipment'), orderBy('createdAt', 'desc'));
@@ -32,12 +35,20 @@ const EquipmentManagement: React.FC<{ userRole: string | null }> = ({ userRole }
   }, []);
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this equipment?')) return;
+    setItemToDelete(id);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
     try {
-      await deleteDoc(doc(db, 'equipment', id));
+      await deleteDoc(doc(db, 'equipment', itemToDelete));
       toast.success('Equipment deleted successfully');
     } catch (error) {
       toast.error('Failed to delete equipment');
+    } finally {
+      setDeleteConfirmOpen(false);
+      setItemToDelete(null);
     }
   };
 
@@ -129,6 +140,19 @@ const EquipmentManagement: React.FC<{ userRole: string | null }> = ({ userRole }
       {showAddModal && (
         <AddEquipmentModal onClose={() => setShowAddModal(false)} />
       )}
+
+      <ConfirmModal
+        isOpen={deleteConfirmOpen}
+        onClose={() => {
+          setDeleteConfirmOpen(false);
+          setItemToDelete(null);
+        }}
+        onConfirm={confirmDelete}
+        title="Delete Equipment"
+        message="Are you sure you want to delete this equipment? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   );
 };

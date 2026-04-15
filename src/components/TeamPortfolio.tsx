@@ -108,7 +108,6 @@ const TeamPortfolio: React.FC = () => {
                       src={sample.url} 
                       alt={sample.title} 
                       className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" 
-                      referrerPolicy="no-referrer"
                     />
                   ) : sample.type === 'video' ? (
                     <div className="w-full h-full flex items-center justify-center bg-black">

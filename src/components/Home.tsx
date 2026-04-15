@@ -124,19 +124,37 @@ const Home: React.FC = () => {
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
-              { url: "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=2070", title: "Weddings" },
-              { url: "https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&q=80&w=2069", title: "Events" },
-              { url: "https://images.unsplash.com/photo-1542038784456-1ea8e935640e?auto=format&fit=crop&q=80&w=2070", title: "Portraits" }
+              { url: "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=2070", title: "Weddings", category: "Wedding" },
+              { url: "https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&q=80&w=2069", title: "Events", category: "Event" },
+              { url: "https://images.unsplash.com/photo-1542038784456-1ea8e935640e?auto=format&fit=crop&q=80&w=2070", title: "Portraits", category: "Portrait" }
             ].map((item, i) => (
               <motion.div 
                 key={i}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.1 }}
                 whileHover={{ scale: 1.02 }}
-                className="relative aspect-[4/5] rounded-2xl overflow-hidden shadow-lg group"
+                className="relative aspect-[4/5] min-h-[400px] rounded-2xl overflow-hidden shadow-lg group cursor-pointer bg-gray-100"
               >
-                <img src={item.url} alt={item.title} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" referrerPolicy="no-referrer" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent flex items-end p-8">
-                  <h3 className="text-2xl font-bold text-white">{item.title}</h3>
-                </div>
+                <Link to={`/gallery?category=${item.category}`}>
+                  <img 
+                    src={item.url} 
+                    alt={item.title} 
+                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
+                    referrerPolicy="no-referrer" 
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = `https://picsum.photos/seed/${item.title}/800/1000`;
+                    }}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent flex flex-col justify-end p-8">
+                    <h3 className="text-2xl font-bold text-white mb-2">{item.title}</h3>
+                    <div className="flex items-center text-white/80 text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity transform translate-y-4 group-hover:translate-y-0 duration-300">
+                      <span>View Gallery</span>
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </div>
+                  </div>
+                </Link>
               </motion.div>
             ))}
           </div>
@@ -159,9 +177,9 @@ const Home: React.FC = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
-              { name: "Jessica Miller", role: "Wedding Client", comment: "The team at Rays of Moment captured our wedding so beautifully. Every photo tells a story and we couldn't be happier!", rating: 5 },
-              { name: "David Thompson", role: "Event Organizer", comment: "Professional, punctual, and incredibly talented. They managed to capture the energy of our corporate event perfectly.", rating: 5 },
-              { name: "Sarah Williams", role: "Portrait Client", comment: "I've never felt more comfortable in front of a camera. The results were stunning and exceeded all my expectations.", rating: 5 }
+              { name: "Sabbyasachi Ghosh", role: "Wedding Client", comment: "The team at Rays of Moment captured our wedding so beautifully. Every photo tells a story and we couldn't be happier!", rating: 5 },
+              { name: "Arindum Bhakat", role: "Event Organizer", comment: "Professional, punctual, and incredibly talented. They managed to capture the energy of our corporate event perfectly.", rating: 5 },
+              { name: "Wasima Molla", role: "Portrait Client", comment: "I've never felt more comfortable in front of a camera. The results were stunning and exceeded all my expectations.", rating: 5 }
             ].map((testimonial, i) => (
               <motion.div
                 key={i}
@@ -246,8 +264,16 @@ const Home: React.FC = () => {
               { name: "Mainak Biswas", role: "Vloger", img: "https://69cb4f3f21aad77cf8fd3eac.imgix.net/photographer/IMG-20241018-WA0039.jpg.jpeg" }
             ].map((member, i) => (
               <div key={i} className="text-center group">
-                <div className="relative aspect-square rounded-2xl overflow-hidden mb-4">
-                  <img src={member.img} alt={member.name} className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500" referrerPolicy="no-referrer" />
+                <div className="relative aspect-square rounded-2xl overflow-hidden mb-4 bg-gray-100">
+                  <img 
+                    src={member.img} 
+                    alt={member.name} 
+                    className="w-full h-full object-cover transition-all duration-500 group-hover:scale-110" 
+                    referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = `https://picsum.photos/seed/${member.name}/400/400`;
+                    }}
+                  />
                 </div>
                 <h3 className="text-xl font-bold text-gray-900">{member.name}</h3>
                 <p className="text-gray-500 text-sm">{member.role}</p>

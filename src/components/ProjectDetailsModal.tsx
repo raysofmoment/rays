@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { User } from 'firebase/auth';
 import EventCostForm from './EventCostForm';
 import Invoice from './Invoice';
+import ConfirmModal from './ConfirmModal';
 import { generateInvoicePDF } from '../services/invoiceService';
 
 interface ProjectDetailsModalProps {
@@ -24,6 +25,8 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
   const [payments, setPayments] = useState<any[]>([]);
   const [costs, setCosts] = useState<any[]>([]);
   const [showAddCost, setShowAddCost] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -76,12 +79,20 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
   }, [activeTab, order.id, order.invoiceNumber]);
 
   const handleDeleteCost = async (id: string) => {
-    if (!window.confirm('Delete this cost record?')) return;
+    setItemToDelete(id);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
     try {
-      await deleteDoc(doc(db, 'eventCosts', id));
+      await deleteDoc(doc(db, 'eventCosts', itemToDelete));
       toast.success('Cost record deleted');
     } catch (error) {
       toast.error('Failed to delete cost record');
+    } finally {
+      setDeleteConfirmOpen(false);
+      setItemToDelete(null);
     }
   };
 
@@ -694,6 +705,19 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
           initialName={order.clientName}
         />
       )}
+
+      <ConfirmModal
+        isOpen={deleteConfirmOpen}
+        onClose={() => {
+          setDeleteConfirmOpen(false);
+          setItemToDelete(null);
+        }}
+        onConfirm={confirmDelete}
+        title="Delete Cost Record"
+        message="Are you sure you want to delete this cost record? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   );
 };

@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
 import BookingForm from './BookingForm';
+import ConfirmModal from './ConfirmModal';
 
 interface BookingManagementProps {
   user: User;
@@ -21,6 +22,8 @@ const BookingManagement: React.FC<BookingManagementProps> = ({ user, role }) => 
   const [filterType, setFilterType] = useState('all');
   const [activeTab, setActiveTab] = useState<'bookings' | 'requests'>('bookings');
   const [requestFinalAmounts, setRequestFinalAmounts] = useState<Record<string, number>>({});
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
 
   const handleAcceptRequest = async (booking: any) => {
     const invoiceNumber = `INV-${Date.now().toString().slice(-6)}`;
@@ -124,12 +127,20 @@ const BookingManagement: React.FC<BookingManagementProps> = ({ user, role }) => 
   }, []);
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this booking?')) return;
+    setItemToDelete(id);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
     try {
-      await deleteDoc(doc(db, 'bookings', id));
+      await deleteDoc(doc(db, 'bookings', itemToDelete));
       toast.success('Information deleted successfully');
     } catch (error) {
       toast.error('Failed to delete information');
+    } finally {
+      setDeleteConfirmOpen(false);
+      setItemToDelete(null);
     }
   };
 
@@ -437,6 +448,19 @@ const BookingManagement: React.FC<BookingManagementProps> = ({ user, role }) => 
       {showAddModal && (
         <BookingForm user={user} role={role} onClose={() => setShowAddModal(false)} />
       )}
+
+      <ConfirmModal
+        isOpen={deleteConfirmOpen}
+        onClose={() => {
+          setDeleteConfirmOpen(false);
+          setItemToDelete(null);
+        }}
+        onConfirm={confirmDelete}
+        title="Delete Booking"
+        message="Are you sure you want to delete this booking? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   );
 };

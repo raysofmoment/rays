@@ -3,11 +3,14 @@ import { useParams, Link } from 'react-router-dom';
 import { User } from 'firebase/auth';
 import { collection, query, getDocs, addDoc, doc, getDoc, onSnapshot, orderBy, deleteDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { Camera, Upload, Image as ImageIcon, Download, Share2, ArrowLeft, Trash2, Heart, Play, ExternalLink, Plus, X } from 'lucide-react';
+import { Camera, Upload, Image as ImageIcon, Download, Share2, ArrowLeft, Trash2, Heart, Play, ExternalLink, Plus, X, Loader2 } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import JSZip from 'jszip';
+import { saveAs } from 'file-saver';
+import ConfirmModal from './ConfirmModal';
 
 interface GalleryProps {
   user: User | null;
@@ -20,10 +23,13 @@ const Gallery: React.FC<GalleryProps> = ({ user, role }) => {
   const [photos, setPhotos] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [isDriveConnected, setIsDriveConnected] = useState(false);
   const [showAddPhotoModal, setShowAddPhotoModal] = useState(false);
   const [newPhotoUrl, setNewPhotoUrl] = useState('');
   const [newPhotoType, setNewPhotoType] = useState<'image' | 'video'>('image');
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     const checkDriveStatus = async () => {
@@ -78,10 +84,80 @@ const Gallery: React.FC<GalleryProps> = ({ user, role }) => {
   const handleConnectDrive = async () => {
     try {
       const response = await fetch('/api/auth/google/url');
+      if (!response.ok) throw new Error('Failed to get auth URL');
       const { url } = await response.json();
-      window.open(url, 'google_auth', 'width=600,height=700');
+      
+      // Open in a popup
+      const width = 600;
+      const height = 700;
+      const left = window.screenX + (window.outerWidth - width) / 2;
+      const top = window.screenY + (window.outerHeight - height) / 2;
+      
+      window.open(
+        url, 
+        'google_auth', 
+        `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no,location=no,status=no`
+      );
     } catch (error) {
-      toast.error('Failed to get Google Auth URL');
+      toast.error('Failed to connect to Google Drive. Please check server configuration.');
+    }
+  };
+
+  const handleShare = async () => {
+    const shareData = {
+      title: gallery?.name || 'Photography Gallery',
+      text: `Check out this photography gallery: ${gallery?.name}`,
+      url: window.location.href,
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(window.location.href);
+        toast.success('Gallery link copied to clipboard!');
+      }
+    } catch (error) {
+      if ((error as Error).name !== 'AbortError') {
+        toast.error('Failed to share gallery');
+      }
+    }
+  };
+
+  const handleDownloadAll = async () => {
+    if (photos.length === 0) {
+      toast.error('No photos to download');
+      return;
+    }
+
+    setDownloading(true);
+    const zip = new JSZip();
+    const toastId = toast.loading('Preparing your download...');
+
+    try {
+      const downloadPromises = photos.map(async (photo, index) => {
+        try {
+          // Use proxy to bypass CORS
+          const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(photo.url)}`;
+          const response = await fetch(proxyUrl);
+          if (!response.ok) throw new Error(`Proxy failed: ${response.statusText}`);
+          const blob = await response.blob();
+          const extension = photo.type === 'video' ? 'mp4' : 'jpg';
+          zip.file(`photo-${index + 1}.${extension}`, blob);
+        } catch (err) {
+          console.error(`Failed to download photo ${index + 1}:`, err);
+        }
+      });
+
+      await Promise.all(downloadPromises);
+      const content = await zip.generateAsync({ type: 'blob' });
+      saveAs(content, `${gallery.name.replace(/\s+/g, '_')}_Gallery.zip`);
+      toast.success('Download started!', { id: toastId });
+    } catch (error) {
+      console.error('Error creating zip:', error);
+      toast.error('Failed to download all photos', { id: toastId });
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -157,12 +233,19 @@ const Gallery: React.FC<GalleryProps> = ({ user, role }) => {
   });
 
   const handleDelete = async (photoId: string) => {
-    if (!window.confirm('Are you sure you want to delete this file?')) return;
+    setItemToDelete(photoId);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!itemToDelete || !galleryId) return;
     try {
-      await deleteDoc(doc(db, `galleries/${galleryId}/photos`, photoId));
+      await deleteDoc(doc(db, `galleries/${galleryId}/photos`, itemToDelete));
       toast.success('File deleted');
     } catch (error) {
       toast.error('Failed to delete file');
+    } finally {
+      setItemToDelete(null);
     }
   };
 
@@ -218,13 +301,20 @@ const Gallery: React.FC<GalleryProps> = ({ user, role }) => {
               <span>Connect Google Drive</span>
             </button>
           )}
-          <button className="flex items-center space-x-2 px-4 py-2 rounded-lg border border-gray-200 text-sm font-medium hover:bg-white transition-colors">
+          <button 
+            onClick={handleShare}
+            className="flex items-center space-x-2 px-4 py-2 rounded-lg border border-gray-200 text-sm font-medium hover:bg-white transition-colors"
+          >
             <Share2 className="w-4 h-4" />
             <span>Share</span>
           </button>
-          <button className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-black text-white text-sm font-medium hover:bg-gray-800 transition-colors">
-            <Download className="w-4 h-4" />
-            <span>Download All</span>
+          <button 
+            onClick={handleDownloadAll}
+            disabled={downloading}
+            className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-black text-white text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            <span>{downloading ? 'Zipping...' : 'Download All'}</span>
           </button>
         </div>
       </header>
@@ -360,6 +450,19 @@ const Gallery: React.FC<GalleryProps> = ({ user, role }) => {
           </div>
         )}
       </AnimatePresence>
+
+      <ConfirmModal
+        isOpen={deleteConfirmOpen}
+        onClose={() => {
+          setDeleteConfirmOpen(false);
+          setItemToDelete(null);
+        }}
+        onConfirm={confirmDelete}
+        title="Delete File"
+        message="Are you sure you want to delete this file? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   );
 };

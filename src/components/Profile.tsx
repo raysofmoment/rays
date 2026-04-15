@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import ConfirmModal from './ConfirmModal';
 
 interface ProfileProps {
   user: User;
@@ -31,6 +32,8 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
     type: 'image' as 'image' | 'video' | 'link',
     url: ''
   });
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -142,12 +145,19 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
   };
 
   const handleDeleteSample = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this sample?')) return;
+    setItemToDelete(id);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
     try {
-      await deleteDoc(doc(db, 'sampleWorks', id));
+      await deleteDoc(doc(db, 'sampleWorks', itemToDelete));
       toast.success('Sample deleted');
     } catch (error) {
       handleFirestoreError(error, OperationType.DELETE, 'sampleWorks');
+    } finally {
+      setItemToDelete(null);
     }
   };
 
@@ -847,6 +857,19 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ConfirmModal
+        isOpen={deleteConfirmOpen}
+        onClose={() => {
+          setDeleteConfirmOpen(false);
+          setItemToDelete(null);
+        }}
+        onConfirm={confirmDelete}
+        title="Delete Sample Work"
+        message="Are you sure you want to delete this sample? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   );
 };

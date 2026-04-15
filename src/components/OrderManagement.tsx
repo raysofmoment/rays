@@ -20,15 +20,26 @@ interface OrderManagementProps {
 
 import ProjectDetailsModal from './ProjectDetailsModal';
 import EventCostForm from './EventCostForm';
+import ConfirmModal from './ConfirmModal';
 
 const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
   const { cart, clearCart, totalAmount } = useCart();
   const [orders, setOrders] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showBookingForm, setShowBookingForm] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const handleDelete = async (orderId: string) => {
+    if (!window.confirm('Are you sure you want to delete this order?')) return;
+    try {
+      await deleteDoc(doc(db, 'orders', orderId));
+      toast.success('Order deleted successfully');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `orders/${orderId}`);
+    }
+  };
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<any>(null);
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
@@ -435,21 +446,8 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
       )}
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search orders..."
-                className="pl-10 pr-4 py-2 rounded-lg border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none text-sm"
-              />
-            </div>
-            <button className="flex items-center space-x-2 px-4 py-2 rounded-lg border border-gray-200 text-sm font-medium hover:bg-white transition-colors">
-              <Filter className="w-4 h-4" />
-              <span>Filter</span>
-            </button>
-          </div>
+        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+          <h3 className="text-lg font-bold text-gray-900">Project Orders</h3>
         </div>
 
         <div className="overflow-x-auto">
@@ -683,7 +681,18 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
                           </select>
                         </>
                       )}
-                      <button className="p-2 text-gray-400 hover:text-black">
+                      {role === 'admin' && (
+                        <button 
+                          onClick={() => handleDelete(order.id)}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Delete Order"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                      <button 
+                        className="p-2 text-gray-400 hover:text-black"
+                      >
                         <MoreVertical className="w-5 h-5" />
                       </button>
                     </div>
@@ -796,19 +805,6 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
         </div>
       )}
 
-      {showBookingForm && (
-        <BookingForm
-          user={user}
-          role={role}
-          invoiceNumber={selectedOrder?.invoiceNumber}
-          clientId={selectedOrder?.clientId}
-          onClose={() => {
-            setShowBookingForm(false);
-            setSelectedOrder(null);
-          }}
-        />
-      )}
-
       {showDetailsModal && selectedOrder && (
         <ProjectDetailsModal
           order={selectedOrder}
@@ -818,6 +814,19 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
             setShowDetailsModal(false);
             setSelectedOrder(null);
           }}
+        />
+      )}
+
+      {showBookingForm && selectedOrder && (
+        <BookingForm
+          invoiceNumber={selectedOrder.invoiceNumber}
+          clientId={selectedOrder.clientId}
+          role={role}
+          onClose={() => {
+            setShowBookingForm(false);
+            setSelectedOrder(null);
+          }}
+          user={user}
         />
       )}
     </div>

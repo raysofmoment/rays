@@ -4,6 +4,7 @@ import { db, handleFirestoreError, OperationType } from '../firebase';
 import { Plus, Search, Trash2, Edit2, Phone, Mail, Briefcase, Globe, User, Users, X, Save, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
+import ConfirmModal from './ConfirmModal';
 
 interface Employee {
   id: string;
@@ -38,6 +39,8 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ userRole }) => {
     portfolioUrl: '',
     photoURL: ''
   });
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
 
   const [transferFormData, setTransferFormData] = useState({
     role: 'other' as 'photographer' | 'editor' | 'admin' | 'other',
@@ -190,12 +193,20 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ userRole }) => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Are you sure you want to remove this employee profile?')) return;
+    setItemToDelete(id);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
     try {
-      await deleteDoc(doc(db, 'employees', id));
+      await deleteDoc(doc(db, 'employees', itemToDelete));
       toast.success('Employee profile removed');
     } catch (error) {
       toast.error('Failed to remove employee profile');
+    } finally {
+      setDeleteConfirmOpen(false);
+      setItemToDelete(null);
     }
   };
 
@@ -258,7 +269,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ userRole }) => {
                 <div className="flex items-center space-x-4">
                   <div className="w-16 h-16 rounded-2xl bg-gray-100 overflow-hidden flex-shrink-0 border border-gray-50">
                     {emp.photoURL ? (
-                      <img src={emp.photoURL} alt={emp.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      <img src={emp.photoURL} alt={emp.name} className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-gray-400">
                         <User className="w-8 h-8" />
@@ -545,6 +556,19 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ userRole }) => {
           </div>
         )}
       </AnimatePresence>
+
+      <ConfirmModal
+        isOpen={deleteConfirmOpen}
+        onClose={() => {
+          setDeleteConfirmOpen(false);
+          setItemToDelete(null);
+        }}
+        onConfirm={confirmDelete}
+        title="Remove Employee Profile"
+        message="Are you sure you want to remove this employee profile? This action cannot be undone."
+        confirmLabel="Remove"
+        variant="danger"
+      />
     </div>
   );
 };

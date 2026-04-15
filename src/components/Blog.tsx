@@ -7,6 +7,7 @@ import { FileText, Plus, Trash2, Edit, Check, X, Calendar, User as UserIcon, Ima
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import ConfirmModal from './ConfirmModal';
 
 interface BlogProps {
   user: User | null;
@@ -24,6 +25,8 @@ const Blog: React.FC<BlogProps> = ({ user, role }) => {
   const [content, setContent] = useState('');
   const [coverUrl, setCoverUrl] = useState('');
   const [isPublished, setIsPublished] = useState(true);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
 
   const isAdmin = role === 'admin';
 
@@ -96,12 +99,20 @@ const Blog: React.FC<BlogProps> = ({ user, role }) => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this post?')) return;
+    setItemToDelete(id);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
     try {
-      await deleteDoc(doc(db, 'blogPosts', id));
+      await deleteDoc(doc(db, 'blogPosts', itemToDelete));
       toast.success('Post deleted');
     } catch (error) {
       toast.error('Failed to delete post');
+    } finally {
+      setDeleteConfirmOpen(false);
+      setItemToDelete(null);
     }
   };
 
@@ -333,6 +344,19 @@ const Blog: React.FC<BlogProps> = ({ user, role }) => {
           </div>
         )}
       </AnimatePresence>
+
+      <ConfirmModal
+        isOpen={deleteConfirmOpen}
+        onClose={() => {
+          setDeleteConfirmOpen(false);
+          setItemToDelete(null);
+        }}
+        onConfirm={confirmDelete}
+        title="Delete Blog Post"
+        message="Are you sure you want to delete this post? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   );
 };

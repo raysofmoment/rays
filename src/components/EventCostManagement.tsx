@@ -5,6 +5,7 @@ import { db, handleFirestoreError, OperationType } from '../firebase';
 import { Plus, Search, Trash2, IndianRupee, Receipt, User as UserIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import EventCostForm from './EventCostForm';
+import ConfirmModal from './ConfirmModal';
 
 interface EventCostManagementProps {
   user: User;
@@ -16,6 +17,8 @@ const EventCostManagement: React.FC<EventCostManagementProps> = ({ user, role })
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
 
   useEffect(() => {
     const q = query(collection(db, 'eventCosts'), orderBy('createdAt', 'desc'));
@@ -29,12 +32,20 @@ const EventCostManagement: React.FC<EventCostManagementProps> = ({ user, role })
   }, []);
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this record?')) return;
+    setItemToDelete(id);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
     try {
-      await deleteDoc(doc(db, 'eventCosts', id));
+      await deleteDoc(doc(db, 'eventCosts', itemToDelete));
       toast.success('Record deleted successfully');
     } catch (error) {
       toast.error('Failed to delete record');
+    } finally {
+      setDeleteConfirmOpen(false);
+      setItemToDelete(null);
     }
   };
 
@@ -144,6 +155,19 @@ const EventCostManagement: React.FC<EventCostManagementProps> = ({ user, role })
       {showAddModal && (
         <EventCostForm onClose={() => setShowAddModal(false)} user={user} />
       )}
+
+      <ConfirmModal
+        isOpen={deleteConfirmOpen}
+        onClose={() => {
+          setDeleteConfirmOpen(false);
+          setItemToDelete(null);
+        }}
+        onConfirm={confirmDelete}
+        title="Delete Cost Record"
+        message="Are you sure you want to delete this record? This action cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   );
 };
