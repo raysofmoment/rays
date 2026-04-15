@@ -120,6 +120,60 @@ async function startServer() {
     }
   });
 
+  app.get("/api/drive/list/:folderId", async (req, res) => {
+    const { folderId } = req.params;
+    let apiKey = (process.env.GOOGLE_DRIVE_API_KEY || process.env.VITE_GOOGLE_DRIVE_API_KEY || "").trim();
+    
+    // Remove potential surrounding quotes
+    if (apiKey.startsWith('"') && apiKey.endsWith('"')) {
+      apiKey = apiKey.substring(1, apiKey.length - 1);
+    }
+    if (apiKey.startsWith("'") && apiKey.endsWith("'")) {
+      apiKey = apiKey.substring(1, apiKey.length - 1);
+    }
+
+    if (!apiKey) {
+      console.error("Drive list error: API Key is missing from environment variables.");
+      return res.status(400).json({ 
+        error: "Google Drive API Key is missing. Please set GOOGLE_DRIVE_API_KEY in your environment variables." 
+      });
+    }
+
+    // Log masked key for debugging
+    console.log(`Attempting Drive list with key prefix: ${apiKey.substring(0, 6)}... (Length: ${apiKey.length})`);
+
+    try {
+      // Use the key explicitly in the drive configuration
+      const drive = google.drive({ version: "v3", auth: apiKey });
+      const response = await drive.files.list({
+        q: `'${folderId}' in parents and trashed = false`,
+        fields: "files(id, name, mimeType, thumbnailLink, webContentLink, webViewLink)",
+        pageSize: 100,
+      });
+
+      res.json(response.data.files || []);
+    } catch (error: any) {
+      console.error("Drive list error details:", error);
+      
+      let message = "Failed to fetch from Drive";
+      if (error.errors && error.errors.length > 0) {
+        message = error.errors[0].message;
+      } else if (error.message) {
+        message = error.message;
+      }
+
+      res.status(error.code || 500).json({ 
+        error: message,
+        debug: {
+          keyPrefix: apiKey.substring(0, 6),
+          keyLength: apiKey.length,
+          folderId: folderId,
+          code: error.code
+        }
+      });
+    }
+  });
+
   app.post("/api/create-checkout-session", async (req, res) => {
     try {
       const { orderId, amount, clientName, clientEmail, type = "order" } = req.body;

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Users, Award, Mail, Phone, MapPin, ArrowRight, Star, Instagram, Twitter, Facebook, Linkedin, MessageCircle, Loader2 } from 'lucide-react';
+import { Users, Award, Mail, Phone, MapPin, ArrowRight, Star, Instagram, Twitter, Facebook, Linkedin, MessageCircle, Loader2, ImageIcon } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { collection, addDoc } from 'firebase/firestore';
@@ -19,6 +19,28 @@ const Home: React.FC = () => {
     subject: 'Wedding Inquiry',
     message: ''
   });
+  const [portfolioItems, setPortfolioItems] = useState<any[]>([]);
+  const [loadingPortfolio, setLoadingPortfolio] = useState(true);
+  const FOLDER_ID = '14s9KpnT6uwVnN-lXrzF7ixn_qq-Wp7OI';
+
+  useEffect(() => {
+    const fetchPortfolio = async () => {
+      try {
+        const response = await fetch(`/api/drive/list/${FOLDER_ID}`);
+        if (response.ok) {
+          const data = await response.json();
+          // Filter for images and take first 3
+          const images = data.filter((f: any) => f.mimeType.startsWith('image/')).slice(0, 3);
+          setPortfolioItems(images);
+        }
+      } catch (error) {
+        console.error('Error fetching portfolio:', error);
+      } finally {
+        setLoadingPortfolio(false);
+      }
+    };
+    fetchPortfolio();
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -123,40 +145,71 @@ const Home: React.FC = () => {
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            {[
-              { url: "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=2070", title: "Weddings", category: "Wedding" },
-              { url: "https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&q=80&w=2069", title: "Events", category: "Event" },
-              { url: "https://images.unsplash.com/photo-1542038784456-1ea8e935640e?auto=format&fit=crop&q=80&w=2070", title: "Portraits", category: "Portrait" }
-            ].map((item, i) => (
-              <motion.div 
-                key={i}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1 }}
-                whileHover={{ scale: 1.02 }}
-                className="relative aspect-[4/5] min-h-[400px] rounded-2xl overflow-hidden shadow-lg group cursor-pointer bg-gray-100"
-              >
-                <Link to={`/gallery?category=${item.category}`}>
-                  <img 
-                    src={item.url} 
-                    alt={item.title} 
-                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
-                    referrerPolicy="no-referrer" 
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = `https://picsum.photos/seed/${item.title}/800/1000`;
-                    }}
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent flex flex-col justify-end p-8">
-                    <h3 className="text-2xl font-bold text-white mb-2">{item.title}</h3>
-                    <div className="flex items-center text-white/80 text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity transform translate-y-4 group-hover:translate-y-0 duration-300">
-                      <span>View Gallery</span>
-                      <ArrowRight className="w-4 h-4 ml-2" />
+            {loadingPortfolio ? (
+              [...Array(3)].map((_, i) => (
+                <div key={i} className="aspect-[4/5] rounded-2xl bg-gray-100 animate-pulse" />
+              ))
+            ) : portfolioItems.length > 0 ? (
+              portfolioItems.map((item, i) => (
+                <motion.div 
+                  key={item.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.1 }}
+                  whileHover={{ scale: 1.02 }}
+                  className="relative aspect-[4/5] min-h-[400px] rounded-2xl overflow-hidden shadow-lg group cursor-pointer bg-gray-100"
+                >
+                  <Link to="/gallery">
+                    <img 
+                      src={item.thumbnailLink?.replace('=s220', '=s800') || item.webViewLink} 
+                      alt={item.name} 
+                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
+                      referrerPolicy="no-referrer" 
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent flex flex-col justify-end p-8">
+                      <h3 className="text-2xl font-bold text-white mb-2 truncate">{item.name}</h3>
+                      <div className="flex items-center text-white/80 text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity transform translate-y-4 group-hover:translate-y-0 duration-300">
+                        <span>View in Gallery</span>
+                        <ArrowRight className="w-4 h-4 ml-2" />
+                      </div>
                     </div>
-                  </div>
-                </Link>
-              </motion.div>
-            ))}
+                  </Link>
+                </motion.div>
+              ))
+            ) : (
+              [
+                { url: "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=2070", title: "Weddings", category: "Wedding" },
+                { url: "https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&q=80&w=2069", title: "Events", category: "Event" },
+                { url: "https://images.unsplash.com/photo-1542038784456-1ea8e935640e?auto=format&fit=crop&q=80&w=2070", title: "Portraits", category: "Portrait" }
+              ].map((item, i) => (
+                <motion.div 
+                  key={i}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.1 }}
+                  whileHover={{ scale: 1.02 }}
+                  className="relative aspect-[4/5] min-h-[400px] rounded-2xl overflow-hidden shadow-lg group cursor-pointer bg-gray-100"
+                >
+                  <Link to={`/gallery?category=${item.category}`}>
+                    <img 
+                      src={item.url} 
+                      alt={item.title} 
+                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
+                      referrerPolicy="no-referrer" 
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent flex flex-col justify-end p-8">
+                      <h3 className="text-2xl font-bold text-white mb-2">{item.title}</h3>
+                      <div className="flex items-center text-white/80 text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity transform translate-y-4 group-hover:translate-y-0 duration-300">
+                        <span>View Gallery</span>
+                        <ArrowRight className="w-4 h-4 ml-2" />
+                      </div>
+                    </div>
+                  </Link>
+                </motion.div>
+              ))
+            )}
           </div>
         </div>
       </section>
