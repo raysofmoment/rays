@@ -29,8 +29,8 @@ const Home: React.FC = () => {
         const response = await fetch(`/api/drive/list/${FOLDER_ID}`);
         if (response.ok) {
           const data = await response.json();
-          // Filter for images and take first 3
-          const images = data.filter((f: any) => f.mimeType.startsWith('image/')).slice(0, 3);
+          // Filter for images and take first 9 for a 3x3 grid
+          const images = data.filter((f: any) => f.mimeType.startsWith('image/')).slice(0, 9);
           setPortfolioItems(images);
         }
       } catch (error) {
@@ -132,46 +132,57 @@ const Home: React.FC = () => {
 
       {/* Portfolio Preview */}
       <section id="portfolio" className="py-24 bg-white">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row md:items-end justify-between mb-16 gap-4">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-4">
             <div>
-              <h2 className="text-4xl font-bold text-gray-900 mb-4">Our Portfolio</h2>
-              <p className="text-gray-500 max-w-2xl">A glimpse into the stories we've told and the moments we've captured across the globe.</p>
+              <h2 className="text-3xl font-bold text-gray-900 mb-2">Our Portfolio</h2>
+              <p className="text-gray-500">A glimpse into our latest captures and visual stories.</p>
             </div>
-            <Link to="/gallery" className="inline-flex items-center text-black font-bold hover:underline group">
-              <span>View All Galleries</span>
-              <ArrowRight className="w-5 h-5 ml-2 transition-transform group-hover:translate-x-2" />
-            </Link>
+            <div className="flex items-center gap-4">
+              <a 
+                href="https://www.instagram.com/rays.of.moment/" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="inline-flex items-center px-4 py-2 bg-blue-500 text-white text-sm font-semibold rounded-lg hover:bg-blue-600 transition-colors"
+              >
+                <Instagram className="w-4 h-4 mr-2" />
+                Follow on Instagram
+              </a>
+              <Link to="/gallery" className="inline-flex items-center text-sm font-bold text-gray-900 hover:underline group">
+                <span>View Gallery</span>
+                <ArrowRight className="w-4 h-4 ml-1 transition-transform group-hover:translate-x-1" />
+              </Link>
+            </div>
           </div>
           
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-3 gap-1 md:gap-4">
             {loadingPortfolio ? (
-              [...Array(3)].map((_, i) => (
-                <div key={i} className="aspect-[4/5] rounded-2xl bg-gray-100 animate-pulse" />
+              [...Array(6)].map((_, i) => (
+                <div key={i} className="aspect-square bg-gray-100 animate-pulse" />
               ))
             ) : portfolioItems.length > 0 ? (
               portfolioItems.map((item, i) => (
                 <motion.div 
                   key={item.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
+                  initial={{ opacity: 0 }}
+                  whileInView={{ opacity: 1 }}
                   viewport={{ once: true }}
-                  transition={{ delay: i * 0.1 }}
-                  whileHover={{ scale: 1.02 }}
-                  className="relative aspect-[4/5] min-h-[400px] rounded-2xl overflow-hidden shadow-lg group cursor-pointer bg-gray-100"
+                  transition={{ delay: i * 0.05 }}
+                  className="relative aspect-square overflow-hidden bg-gray-100 group cursor-pointer"
                 >
                   <Link to="/gallery">
                     <img 
                       src={item.thumbnailLink?.replace('=s220', '=s800') || item.webViewLink} 
                       alt={item.name} 
-                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
+                      className="w-full h-full object-cover" 
                       referrerPolicy="no-referrer" 
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent flex flex-col justify-end p-8">
-                      <h3 className="text-2xl font-bold text-white mb-2 truncate">{item.name}</h3>
-                      <div className="flex items-center text-white/80 text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity transform translate-y-4 group-hover:translate-y-0 duration-300">
-                        <span>View in Gallery</span>
-                        <ArrowRight className="w-4 h-4 ml-2" />
+                    <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <div className="flex items-center gap-4 text-white font-bold text-sm">
+                        <div className="flex items-center gap-1">
+                          <Star className="w-4 h-4 fill-white" />
+                          <span>{Math.floor(Math.random() * 100) + 10}</span>
+                        </div>
                       </div>
                     </div>
                   </Link>
@@ -179,31 +190,34 @@ const Home: React.FC = () => {
               ))
             ) : (
               [
-                { url: "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=2070", title: "Weddings", category: "Wedding" },
-                { url: "https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&q=80&w=2069", title: "Events", category: "Event" },
-                { url: "https://images.unsplash.com/photo-1542038784456-1ea8e935640e?auto=format&fit=crop&q=80&w=2070", title: "Portraits", category: "Portrait" }
-              ].map((item, i) => (
+                "https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=800",
+                "https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&q=80&w=800",
+                "https://images.unsplash.com/photo-1542038784456-1ea8e935640e?auto=format&fit=crop&q=80&w=800",
+                "https://images.unsplash.com/photo-1519225421980-715cb0215aed?auto=format&fit=crop&q=80&w=800",
+                "https://images.unsplash.com/photo-1520856629106-ac9b48af63b2?auto=format&fit=crop&q=80&w=800",
+                "https://images.unsplash.com/photo-1532712938310-34cb3982ef74?auto=format&fit=crop&q=80&w=800"
+              ].map((url, i) => (
                 <motion.div 
                   key={i}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
+                  initial={{ opacity: 0 }}
+                  whileInView={{ opacity: 1 }}
                   viewport={{ once: true }}
-                  transition={{ delay: i * 0.1 }}
-                  whileHover={{ scale: 1.02 }}
-                  className="relative aspect-[4/5] min-h-[400px] rounded-2xl overflow-hidden shadow-lg group cursor-pointer bg-gray-100"
+                  transition={{ delay: i * 0.05 }}
+                  className="relative aspect-square overflow-hidden bg-gray-100 group cursor-pointer"
                 >
-                  <Link to={`/gallery?category=${item.category}`}>
+                  <Link to="/gallery">
                     <img 
-                      src={item.url} 
-                      alt={item.title} 
-                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
+                      src={url} 
+                      alt="Portfolio" 
+                      className="w-full h-full object-cover" 
                       referrerPolicy="no-referrer" 
                     />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent flex flex-col justify-end p-8">
-                      <h3 className="text-2xl font-bold text-white mb-2">{item.title}</h3>
-                      <div className="flex items-center text-white/80 text-sm font-medium opacity-0 group-hover:opacity-100 transition-opacity transform translate-y-4 group-hover:translate-y-0 duration-300">
-                        <span>View Gallery</span>
-                        <ArrowRight className="w-4 h-4 ml-2" />
+                    <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <div className="flex items-center gap-4 text-white font-bold text-sm">
+                        <div className="flex items-center gap-1">
+                          <Star className="w-4 h-4 fill-white" />
+                          <span>{Math.floor(Math.random() * 100) + 10}</span>
+                        </div>
                       </div>
                     </div>
                   </Link>
