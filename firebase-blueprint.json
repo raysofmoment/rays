@@ -445,6 +445,7 @@
         "userName": { "type": "string" },
         "userRole": { "type": "string", "enum": ["admin", "photographer", "editor", "other"] },
         "type": { "type": "string", "enum": ["image", "video", "link"] },
+        "category": { "type": "string", "enum": ["Wedding", "Music", "Kids", "Event", "Other"] },
         "url": { "type": "string" },
         "title": { "type": "string" },
         "description": { "type": "string" },

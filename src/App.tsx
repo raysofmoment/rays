@@ -5,7 +5,7 @@ import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { checkUpcomingEvents } from './services/notificationService';
 import { Toaster } from 'sonner';
-import ErrorBoundary from './components/ErrorBoundary';
+import AppRootErrorBoundary from './components/AppRootErrorBoundary';
 import Navbar from './components/Navbar';
 import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
@@ -113,7 +113,7 @@ export default function App() {
   }
 
   return (
-    <ErrorBoundary>
+    <AppRootErrorBoundary>
       <CartProvider>
         <Router>
           <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -158,6 +158,6 @@ export default function App() {
         </div>
       </Router>
       </CartProvider>
-    </ErrorBoundary>
+    </AppRootErrorBoundary>
   );
 }

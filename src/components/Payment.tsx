@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { collection, query, where, getDocs, doc, updateDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { Search, CreditCard, Loader2, CheckCircle2, AlertCircle, Mail, Phone, User, Calendar, IndianRupee, FileText, Upload, Image as ImageIcon, X, Download, ShieldCheck } from 'lucide-react';
@@ -24,7 +24,21 @@ const Payment: React.FC = () => {
   const [uploading, setUploading] = useState(false);
   const [isCaptchaVerified, setIsCaptchaVerified] = useState(false);
   const [isManualCaptchaVerified, setIsManualCaptchaVerified] = useState(false);
+  const [isDriveConnected, setIsDriveConnected] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const checkDriveStatus = async () => {
+      try {
+        const response = await fetch('/api/auth/google/status');
+        const data = await response.json();
+        setIsDriveConnected(data.connected);
+      } catch (err) {
+        console.error('Error checking Drive status:', err);
+      }
+    };
+    checkDriveStatus();
+  }, []);
 
   const handleFindBooking = async () => {
     if (!searchQuery) {
@@ -100,18 +114,38 @@ const Payment: React.FC = () => {
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 2 * 1024 * 1024) {
-        toast.error('File size must be less than 2MB');
-        return;
+    if (!file) return;
+
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('File size must be less than 2MB');
+      return;
+    }
+
+    setUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('folderId', '10MEuvB7YLVCuqzsAczfckbRUU5ieVUkh');
+
+    try {
+      const response = await fetch('/api/upload-to-drive', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Upload failed');
       }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setManualSlip(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      
+      setManualSlip(data.url);
+      toast.success('Slip uploaded successfully');
+    } catch (err: any) {
+      console.error('Error uploading slip:', err);
+      toast.error(err.message || 'Failed to upload slip');
+    } finally {
+      setUploading(false);
     }
   };
 
@@ -410,13 +444,37 @@ const Payment: React.FC = () => {
                     </div>
                     <div>
                       <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Payment Slip / Screenshot</label>
+                      {!isDriveConnected && (
+                        <div className="mb-4 p-3 bg-yellow-50 border border-yellow-100 rounded-xl flex items-start space-x-3">
+                          <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-xs font-bold text-yellow-800">Google Drive Not Connected</p>
+                            <p className="text-[10px] text-yellow-600 mt-0.5">
+                              Admin needs to connect Google Drive in the Studio Hub for slip uploads to work.
+                            </p>
+                          </div>
+                        </div>
+                      )}
                       <div 
-                        onClick={() => fileInputRef.current?.click()}
-                        className="border-2 border-dashed border-gray-200 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer hover:border-black transition-all bg-gray-50"
+                        onClick={() => !uploading && isDriveConnected && fileInputRef.current?.click()}
+                        className={`border-2 border-dashed border-gray-200 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer hover:border-black transition-all bg-gray-50 ${uploading || !isDriveConnected ? 'opacity-50 cursor-not-allowed' : ''}`}
                       >
-                        {manualSlip ? (
+                        {uploading ? (
+                          <div className="flex flex-col items-center">
+                            <Loader2 className="w-8 h-8 animate-spin text-blue-500 mb-2" />
+                            <p className="text-xs font-bold text-gray-500">Uploading to Drive...</p>
+                          </div>
+                        ) : manualSlip ? (
                           <div className="relative w-full aspect-video">
-                            <img src={manualSlip} alt="Slip" className="w-full h-full object-contain rounded-lg" />
+                            {manualSlip.includes('drive.google.com') ? (
+                              <div className="w-full h-full flex flex-col items-center justify-center bg-blue-50 rounded-lg border border-blue-100">
+                                <ShieldCheck className="w-8 h-8 text-blue-500 mb-2" />
+                                <p className="text-xs font-bold text-blue-700">Slip Uploaded to Drive</p>
+                                <p className="text-[10px] text-blue-500 mt-1 truncate max-w-[200px]">{manualSlip}</p>
+                              </div>
+                            ) : (
+                              <img src={manualSlip} alt="Slip" className="w-full h-full object-contain rounded-lg" />
+                            )}
                             <button 
                               onClick={(e) => { e.stopPropagation(); setManualSlip(null); }}
                               className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-lg"

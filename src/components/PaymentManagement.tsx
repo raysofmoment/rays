@@ -207,6 +207,8 @@ const PaymentManagement: React.FC = () => {
     }
   };
 
+  const [selectedSlip, setSelectedSlip] = useState<string | null>(null);
+
   const filteredPayments = payments.filter(p => filter === 'all' || p.status === filter);
 
   if (loading && payments.length === 0) {
@@ -223,6 +225,15 @@ const PaymentManagement: React.FC = () => {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Payment Management</h1>
           <p className="text-gray-500 mt-1">Review and confirm manual payment submissions from clients.</p>
+          <a 
+            href="https://drive.google.com/drive/folders/10MEuvB7YLVCuqzsAczfckbRUU5ieVUkh" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="inline-flex items-center space-x-2 text-xs font-bold text-blue-600 hover:text-blue-700 mt-2 bg-blue-50 px-3 py-1.5 rounded-lg transition-colors"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            <span>Open Slips Folder in Drive</span>
+          </a>
         </div>
         
         <div className="flex bg-gray-100 p-1 rounded-xl">
@@ -282,15 +293,13 @@ const PaymentManagement: React.FC = () => {
 
                   <div className="flex items-center space-x-4">
                     {payment.slipUrl && (
-                      <a 
-                        href={payment.slipUrl} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
+                      <button 
+                        onClick={() => setSelectedSlip(payment.slipUrl)}
                         className="flex items-center space-x-2 text-sm font-bold text-blue-600 hover:text-blue-700 bg-blue-50 px-4 py-2 rounded-xl transition-colors"
                       >
                         <ExternalLink className="w-4 h-4" />
                         <span>View Slip</span>
-                      </a>
+                      </button>
                     )}
                     
                     {payment.status === 'pending' && (
@@ -324,6 +333,49 @@ const PaymentManagement: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Slip Preview Modal */}
+      {selectedSlip && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[100] backdrop-blur-sm">
+          <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+            <div className="p-4 border-b border-gray-100 flex items-center justify-between bg-white">
+              <h3 className="font-bold text-gray-900">Payment Slip Preview</h3>
+              <div className="flex items-center gap-2">
+                <a 
+                  href={selectedSlip} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                  title="Open in new tab"
+                >
+                  <ExternalLink className="w-5 h-5" />
+                </a>
+                <button 
+                  onClick={() => setSelectedSlip(null)}
+                  className="p-2 text-gray-500 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <XCircle className="w-6 h-6" />
+                </button>
+              </div>
+            </div>
+            <div className="flex-grow overflow-auto bg-gray-100 p-8 flex items-center justify-center">
+              {selectedSlip.includes('drive.google.com') ? (
+                <iframe 
+                  src={selectedSlip.replace('/view', '/preview')} 
+                  className="w-full h-full min-h-[60vh] rounded-lg shadow-lg border-0"
+                  title="Slip Preview"
+                />
+              ) : (
+                <img 
+                  src={selectedSlip} 
+                  alt="Payment Slip" 
+                  className="max-w-full max-h-full object-contain rounded-lg shadow-lg"
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

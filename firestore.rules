@@ -155,9 +155,10 @@ service cloud.firestore {
     }
 
     function isValidSampleWork(data) {
-      return hasOnlyAllowedFields(['id', 'userId', 'userName', 'userRole', 'type', 'url', 'title', 'description', 'createdAt']) &&
+      return hasOnlyAllowedFields(['id', 'userId', 'userName', 'userRole', 'type', 'category', 'url', 'title', 'description', 'createdAt']) &&
              data.userId is string && data.userRole in ['admin', 'photographer', 'editor', 'other'] &&
-             data.type in ['image', 'video', 'link'] && data.url is string;
+             data.type in ['image', 'video', 'link'] && data.url is string &&
+             (!('category' in data) || data.category in ['Videos', 'Wedding', 'Music', 'Kids', 'Event', 'Other']);
     }
 
     // ===============================================================

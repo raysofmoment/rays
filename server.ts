@@ -32,7 +32,11 @@ async function startServer() {
   
   // Request logging middleware
   app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
+    const start = Date.now();
+    res.on('finish', () => {
+      const duration = Date.now() - start;
+      console.log(`${new Date().toISOString()} - ${req.method} ${req.url} - ${res.statusCode} (${duration}ms)`);
+    });
     next();
   });
 
@@ -104,10 +108,16 @@ async function startServer() {
     try {
       oauth2Client.setCredentials(tokens);
       const drive = google.drive({ version: "v3", auth: oauth2Client });
+      const { folderId } = req.body;
 
-      const fileMetadata = {
+      const fileMetadata: any = {
         name: req.file.originalname,
       };
+      
+      if (folderId) {
+        fileMetadata.parents = [folderId];
+      }
+
       const media = {
         mimeType: req.file.mimetype,
         body: Readable.from(req.file.buffer),
