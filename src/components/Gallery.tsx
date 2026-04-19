@@ -7,7 +7,7 @@ import { Camera, Upload, Image as ImageIcon, Download, Share2, ArrowLeft, Trash2
 import { useDropzone } from 'react-dropzone';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
 import ConfirmModal from './ConfirmModal';
@@ -279,42 +279,44 @@ const Gallery: React.FC<GalleryProps> = ({ user, role }) => {
             <ArrowLeft className="w-4 h-4 mr-1" />
             Back to Orders
           </Link>
-          <h1 className="text-4xl font-bold text-gray-900">{gallery.name}</h1>
-          <p className="text-gray-500 mt-1">Created on {format(new Date(gallery.createdAt), 'MMMM d, yyyy')}</p>
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 leading-tight whitespace-normal break-words">{gallery.name}</h1>
+          <p className="text-xs sm:text-sm text-gray-500 mt-1">
+            Created on {gallery.createdAt && isValid(new Date(gallery.createdAt)) ? format(new Date(gallery.createdAt), 'MMMM d, yyyy') : 'No Date'}
+          </p>
         </div>
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap items-center gap-2 md:gap-3">
           {(role === 'admin' || role === 'team') && (
             <button 
               onClick={() => setShowAddPhotoModal(true)}
-              className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-black text-white text-sm font-medium hover:bg-gray-800 transition-colors"
+              className="flex items-center space-x-2 px-3 sm:px-4 py-2 rounded-lg bg-black text-white text-[10px] sm:text-sm font-medium hover:bg-gray-800 transition-colors"
             >
-              <Plus className="w-4 h-4" />
+              <Plus className="w-3 h-3 sm:w-4 sm:h-4" />
               <span>Add Photo</span>
             </button>
           )}
           {!isDriveConnected && (role === 'admin' || role === 'team') && (
             <button 
               onClick={handleConnectDrive}
-              className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
+              className="flex items-center space-x-2 px-3 sm:px-4 py-2 rounded-lg bg-blue-600 text-white text-[10px] sm:text-sm font-medium hover:bg-blue-700 transition-colors"
             >
-              <ExternalLink className="w-4 h-4" />
-              <span>Connect Google Drive</span>
+              <ExternalLink className="w-3 h-3 sm:w-4 sm:h-4" />
+              <span>Connect Drive</span>
             </button>
           )}
           <button 
             onClick={handleShare}
-            className="flex items-center space-x-2 px-4 py-2 rounded-lg border border-gray-200 text-sm font-medium hover:bg-white transition-colors"
+            className="flex items-center space-x-2 px-3 sm:px-4 py-2 rounded-lg border border-gray-200 text-[10px] sm:text-sm font-medium hover:bg-white transition-colors"
           >
-            <Share2 className="w-4 h-4" />
+            <Share2 className="w-3 h-3 sm:w-4 sm:h-4" />
             <span>Share</span>
           </button>
           <button 
             onClick={handleDownloadAll}
             disabled={downloading}
-            className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-black text-white text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center space-x-2 px-3 sm:px-4 py-2 rounded-lg bg-black text-white text-[10px] sm:text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {downloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            <span>{downloading ? 'Zipping...' : 'Download All'}</span>
+            {downloading ? <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" /> : <Download className="w-3 h-3 sm:w-4 sm:h-4" />}
+            <span className="whitespace-nowrap">{downloading ? 'Zipping...' : 'Download'}</span>
           </button>
         </div>
       </header>

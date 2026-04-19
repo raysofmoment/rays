@@ -21,10 +21,13 @@ import {
   DollarSign,
   PieChart,
   Calendar,
-  Camera
+  Camera,
+  Cloud,
+  Loader2
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { motion } from 'motion/react';
 
 // Import existing components to reuse them as "Tabs" or "Views"
 import Dashboard from './Dashboard';
@@ -50,6 +53,8 @@ type ActiveTab = 'overview' | 'projects' | 'team' | 'financials' | 'clients' | '
 
 const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
+  const [isDriveConnected, setIsDriveConnected] = useState(false);
+  const [isConnectingDrive, setIsConnectingDrive] = useState(false);
   const [stats, setStats] = useState({
     totalOrders: 0,
     pendingOrders: 0,
@@ -71,12 +76,12 @@ const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
         const teamSnap = await getDocs(query(collection(db, 'users'), where('role', 'in', ['photographer', 'editor', 'other'])));
         const inquiriesSnap = await getDocs(query(collection(db, 'serviceInquiries')));
 
-        const orders = ordersSnap.docs.map(doc => doc.data());
-        const totalEarnings = orders.reduce((acc, curr) => acc + (curr.paidAmount || 0), 0);
+        const orders = ordersSnap.docs.map(doc => doc.data() || {});
+        const totalEarnings = orders.reduce((acc, curr) => acc + (Number(curr.paidAmount) || 0), 0);
 
         setStats({
           totalOrders: ordersSnap.size,
-          pendingOrders: orders.filter(o => o.status === 'pending').length,
+          pendingOrders: orders.filter(o => o && o.status === 'pending').length,
           totalEarnings,
           activeTeam: teamSnap.size,
           pendingInquiries: inquiriesSnap.size
@@ -90,6 +95,54 @@ const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
 
     fetchStats();
   }, [role]);
+
+  useEffect(() => {
+    const checkDriveStatus = async () => {
+      try {
+        const response = await fetch('/api/auth/google/status');
+        const data = await response.json();
+        setIsDriveConnected(data.connected);
+      } catch (err) {
+        console.error('Error checking Drive status:', err);
+      }
+    };
+    checkDriveStatus();
+
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'GOOGLE_AUTH_SUCCESS') {
+        checkDriveStatus();
+        toast.success('Google Drive connected successfully!');
+        setIsConnectingDrive(false);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  const handleConnectDrive = async () => {
+    setIsConnectingDrive(true);
+    try {
+      const response = await fetch('/api/auth/google/url');
+      const data = await response.json();
+      if (data.url) {
+        const width = 600;
+        const height = 700;
+        const left = window.screenX + (window.outerWidth - width) / 2;
+        const top = window.screenY + (window.outerHeight - height) / 2;
+        
+        window.open(
+          data.url,
+          'google_drive_auth',
+          `width=${width},height=${height},left=${left},top=${top}`
+        );
+      }
+    } catch (error) {
+      console.error('Error connecting to Google Drive:', error);
+      toast.error('Failed to initiate Google Drive connection');
+      setIsConnectingDrive(false);
+    }
+  };
 
   const menuItems = [
     { id: 'overview', label: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'photographer', 'editor', 'other'] },
@@ -156,9 +209,9 @@ const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex">
-      {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-gray-200 flex flex-col sticky top-0 h-screen">
+    <div className="min-h-screen bg-gray-50 flex flex-col lg:flex-row">
+      {/* Sidebar for Desktop */}
+      <aside className="hidden lg:flex w-64 bg-white border-r border-gray-200 flex-col sticky top-0 h-screen">
         <div className="p-6 border-b border-gray-200">
           <div className="flex items-center space-x-3">
             <div className="w-10 h-10 bg-black rounded-xl flex items-center justify-center">
@@ -176,7 +229,7 @@ const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id as ActiveTab)}
-              className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl transition-all ${
+              className={`w-full flex items-center space-x-3 px-4 py-2 rounded-xl transition-all ${
                 activeTab === item.id
                   ? 'bg-black text-white shadow-lg shadow-black/10'
                   : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
@@ -202,9 +255,6 @@ const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
                 <p className="text-[10px] text-gray-500 truncate">{user.email}</p>
               </div>
             </div>
-            <button className="w-full py-2 text-xs font-bold text-gray-600 hover:text-black transition-colors">
-              Hub Settings
-            </button>
           </div>
         </div>
       </aside>
@@ -212,74 +262,113 @@ const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
       {/* Main Content */}
       <main className="flex-grow overflow-y-auto">
         {/* Hub Header */}
-        <header className="bg-white border-b border-gray-200 px-8 py-4 sticky top-0 z-40 flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900 capitalize">{activeTab.replace('-', ' ')}</h1>
-            <p className="text-xs text-gray-500">Manage your studio operations seamlessly.</p>
+        <header className="bg-white border-b border-gray-200 px-4 lg:px-8 py-4 sticky top-0 z-40 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="flex items-center justify-between w-full md:w-auto">
+            <div>
+              <h1 className="text-xl font-bold text-gray-900 capitalize leading-none mb-1">{activeTab.replace('-', ' ')}</h1>
+              <p className="text-[10px] md:text-xs text-gray-500">Manage your studio operations seamlessly.</p>
+            </div>
+            {/* Mobile Stats Toggle or Info could go here */}
           </div>
           
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2 px-3 py-1.5 bg-green-50 text-green-700 rounded-full text-[10px] font-bold uppercase">
+          <div className="flex items-center space-x-2 md:space-x-4 overflow-x-auto no-scrollbar pb-2 md:pb-0">
+            <div className={`flex flex-shrink-0 items-center space-x-2 px-3 py-1.5 ${isDriveConnected ? 'bg-blue-50 text-blue-700' : 'bg-yellow-50 text-yellow-700'} rounded-full text-[10px] font-bold uppercase`}>
+              <Cloud className={`w-3 h-3 ${isDriveConnected ? 'text-blue-500' : 'text-yellow-500'}`} />
+              <span className="whitespace-nowrap">Drive: {isDriveConnected ? 'Connected' : 'Disconnected'}</span>
+            </div>
+            {!isDriveConnected && (
+              <button 
+                onClick={handleConnectDrive}
+                disabled={isConnectingDrive}
+                className="flex-shrink-0 bg-black text-white px-4 py-1.5 rounded-full text-[10px] font-bold uppercase hover:bg-gray-800 transition-all flex items-center space-x-2"
+              >
+                {isConnectingDrive ? <Loader2 className="w-3 h-3 animate-spin" /> : <Cloud className="w-3 h-3" />}
+                <span className="whitespace-nowrap">Connect Drive</span>
+              </button>
+            )}
+            <div className="flex flex-shrink-0 items-center space-x-2 px-3 py-1.5 bg-green-50 text-green-700 rounded-full text-[10px] font-bold uppercase whitespace-nowrap">
               <span className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></span>
               <span>Live System</span>
             </div>
-            <button className="p-2 text-gray-400 hover:text-black transition-colors">
-              <Settings className="w-5 h-5" />
-            </button>
           </div>
         </header>
 
-        <div className="p-8">
+        {/* Mobile Sub-Navigation */}
+        <div className="lg:hidden bg-white border-b border-gray-200 sticky top-[73px] md:top-[65px] z-30 overflow-x-auto no-scrollbar flex items-center px-4 py-2 space-x-2">
+          {filteredMenuItems.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id as ActiveTab)}
+              className={`flex-shrink-0 flex items-center space-x-2 px-4 py-2 rounded-full text-[10px] font-bold uppercase transition-all ${
+                activeTab === item.id
+                  ? 'bg-black text-white shadow-md'
+                  : 'text-gray-500 bg-gray-50 hover:bg-gray-100'
+              }`}
+            >
+              <item.icon className="w-3 h-3" />
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="p-4 md:p-8">
           {/* Quick Stats Row (Only on Overview) */}
           {activeTab === 'overview' && role === 'admin' && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-              <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 mb-8">
+              <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-gray-300 transition-all group">
                 <div className="flex items-center justify-between mb-4">
-                  <div className="p-2 bg-blue-50 rounded-lg">
+                  <div className="p-2 bg-blue-50 rounded-lg group-hover:scale-110 transition-transform">
                     <Briefcase className="w-5 h-5 text-blue-600" />
                   </div>
                   <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">+12%</span>
                 </div>
-                <p className="text-sm text-gray-500">Total Orders</p>
-                <h3 className="text-2xl font-bold text-gray-900">{stats.totalOrders}</h3>
+                <p className="text-sm text-gray-500 font-medium">Total Orders</p>
+                <h3 className="text-2xl font-bold text-gray-900 mt-1">{stats.totalOrders}</h3>
               </div>
               
-              <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+              <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-gray-300 transition-all group">
                 <div className="flex items-center justify-between mb-4">
-                  <div className="p-2 bg-yellow-50 rounded-lg">
+                  <div className="p-2 bg-yellow-50 rounded-lg group-hover:scale-110 transition-transform">
                     <Clock className="w-5 h-5 text-yellow-600" />
                   </div>
                   <span className="text-[10px] font-bold text-yellow-600 bg-yellow-50 px-2 py-0.5 rounded-full">Action</span>
                 </div>
-                <p className="text-sm text-gray-500">Pending Orders</p>
-                <h3 className="text-2xl font-bold text-gray-900">{stats.pendingOrders}</h3>
+                <p className="text-sm text-gray-500 font-medium">Pending Orders</p>
+                <h3 className="text-2xl font-bold text-gray-900 mt-1">{stats.pendingOrders}</h3>
               </div>
-
-              <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+              
+              <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-gray-300 transition-all group">
                 <div className="flex items-center justify-between mb-4">
-                  <div className="p-2 bg-green-50 rounded-lg">
+                  <div className="p-2 bg-green-50 rounded-lg group-hover:scale-110 transition-transform">
                     <DollarSign className="w-5 h-5 text-green-600" />
                   </div>
                   <span className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">Revenue</span>
                 </div>
-                <p className="text-sm text-gray-500">Total Earnings</p>
-                <h3 className="text-2xl font-bold text-gray-900">₹{stats.totalEarnings.toLocaleString()}</h3>
+...
+                <p className="text-sm text-gray-500 font-medium">Total Earnings</p>
+                <h3 className="text-2xl font-bold text-gray-900 mt-1">₹{stats.totalEarnings.toLocaleString()}</h3>
               </div>
-
-              <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
+              <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm hover:shadow-md hover:border-gray-300 transition-all group">
                 <div className="flex items-center justify-between mb-4">
-                  <div className="p-2 bg-purple-50 rounded-lg">
+                  <div className="p-2 bg-purple-50 rounded-lg group-hover:scale-110 transition-transform">
                     <Users className="w-5 h-5 text-purple-600" />
                   </div>
                   <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-2 py-0.5 rounded-full">Team</span>
                 </div>
-                <p className="text-sm text-gray-500">Active Team</p>
-                <h3 className="text-2xl font-bold text-gray-900">{stats.activeTeam}</h3>
+                <p className="text-sm text-gray-500 font-medium">Active Team</p>
+                <h3 className="text-2xl font-bold text-gray-900 mt-1">{stats.activeTeam}</h3>
               </div>
             </div>
           )}
 
-          {renderContent()}
+          <motion.div
+            key={activeTab}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+          >
+            {renderContent()}
+          </motion.div>
         </div>
       </main>
     </div>

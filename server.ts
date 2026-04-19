@@ -10,8 +10,18 @@ import { google } from "googleapis";
 import multer from "multer";
 import cookieSession from "cookie-session";
 import { Readable } from "stream";
+import admin from "firebase-admin";
+import firebaseConfig from "./firebase-applet-config.json" assert { type: "json" };
 
 dotenv.config();
+
+// Initialize Firebase Admin
+if (!admin.apps.length) {
+  admin.initializeApp({
+    projectId: firebaseConfig.projectId,
+  });
+}
+const firestore = admin.firestore();
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_test_placeholder");
 
@@ -70,6 +80,13 @@ async function startServer() {
     try {
       const { tokens } = await oauth2Client.getToken(code as string);
       (req as any).session.tokens = tokens;
+
+      // Persist tokens in Firestore for global access
+      await firestore.collection("settings").doc("google_drive").set({
+        value: tokens,
+        updatedAt: new Date().toISOString()
+      });
+
       res.send(`
         <html>
           <body>
@@ -91,14 +108,43 @@ async function startServer() {
     }
   });
 
-  app.get("/api/auth/google/status", (req, res) => {
-    res.json({ connected: !!(req as any).session?.tokens });
+  app.get("/api/auth/google/status", async (req, res) => {
+    let connected = !!(req as any).session?.tokens;
+    if (!connected) {
+      try {
+        const doc = await firestore.collection("settings").doc("google_drive").get();
+        connected = doc.exists;
+      } catch (err: any) {
+        // If it's a 5 NOT_FOUND (document doesn't exist yet), it's not a real error
+        if (err.code === 5 || err.message?.includes('NOT_FOUND')) {
+          connected = false;
+        } else {
+          console.error("Error checking Drive status in Firestore:", err);
+        }
+      }
+    }
+    res.json({ connected });
   });
 
   app.post("/api/upload-to-drive", upload.single("file"), async (req: any, res) => {
-    const tokens = (req as any).session?.tokens;
+    let tokens = (req as any).session?.tokens;
+
     if (!tokens) {
-      return res.status(401).json({ error: "Not connected to Google Drive" });
+      try {
+        const doc = await firestore.collection("settings").doc("google_drive").get();
+        if (doc.exists) {
+          tokens = doc.data()?.value;
+        }
+      } catch (err: any) {
+        // Silently handle NOT_FOUND, log others
+        if (err.code !== 5 && !err.message?.includes('NOT_FOUND')) {
+          console.error("Error fetching tokens from Firestore:", err);
+        }
+      }
+    }
+
+    if (!tokens) {
+      return res.status(401).json({ error: "Google Drive not connected. Admin must connect Drive in Studio Hub." });
     }
 
     if (!req.file) {
@@ -144,6 +190,8 @@ async function startServer() {
 
   app.get("/api/drive/list/:folderId", async (req, res) => {
     const { folderId } = req.params;
+    console.log(`[Drive] Listing folderContent: ${folderId}`);
+    
     let apiKey = (process.env.GOOGLE_DRIVE_API_KEY || process.env.VITE_GOOGLE_DRIVE_API_KEY || "").trim();
     
     // Remove potential surrounding quotes
@@ -165,6 +213,7 @@ async function startServer() {
     console.log(`Attempting Drive list with key prefix: ${apiKey.substring(0, 6)}... (Length: ${apiKey.length})`);
 
     try {
+      console.log(`[Drive] Using API Key: ${apiKey ? 'Yes' : 'No'}`);
       // Use the key explicitly in the drive configuration
       const drive = google.drive({ version: "v3", auth: apiKey });
       const response = await drive.files.list({
@@ -173,9 +222,10 @@ async function startServer() {
         pageSize: 100,
       });
 
+      console.log(`[Drive] Found ${response.data.files?.length || 0} files`);
       res.json(response.data.files || []);
     } catch (error: any) {
-      console.error("Drive list error details:", error);
+      console.error("[Drive] List error details:", error);
       
       let message = "Failed to fetch from Drive";
       if (error.errors && error.errors.length > 0) {

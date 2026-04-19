@@ -4,6 +4,7 @@ import { collection, query, where, getDocs, doc, updateDoc, arrayUnion, arrayRem
 import { db } from '../firebase';
 import * as faceapi from 'face-api.js';
 import { Camera, Upload, Search, Image as ImageIcon, Loader2, CheckCircle2, AlertCircle, Plus, Trash2, LayoutGrid, UserCircle, Settings } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import BookingForm from './BookingForm';
 
@@ -22,7 +23,14 @@ interface Booking {
   eventType: string;
   faceRecognitionPhotos?: string[];
   googleDriveFolderId?: string;
+  googleDriveFolderUrl?: string;
 }
+
+const extractDriveFolderId = (url: string) => {
+  if (!url) return '';
+  const match = url.match(/folders\/([a-zA-Z0-9-_]+)/) || url.match(/id=([a-zA-Z0-9-_]+)/);
+  return match ? match[1] : url;
+};
 
 const FindMyPhotos: React.FC<FindMyPhotosProps> = ({ user, role }) => {
   const [isAdminView, setIsAdminView] = useState(false);
@@ -40,6 +48,8 @@ const FindMyPhotos: React.FC<FindMyPhotosProps> = ({ user, role }) => {
   const [showBookingForm, setShowBookingForm] = useState(false);
   const [selectedBookingForPhotos, setSelectedBookingForPhotos] = useState<Booking | null>(null);
   const [newPhotoUrl, setNewPhotoUrl] = useState('');
+  const [driveFolderUrl, setDriveFolderUrl] = useState('');
+  const [isUpdatingDrive, setIsUpdatingDrive] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -138,10 +148,33 @@ const FindMyPhotos: React.FC<FindMyPhotosProps> = ({ user, role }) => {
 
       const faceMatcher = new faceapi.FaceMatcher(refDetection);
 
-      // Use uploaded photos if available, otherwise fallback to samples for demo
-      let imageUrls = booking.faceRecognitionPhotos || [];
+      // Use uploaded photos or fetch from Google Drive if link exists
+      let imageUrls = [...(booking.faceRecognitionPhotos || [])];
       
-      if (imageUrls.length === 0 && booking.googleDriveFolderId) {
+      if (booking.googleDriveFolderUrl || booking.googleDriveFolderId) {
+        const folderId = booking.googleDriveFolderId || extractDriveFolderId(booking.googleDriveFolderUrl || '');
+        const apiKey = (import.meta as any).env.VITE_GOOGLE_DRIVE_API_KEY;
+        
+        if (folderId && apiKey) {
+          try {
+            setScanProgress(5); // Initial progress for fetching Drive list
+            const response = await fetch(
+              `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+mimeType+contains+'image/'&key=${apiKey}&fields=files(id,name)`
+            );
+            const data = await response.json();
+            if (data.files) {
+              const driveUrls = data.files.map((file: any) => `https://drive.google.com/uc?export=view&id=${file.id}`);
+              imageUrls = [...imageUrls, ...driveUrls];
+            }
+          } catch (err) {
+            console.error('Error fetching Drive files:', err);
+            toast.error('Failed to access Google Drive folder. Ensure it is public.');
+          }
+        }
+      }
+      
+      // Fallback to samples if nothing found (demo purposes)
+      if (imageUrls.length === 0) {
         imageUrls = [
           'https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&q=80&w=800',
           'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=800',
@@ -149,15 +182,11 @@ const FindMyPhotos: React.FC<FindMyPhotosProps> = ({ user, role }) => {
         ];
       }
 
-      if (imageUrls.length === 0) {
-        toast.info('No photos have been uploaded for this event yet.');
-        setSearching(false);
-        return;
-      }
-
       const matches: string[] = [];
-      for (let i = 0; i < imageUrls.length; i++) {
-        setScanProgress(Math.round(((i + 1) / imageUrls.length) * 100));
+      const totalImages = imageUrls.length;
+      
+      for (let i = 0; i < totalImages; i++) {
+        setScanProgress(Math.round(((i + 1) / totalImages) * 100));
         
         try {
           const img = await faceapi.fetchImage(imageUrls[i]);
@@ -186,6 +215,33 @@ const FindMyPhotos: React.FC<FindMyPhotosProps> = ({ user, role }) => {
       toast.error('An error occurred during face recognition');
     } finally {
       setSearching(false);
+    }
+  };
+
+  const handleUpdateDriveFolder = async (bookingId: string) => {
+    if (!driveFolderUrl.trim()) return;
+    
+    setIsUpdatingDrive(true);
+    try {
+      const folderId = extractDriveFolderId(driveFolderUrl);
+      await updateDoc(doc(db, 'bookings', bookingId), {
+        googleDriveFolderUrl: driveFolderUrl.trim(),
+        googleDriveFolderId: folderId
+      });
+      toast.success('Google Drive folder linked successfully');
+      fetchAllBookings();
+      if (selectedBookingForPhotos) {
+        setSelectedBookingForPhotos(prev => ({ 
+          ...prev!, 
+          googleDriveFolderUrl: driveFolderUrl.trim(),
+          googleDriveFolderId: folderId 
+        }));
+      }
+    } catch (error) {
+      console.error('Error updating drive folder:', error);
+      toast.error('Failed to link Google Drive folder');
+    } finally {
+      setIsUpdatingDrive(false);
     }
   };
 
@@ -271,7 +327,10 @@ const FindMyPhotos: React.FC<FindMyPhotosProps> = ({ user, role }) => {
                     {allBookings.map((b) => (
                       <button
                         key={b.id}
-                        onClick={() => setSelectedBookingForPhotos(b)}
+                        onClick={() => {
+                          setSelectedBookingForPhotos(b);
+                          setDriveFolderUrl(b.googleDriveFolderUrl || '');
+                        }}
                         className={`w-full text-left p-4 hover:bg-gray-50 transition-colors ${selectedBookingForPhotos?.id === b.id ? 'bg-gray-50 border-l-4 border-black' : ''}`}
                       >
                         <div className="font-bold text-gray-900">{b.clientName}</div>
@@ -296,25 +355,50 @@ const FindMyPhotos: React.FC<FindMyPhotosProps> = ({ user, role }) => {
                     <span className="text-sm text-gray-500">{selectedBookingForPhotos.eventDate}</span>
                   </div>
 
-                    <div className="mb-8 p-4 bg-gray-50 rounded-xl">
-                      <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Add Photo URL(s)</label>
-                      <div className="flex space-x-2">
-                        <textarea 
-                          value={newPhotoUrl}
-                          onChange={(e) => setNewPhotoUrl(e.target.value)}
-                          placeholder="https://example.com/photo1.jpg, https://example.com/photo2.jpg"
-                          className="flex-1 px-4 py-2 rounded-lg border border-gray-200 focus:border-black outline-none min-h-[80px]"
-                        />
-                        <button 
-                          onClick={() => handleAddPhoto(selectedBookingForPhotos.id)}
-                          className="px-4 py-2 bg-black text-white rounded-lg font-bold hover:bg-gray-800 transition-colors self-end"
-                        >
-                          Add
-                        </button>
+                    <div className="space-y-6">
+                      <div className="p-4 bg-blue-50 rounded-xl border border-blue-100">
+                        <label className="block text-xs font-bold text-blue-700 uppercase mb-2">Google Drive Folder Link</label>
+                        <div className="flex space-x-2">
+                          <input 
+                            type="text"
+                            value={driveFolderUrl}
+                            onChange={(e) => setDriveFolderUrl(e.target.value)}
+                            placeholder="https://drive.google.com/drive/folders/..."
+                            className="flex-1 px-4 py-2 rounded-lg border border-blue-200 focus:border-blue-500 outline-none"
+                          />
+                          <button 
+                            onClick={() => handleUpdateDriveFolder(selectedBookingForPhotos.id)}
+                            disabled={isUpdatingDrive}
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-colors disabled:opacity-50"
+                          >
+                            {isUpdatingDrive ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Link'}
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-blue-500 mt-2 italic">
+                          Ensure the folder is set to "Anyone with the link can view".
+                        </p>
                       </div>
-                      <p className="text-[10px] text-gray-400 mt-2 italic">
-                        Note: You can paste multiple URLs separated by commas.
-                      </p>
+
+                      <div className="p-4 bg-gray-50 rounded-xl">
+                        <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Manual Photo URL(s)</label>
+                        <div className="flex space-x-2">
+                          <textarea 
+                            value={newPhotoUrl}
+                            onChange={(e) => setNewPhotoUrl(e.target.value)}
+                            placeholder="https://example.com/photo1.jpg, https://example.com/photo2.jpg"
+                            className="flex-1 px-4 py-2 rounded-lg border border-gray-200 focus:border-black outline-none min-h-[80px]"
+                          />
+                          <button 
+                            onClick={() => handleAddPhoto(selectedBookingForPhotos.id)}
+                            className="px-4 py-2 bg-black text-white rounded-lg font-bold hover:bg-gray-800 transition-colors self-end"
+                          >
+                            Add
+                          </button>
+                        </div>
+                        <p className="text-[10px] text-gray-400 mt-2 italic">
+                          Note: You can paste multiple URLs separated by commas.
+                        </p>
+                      </div>
                     </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
@@ -364,24 +448,24 @@ const FindMyPhotos: React.FC<FindMyPhotosProps> = ({ user, role }) => {
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto">
-        <div className="text-center mb-12">
-          <h1 className="text-4xl font-bold text-gray-900 mb-4">Find Your Photos</h1>
-          <p className="text-gray-500">Upload your face and we'll find all your photos from the event.</p>
+        <div className="text-center mb-8 md:mb-12">
+          <h1 className="text-2xl sm:text-4xl font-bold text-gray-900 mb-2 md:mb-4">Find Your Photos</h1>
+          <p className="text-sm sm:text-base text-gray-500">Upload your face and we'll find all your photos from the event.</p>
           {(role === 'admin' || role === 'photographer' || role === 'editor') && (
-            <div className="flex justify-center space-x-4 mt-4">
+            <div className="flex flex-wrap justify-center gap-3 mt-4">
               <button 
                 onClick={() => setIsAdminView(true)}
-                className="px-4 py-2 rounded-xl bg-white text-gray-600 font-bold hover:bg-gray-50 transition-colors flex items-center space-x-2 border border-gray-200"
+                className="px-3 md:px-4 py-2 rounded-xl bg-white text-gray-600 text-xs md:text-sm font-bold hover:bg-gray-50 transition-colors flex items-center space-x-2 border border-gray-200"
               >
-                <Settings className="w-4 h-4" />
+                <Settings className="w-3 h-3 md:w-4 md:h-4" />
                 <span>Admin Panel</span>
               </button>
               <button 
                 onClick={() => setShowBookingForm(true)}
-                className="px-4 py-2 rounded-xl bg-black text-white font-bold hover:bg-gray-800 transition-colors flex items-center space-x-2"
+                className="px-3 md:px-4 py-2 rounded-xl bg-black text-white text-xs md:text-sm font-bold hover:bg-gray-800 transition-colors flex items-center space-x-2"
               >
-                <Plus className="w-4 h-4" />
-                <span>Add New Event</span>
+                <Plus className="w-3 h-3 md:w-4 md:h-4" />
+                <span>Add Event</span>
               </button>
             </div>
           )}
@@ -440,6 +524,14 @@ const FindMyPhotos: React.FC<FindMyPhotosProps> = ({ user, role }) => {
                   {referenceImage ? (
                     <>
                       <img src={referenceImage} alt="Reference" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      {searching && (
+                        <motion.div 
+                          initial={{ top: '0%' }}
+                          animate={{ top: '100%' }}
+                          transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                          className="absolute left-0 right-0 h-1 bg-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.8)] z-10"
+                        />
+                      )}
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-all">
                         <Upload className="w-8 h-8 text-white" />
                       </div>

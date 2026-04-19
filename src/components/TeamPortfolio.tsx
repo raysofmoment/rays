@@ -3,7 +3,7 @@ import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { Video, Image as ImageIcon, Link as LinkIcon, ExternalLink, Search, Filter, User as UserIcon, Camera } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 
 const TeamPortfolio: React.FC = () => {
   const [samples, setSamples] = useState<any[]>([]);
@@ -153,7 +153,7 @@ const TeamPortfolio: React.FC = () => {
                   
                   <div className="flex items-center justify-between pt-6 border-t border-gray-50">
                     <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                      {format(new Date(sample.createdAt), 'MMM d, yyyy')}
+                      {sample.createdAt && isValid(new Date(sample.createdAt)) ? format(new Date(sample.createdAt), 'MMM d, yyyy') : 'No Date'}
                     </span>
                     <a
                       href={sample.url}

@@ -26,31 +26,63 @@ class AppRootErrorBoundary extends Component<Props, State> {
   public render() {
     if (this.state.hasError) {
       let errorMessage = 'Something went wrong.';
+      let technicalDetails = this.state.error?.stack || '';
+      
       try {
         const parsedError = JSON.parse(this.state.error?.message || '{}');
         if (parsedError.error) {
-          errorMessage = `Firestore Error: ${parsedError.error} (Operation: ${parsedError.operationType})`;
+          errorMessage = `Firestore Error: ${parsedError.error}`;
+          technicalDetails = `Operation: ${parsedError.operationType}\nPath: ${parsedError.path}\n\n${technicalDetails}`;
         }
       } catch (e) {
         errorMessage = this.state.error?.message || errorMessage;
       }
 
       return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-          <div className="max-w-md w-full bg-white rounded-xl shadow-lg p-8 text-center border border-red-100">
-            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
+        <div className="min-h-screen bg-[#E4E3E0] text-[#141414] font-mono p-8 selection:bg-[#141414] selection:text-[#E4E3E0]">
+          <div className="max-w-4xl mx-auto border border-[#141414] bg-white shadow-[8px_8px_0px_#141414]">
+            <div className="border-b border-[#141414] p-4 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-3 h-3 bg-red-600 animate-pulse" />
+                <h1 className="font-bold italic tracking-tighter uppercase text-sm">System Halt // Error Detected</h1>
+              </div>
+              <span className="text-[10px] opacity-40">UTC: {new Date().toISOString()}</span>
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">Application Error</h1>
-            <p className="text-gray-600 mb-6">{errorMessage}</p>
-            <button
-              onClick={() => window.location.reload()}
-              className="w-full bg-black text-white py-3 rounded-lg font-medium hover:bg-gray-800 transition-colors"
-            >
-              Reload Application
-            </button>
+
+            <div className="p-8 space-y-8">
+              <div className="space-y-2">
+                <label className="text-[10px] italic opacity-50 uppercase tracking-widest font-serif">Diagnostic Message</label>
+                <p className="text-xl font-bold tracking-tight leading-none text-red-600">{errorMessage}</p>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] italic opacity-50 uppercase tracking-widest font-serif">Technical Stack Trace</label>
+                <div className="bg-[#141414] text-[#E4E3E0] p-6 text-xs overflow-auto max-h-[300px] leading-relaxed opacity-90">
+                  <pre className="whitespace-pre-wrap font-mono">{technicalDetails}</pre>
+                </div>
+              </div>
+
+              <div className="pt-8 border-t border-[#141414] flex flex-col sm:flex-row gap-4">
+                <button
+                  onClick={() => window.location.reload()}
+                  className="bg-[#141414] text-[#E4E3E0] px-8 py-4 font-bold text-sm uppercase tracking-widest hover:bg-white hover:text-[#141414] transition-all border border-transparent hover:border-[#141414]"
+                >
+                  Restart Application
+                </button>
+                <button
+                  onClick={() => window.location.href = '/'}
+                  className="px-8 py-4 font-bold text-sm uppercase tracking-widest border border-[#141414] hover:bg-[#141414] hover:text-[#E4E3E0] transition-all"
+                >
+                  Return to Base
+                </button>
+              </div>
+            </div>
+
+            <div className="border-t border-[#141414] p-4 bg-[#141414]/5">
+              <p className="text-[10px] opacity-40 italic font-serif">
+                If this error persists, please clear your browser cache or contact the system administrator with the stack trace above.
+              </p>
+            </div>
           </div>
         </div>
       );

@@ -1,6 +1,6 @@
 {
   "name": "Rays of Moment",
-  "description": "A comprehensive photography management platform for bookings, team collaboration, and client galleries.",
+  "description": "A dynamic photography management platform with 3D elements for automated workflows, team collaboration, and face-recognition-powered client galleries.",
   "requestFramePermissions": [
     "camera",
     "microphone",

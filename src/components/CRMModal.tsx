@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, orderBy, onSnapshot, addDoc, getDocs } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { X, User, Mail, Phone, MapPin, MessageSquare, History, Plus, Loader2 } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import { toast } from 'sonner';
 
 interface CRMModalProps {
@@ -179,7 +179,9 @@ const CRMModal: React.FC<CRMModalProps> = ({ clientId, onClose, currentUser }) =
                         <div className="flex justify-between items-start mb-2">
                           <div>
                             <p className="font-bold text-gray-900">{order.packageName}</p>
-                            <p className="text-xs text-gray-500">{format(new Date(order.date), 'MMMM d, yyyy')}</p>
+                            <p className="text-xs text-gray-500">
+                              {order.date && isValid(new Date(order.date)) ? format(new Date(order.date), 'MMMM d, yyyy') : 'No Date'}
+                            </p>
                           </div>
                           <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${getStatusColor(order.status)}`}>
                             {order.status}
@@ -228,7 +230,9 @@ const CRMModal: React.FC<CRMModalProps> = ({ clientId, onClose, currentUser }) =
                       <div key={note.id} className="bg-gray-50 rounded-2xl p-4">
                         <div className="flex justify-between items-center mb-2">
                           <span className="text-xs font-bold text-gray-900">{note.authorName}</span>
-                          <span className="text-[10px] text-gray-400">{format(new Date(note.createdAt), 'MMM d, yyyy HH:mm')}</span>
+                          <span className="text-[10px] text-gray-400">
+                            {note.createdAt && isValid(new Date(note.createdAt)) ? format(new Date(note.createdAt), 'MMM d, yyyy HH:mm') : 'No Date'}
+                          </span>
                         </div>
                         <p className="text-sm text-gray-700 leading-relaxed">{note.content}</p>
                       </div>

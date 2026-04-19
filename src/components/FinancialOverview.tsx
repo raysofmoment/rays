@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, getDocs, orderBy } from 'firebase/firestore';
 import { db } from '../firebase';
 import { TrendingUp, TrendingDown, IndianRupee, PieChart, Briefcase, Camera, ShoppingBag, AlertCircle, ArrowUpRight, ArrowDownRight } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, Cell, PieChart as RePieChart, Pie } from 'recharts';
 
 interface FinancialOverviewProps {
@@ -100,7 +100,9 @@ const FinancialOverview: React.FC<FinancialOverviewProps> = ({ userRole }) => {
         // Monthly Data for Chart
         const monthlyMap = new Map();
         confirmedPayments.forEach(p => {
-          const month = format(new Date(p.date), 'MMM yyyy');
+          const dateValue = p.date || p.createdAt;
+          if (!dateValue || !isValid(new Date(dateValue))) return;
+          const month = format(new Date(dateValue), 'MMM yyyy');
           const current = monthlyMap.get(month) || { month, revenue: 0, expenses: 0 };
           current.revenue += p.amount;
           monthlyMap.set(month, current);
@@ -108,7 +110,9 @@ const FinancialOverview: React.FC<FinancialOverviewProps> = ({ userRole }) => {
 
         // Add expenses to monthly map (simplified: using booking date for team/event costs)
         bookings.forEach(b => {
-          const month = format(new Date(b.eventDate), 'MMM yyyy');
+          const dateValue = b.eventDate || b.date || b.createdAt;
+          if (!dateValue || !isValid(new Date(dateValue))) return;
+          const month = format(new Date(dateValue), 'MMM yyyy');
           const current = monthlyMap.get(month) || { month, revenue: 0, expenses: 0 };
           const linkedCosts = eventCosts.find(ec => ec.invoice === b.invoiceNumber);
           const eventCostSum = linkedCosts ? (
@@ -124,7 +128,11 @@ const FinancialOverview: React.FC<FinancialOverviewProps> = ({ userRole }) => {
         });
 
         const monthlyData = Array.from(monthlyMap.values()).sort((a, b) => {
-          return new Date(a.month).getTime() - new Date(b.month).getTime();
+          const dateA = new Date(a.month);
+          const dateB = new Date(b.month);
+          if (isNaN(dateA.getTime())) return 1;
+          if (isNaN(dateB.getTime())) return -1;
+          return dateA.getTime() - dateB.getTime();
         });
 
         setData({
@@ -288,7 +296,9 @@ const FinancialOverview: React.FC<FinancialOverviewProps> = ({ userRole }) => {
                   <td className="px-6 py-4">
                     <div className="flex flex-col">
                       <span className="text-sm font-bold text-gray-900">{project.clientName}</span>
-                      <span className="text-xs text-gray-500">{project.eventType} • {format(new Date(project.date), 'MMM d, yyyy')}</span>
+                      <span className="text-xs text-gray-500">
+                        {project.eventType} • {project.date && isValid(new Date(project.date)) ? format(new Date(project.date), 'MMM d, yyyy') : 'No Date'}
+                      </span>
                     </div>
                   </td>
                   <td className="px-6 py-4 text-sm font-medium text-gray-900">₹{project.revenue.toLocaleString()}</td>
@@ -346,7 +356,10 @@ const FinancialOverview: React.FC<FinancialOverviewProps> = ({ userRole }) => {
                       </div>
                       <div>
                         <p className="text-sm font-bold text-gray-900">{item.name}</p>
-                        <p className="text-xs text-gray-500">{format(new Date(item.purchaseDate), 'MMM d, yyyy')} • {item.quantity ? `Qty: ${item.quantity}` : 'Equipment'}</p>
+                        <p className="text-xs text-gray-500">
+                          {item.purchaseDate && isValid(new Date(item.purchaseDate)) ? format(new Date(item.purchaseDate), 'MMM d, yyyy') : 'No Date'} 
+                          • {item.quantity ? `Qty: ${item.quantity}` : 'Equipment'}
+                        </p>
                       </div>
                     </div>
                     <p className="text-sm font-bold text-gray-900">

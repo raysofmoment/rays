@@ -6,7 +6,7 @@ import { User as UserIcon, Mail, Shield, Calendar, Camera, Save, Loader2, Camera
 import { motion, AnimatePresence } from 'motion/react';
 import { Link } from 'react-router-dom';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import ConfirmModal from './ConfirmModal';
 
 interface ProfileProps {
@@ -697,7 +697,7 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
                         <p className="text-sm text-gray-500 line-clamp-2 mb-4">{sample.description || 'No description provided.'}</p>
                         <div className="flex items-center justify-between pt-4 border-t border-gray-100">
                           <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                            {format(new Date(sample.createdAt), 'MMM d, yyyy')}
+                            {sample.createdAt && isValid(new Date(sample.createdAt)) ? format(new Date(sample.createdAt), 'MMM d, yyyy') : 'No Date'}
                           </span>
                           <a
                             href={sample.url}
@@ -767,7 +767,7 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
                                 #{assignment.invoiceNumber || 'N/A'}
                               </span>
                               <span className="text-gray-400 text-sm font-bold">
-                                {assignment.eventDate ? format(new Date(assignment.eventDate), 'MMM d, yyyy') : 'Date N/A'}
+                                {assignment.eventDate && isValid(new Date(assignment.eventDate)) ? format(new Date(assignment.eventDate), 'MMM d, yyyy') : 'Date N/A'}
                               </span>
                             </div>
                             <div>

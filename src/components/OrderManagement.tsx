@@ -4,7 +4,7 @@ import { collection, query, where, getDocs, addDoc, updateDoc, doc, deleteDoc, o
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { notifyAdmins, notifyUser } from '../services/notificationService';
 import { Calendar, Plus, Search, Filter, MoreVertical, Trash2, Edit2, CreditCard, Image as ImageIcon, User as UserIcon, Eye, Bell, ShoppingCart } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import { toast } from 'sonner';
 import { loadStripe } from '@stripe/stripe-js';
 import CRMModal from './CRMModal';
@@ -385,7 +385,9 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
                   <div className="flex justify-between items-start mb-4">
                     <div>
                       <h3 className="font-bold text-gray-900">{req.eventType}</h3>
-                      <p className="text-xs text-gray-500">{format(new Date(req.eventDate), 'MMM d, yyyy')}</p>
+                      <p className="text-xs text-gray-500">
+                        {req.eventDate && isValid(new Date(req.eventDate)) ? format(new Date(req.eventDate), 'MMM d, yyyy') : 'No Date'}
+                      </p>
                     </div>
                     <span className="px-2 py-1 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-full uppercase">
                       Requested
@@ -419,7 +421,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
                   )}
                   <div className="flex items-center justify-between mt-4">
                     <p className="text-[10px] text-gray-400">
-                      Submitted on {format(new Date(req.createdAt), 'MMM d, h:mm a')}
+                      Submitted on {req.createdAt && isValid(new Date(req.createdAt)) ? format(new Date(req.createdAt), 'MMM d, h:mm a') : 'N/A'}
                     </p>
                     {role === 'admin' && (
                       <div className="flex gap-2">
@@ -479,7 +481,9 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
                       {order.packageName}
                     </button>
                     <p className="text-xs text-gray-500">{order.location}</p>
-                    <p className="text-xs text-gray-400">{format(new Date(order.date), 'MMM d, yyyy')}</p>
+                    <p className="text-xs text-gray-400">
+                      {order.date && isValid(new Date(order.date)) ? format(new Date(order.date), 'MMM d, yyyy') : 'No Date'}
+                    </p>
                     {order.invoiceNumber && (
                       <p className="text-[10px] text-blue-600 font-bold mt-1">INV: {order.invoiceNumber}</p>
                     )}

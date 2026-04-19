@@ -3,7 +3,7 @@ import { collection, query, where, getDocs, doc, updateDoc, getDoc, orderBy, onS
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
 import { CheckCircle2, XCircle, Loader2, Calendar, IndianRupee, User, FileText, ExternalLink, Search, Clock } from 'lucide-react';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 
 interface PaymentRecord {
   id: string;
@@ -277,11 +277,11 @@ const PaymentManagement: React.FC = () => {
                         </div>
                         <div className="flex items-center text-sm text-gray-500">
                           <Calendar className="w-4 h-4 mr-2" />
-                          <span>Paid On: {format(new Date(payment.date), 'MMM d, yyyy')}</span>
+                          <span>Paid On: {payment.date && isValid(new Date(payment.date)) ? format(new Date(payment.date), 'MMM d, yyyy') : 'N/A'}</span>
                         </div>
                         <div className="flex items-center text-sm text-gray-500">
                           <Clock className="w-4 h-4 mr-2" />
-                          <span>Submitted: {format(new Date(payment.createdAt), 'MMM d, HH:mm')}</span>
+                          <span>Submitted: {payment.createdAt && isValid(new Date(payment.createdAt)) ? format(new Date(payment.createdAt), 'MMM d, HH:mm') : 'N/A'}</span>
                         </div>
                         <div className="flex items-center text-sm font-bold text-gray-900">
                           <IndianRupee className="w-4 h-4 mr-1" />

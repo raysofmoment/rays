@@ -238,12 +238,12 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
   return (
     <div className="bg-[#fafafa] min-h-screen pb-12">
       {/* Instagram Profile Header */}
-      <div className="max-w-4xl mx-auto pt-12 px-4 sm:px-6 lg:px-8 mb-12">
-        <div className="flex flex-col md:flex-row items-center md:items-start gap-8 md:gap-16">
+      <div className="max-w-4xl mx-auto pt-8 md:pt-12 px-4 mb-4 md:mb-12">
+        <div className="flex flex-col md:flex-row items-center md:items-start gap-6 md:gap-16">
           {/* Avatar */}
-          <div className="relative">
-            <div className="w-32 h-32 md:w-40 md:h-40 rounded-full p-1 bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600">
-              <div className="w-full h-full rounded-full border-4 border-white overflow-hidden bg-gray-200">
+          <div className="relative flex-shrink-0">
+            <div className="w-24 h-24 sm:w-32 sm:h-32 md:w-40 md:h-40 rounded-full p-1 bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600">
+              <div className="w-full h-full rounded-full border-2 md:border-4 border-white overflow-hidden bg-gray-200">
                 <img 
                   src="https://picsum.photos/seed/photographer/400/400" 
                   alt="Profile" 
@@ -258,22 +258,22 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
                   else setAddType('drive');
                   setShowAddModal(true);
                 }}
-                className="absolute bottom-2 right-2 p-2 bg-blue-500 text-white rounded-full border-2 border-white shadow-lg hover:scale-110 transition-transform"
+                className="absolute bottom-1 right-1 md:bottom-2 md:right-2 p-1.5 md:p-2 bg-blue-500 text-white rounded-full border-2 border-white shadow-lg hover:scale-110 transition-transform"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-3 h-3 md:w-4 md:h-4" />
               </button>
             )}
           </div>
 
           {/* Profile Info */}
           <div className="flex-grow text-center md:text-left">
-            <div className="flex flex-col md:flex-row md:items-center gap-4 mb-6">
-              <h1 className="text-2xl font-light text-gray-900">rays_of_moment</h1>
+            <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-4 mb-4 md:mb-6">
+              <h1 className="text-xl md:text-2xl font-light text-gray-900">rays_of_moment</h1>
               <div className="flex items-center justify-center md:justify-start gap-2">
-                <button className="px-4 py-1.5 bg-blue-500 text-white text-sm font-semibold rounded-lg hover:bg-blue-600 transition-colors">
+                <button className="flex-1 md:flex-none px-4 py-1.5 bg-blue-500 text-white text-sm font-semibold rounded-lg hover:bg-blue-600 transition-colors">
                   Follow
                 </button>
-                <button className="px-4 py-1.5 bg-gray-100 text-gray-900 text-sm font-semibold rounded-lg hover:bg-gray-200 transition-colors">
+                <button className="flex-1 md:flex-none px-4 py-1.5 bg-gray-100 text-gray-900 text-sm font-semibold rounded-lg hover:bg-gray-200 transition-colors">
                   Message
                 </button>
                 <button className="p-1.5 bg-gray-100 text-gray-900 rounded-lg hover:bg-gray-200 transition-colors">
@@ -282,21 +282,30 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
               </div>
             </div>
 
-            <div className="flex items-center justify-center md:justify-start gap-8 mb-6">
-              <div className="text-base"><span className="font-semibold">{driveFiles.length}</span> posts</div>
-              <div className="text-base"><span className="font-semibold">12.4k</span> followers</div>
-              <div className="text-base"><span className="font-semibold">842</span> following</div>
+            <div className="flex items-center justify-center md:justify-start gap-4 sm:gap-8 mb-4 md:mb-6 border-y md:border-none border-gray-100 py-3 md:py-0">
+              <div className="text-sm md:text-base text-center md:text-left">
+                <span className="font-semibold block md:inline">{driveFiles.length}</span> 
+                <span className="text-gray-500 md:text-gray-900"> posts</span>
+              </div>
+              <div className="text-sm md:text-base text-center md:text-left">
+                <span className="font-semibold block md:inline">12.4k</span> 
+                <span className="text-gray-500 md:text-gray-900"> followers</span>
+              </div>
+              <div className="text-sm md:text-base text-center md:text-left">
+                <span className="font-semibold block md:inline">842</span> 
+                <span className="text-gray-500 md:text-gray-900"> following</span>
+              </div>
             </div>
 
-            <div className="max-w-md">
-              <h2 className="font-semibold text-gray-900 mb-1">Rays of Moment Photography</h2>
-              <p className="text-gray-600 text-sm leading-relaxed">
+            <div className="max-w-md mx-auto md:mx-0">
+              <h2 className="font-semibold text-gray-900 text-sm md:text-base mb-1">Rays of Moment Photography</h2>
+              <p className="text-gray-600 text-xs md:text-sm leading-relaxed px-4 md:px-0">
                 📸 Capturing moments that last forever<br />
                 🌍 Travel | Wedding | Portrait<br />
                 📍 Based in Murshidabad, West Bengal<br />
                 ✨ Open for bookings worldwide
               </p>
-              <a href="https://raysofmoment.com" className="text-blue-900 text-sm font-semibold mt-2 block hover:underline">
+              <a href="https://raysofmoment.com" className="text-blue-900 text-xs md:text-sm font-semibold mt-2 block hover:underline">
                 raysofmoment.com
               </a>
             </div>

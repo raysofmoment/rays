@@ -93,6 +93,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
     vlogStatus: 'pending',
     outputLink: '',
     googleDriveFolderId: '',
+    googleDriveFolderUrl: '',
     rawFileLink: '',
     priority: 'medium' as 'low' | 'medium' | 'high' | 'urgent',
   });
@@ -611,9 +612,20 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
                   ))}
                 </select>
               </div>
-              <div className="md:col-span-2 space-y-1">
+              <div className="md:col-span-1 space-y-1">
+                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Google Drive Folder Link</label>
+                <input 
+                  type="text" 
+                  name="googleDriveFolderUrl" 
+                  value={formData.googleDriveFolderUrl || ''} 
+                  onChange={handleChange} 
+                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none" 
+                  placeholder="https://drive.google.com/..." 
+                />
+              </div>
+              <div className="md:col-span-1 space-y-1">
                 <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Google Drive Folder ID</label>
-                <input type="text" name="googleDriveFolderId" value={formData.googleDriveFolderId} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none" placeholder="For Face Recognition integration" />
+                <input type="text" name="googleDriveFolderId" value={formData.googleDriveFolderId} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none" placeholder="Auto-fills from link" />
               </div>
             </div>
 

@@ -3,7 +3,7 @@ import { User } from 'firebase/auth';
 import { collection, query, orderBy, onSnapshot, deleteDoc, doc, updateDoc, addDoc, where, getDocs, writeBatch } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { Plus, Search, Filter, MoreVertical, Trash2, Edit2, ExternalLink, CheckCircle2, Clock, AlertCircle, TrendingUp, IndianRupee, Calendar as CalendarIcon, PieChart, Image as ImageIcon, ScanFace } from 'lucide-react';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
 import BookingForm from './BookingForm';
@@ -328,7 +328,9 @@ const BookingManagement: React.FC<BookingManagementProps> = ({ user, role }) => 
                   <td className="px-6 py-4">
                     <div className="flex flex-col">
                       <span className="text-sm font-bold text-gray-900">{booking.clientName}</span>
-                      <span className="text-xs text-gray-500">{booking.eventType} • {format(new Date(booking.eventDate), 'MMM d, yyyy')}</span>
+                      <span className="text-xs text-gray-500">
+                        {booking.eventType} • {booking.eventDate && isValid(new Date(booking.eventDate)) ? format(new Date(booking.eventDate), 'MMM d, yyyy') : 'No Date'}
+                      </span>
                       <span className="text-xs text-gray-400 mt-1">{booking.eventPlace}</span>
                       {booking.invoiceNumber && (
                         <span className="text-[10px] text-blue-600 font-bold mt-1">INV: {booking.invoiceNumber}</span>

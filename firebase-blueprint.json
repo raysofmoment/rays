@@ -424,6 +424,17 @@
       },
       "required": ["title", "content", "authorId", "createdAt"]
     },
+    "Setting": {
+      "title": "Setting",
+      "description": "Global application setting",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "value": { "type": "object" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["value", "updatedAt"]
+    },
     "ReminderSent": {
       "title": "Reminder Sent",
       "description": "Tracking for sent event reminders",
@@ -522,6 +533,10 @@
     "/blogPosts/{postId}": {
       "schema": "BlogPost",
       "description": "Blog posts"
+    },
+    "/settings/{settingId}": {
+      "schema": "Setting",
+      "description": "Global settings"
     },
     "/reminders_sent/{reminderId}": {
       "schema": "ReminderSent",

@@ -341,6 +341,10 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && (isAdmin() || isOwner(resource.data.userId));
     }
 
+    match /settings/{settingId} {
+      allow read, write: if isAdmin();
+    }
+
     match /{path=**} {
       allow read, write: if false;
     }

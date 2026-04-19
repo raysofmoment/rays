@@ -6,7 +6,7 @@ import { db, handleFirestoreError, OperationType } from '../firebase';
 import { FileText, Plus, Trash2, Edit, Check, X, Calendar, User as UserIcon, Image as ImageIcon, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 import ConfirmModal from './ConfirmModal';
 
 interface BlogProps {
@@ -204,7 +204,7 @@ const Blog: React.FC<BlogProps> = ({ user, role }) => {
               <div className="flex items-center space-x-4 text-xs font-bold text-gray-400 uppercase tracking-widest mb-4">
                 <span className="flex items-center">
                   <Calendar className="w-3 h-3 mr-1" />
-                  {format(new Date(post.createdAt), 'MMM d, yyyy')}
+                  {post.createdAt && isValid(new Date(post.createdAt)) ? format(new Date(post.createdAt), 'MMM d, yyyy') : 'No Date'}
                 </span>
                 <span className="flex items-center">
                   <UserIcon className="w-3 h-3 mr-1" />

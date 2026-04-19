@@ -9,6 +9,8 @@ import { notifyAdmins } from '../services/notificationService';
 import Logo from './Logo';
 import Captcha from './Captcha';
 
+import ThreeDScene from './ThreeDScene';
+
 const Home: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCaptchaVerified, setIsCaptchaVerified] = useState(false);
@@ -90,49 +92,65 @@ const Home: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col overflow-x-hidden">
       {/* Hero Section */}
-      <section className="relative h-[90vh] flex items-center justify-center overflow-hidden">
-        <div className="absolute inset-0 z-0">
-          <img
-            src="https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?auto=format&fit=crop&q=80&w=2071"
-            alt="Hero Background"
-            className="w-full h-full object-cover"
-            referrerPolicy="no-referrer"
-          />
-          <div className="absolute inset-0 bg-black/50" />
-        </div>
+      <section className="relative h-screen flex items-center justify-center overflow-hidden bg-black">
+        <ThreeDScene />
         
-        <div className="relative z-10 text-center px-4 max-w-4xl mx-auto">
-          <motion.h1 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="text-5xl md:text-7xl font-bold text-white mb-6 tracking-tight"
+        <div className="relative z-10 text-center px-4 max-w-6xl mx-auto flex flex-col items-center">
+          <div className="mb-4">
+             <motion.span 
+               initial={{ opacity: 0, letterSpacing: '0.2em' }}
+               animate={{ opacity: 0.6, letterSpacing: '0.4em' }}
+               transition={{ duration: 1 }}
+               className="text-[10px] text-white uppercase font-black"
+             >
+               Est. 2019 • Luxury Storytelling
+             </motion.span>
+          </div>
+
+          <motion.div
+            initial={{ opacity: 0, scale: 0.9, rotateX: 20 }}
+            animate={{ opacity: 1, scale: 1, rotateX: 0 }}
+            transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
+            className="flex flex-col items-center"
           >
-            Capturing Moments, <br />
-            <span className="text-gray-300">Preserving Memories.</span>
-          </motion.h1>
-          <motion.p 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="text-xl text-gray-200 mb-8 max-w-2xl mx-auto"
-          >
-            Rays of Moment is a premier photography studio dedicated to telling your unique story through stunning visual narratives.
-          </motion.p>
+            <h1 className="text-[14vw] sm:text-[12vw] md:text-[10vw] font-black text-white leading-[0.9] tracking-tighter uppercase text-center select-none mix-blend-difference drop-shadow-2xl">
+              Capturing <br />
+              <span className="text-transparent border-text-white" style={{ WebkitTextStroke: '1px rgba(255,255,255,0.5)' }}>
+                Deep Moments
+              </span>
+            </h1>
+            
+            <motion.p 
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.6, duration: 0.8 }}
+              className="text-gray-400 mt-6 md:mt-8 mb-10 md:mb-12 max-w-xl text-base md:text-lg font-medium leading-relaxed"
+            >
+              Rays of Moment is a high-end photography studio focused on the art of visual preservation.
+            </motion.p>
+          </motion.div>
+
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-            className="flex flex-col sm:flex-row items-center justify-center gap-4"
+            transition={{ delay: 1, duration: 0.8 }}
+            className="flex flex-col sm:flex-row items-center justify-center gap-4 md:gap-6 w-full max-w-sm sm:max-w-none"
           >
-            <Link to="/auth" className="w-full sm:w-auto bg-white text-black px-8 py-4 rounded-full font-bold hover:bg-gray-200 transition-all">
-              Get Started
+            <Link to="/auth" className="w-full sm:w-auto text-center group relative overflow-hidden bg-white text-black px-8 md:px-12 py-4 md:py-5 rounded-full font-black text-[10px] md:text-xs uppercase tracking-widest transition-all hover:scale-105 active:scale-95 shadow-2xl">
+              <span className="relative z-10">Start Session</span>
+              <div className="absolute inset-0 bg-gray-200 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
             </Link>
-            <Link to="/packages" className="w-full sm:w-auto border-2 border-white text-white px-8 py-4 rounded-full font-bold hover:bg-white hover:text-black transition-all">
-              View Packages
+            <Link to="/packages" className="w-full sm:w-auto text-center group px-8 md:px-12 py-4 md:py-5 rounded-full font-black text-[10px] md:text-xs uppercase tracking-widest text-white border border-white/20 hover:border-white transition-all backdrop-blur-sm">
+              Explore Collections
             </Link>
           </motion.div>
+
+          <div className="absolute bottom-12 left-1/2 -translate-x-1/2 flex flex-col items-center space-y-4">
+             <div className="w-[1px] h-12 bg-gradient-to-b from-white to-transparent animate-pulse" />
+             <span className="text-[10px] text-gray-500 uppercase tracking-widest font-black">Scroll</span>
+          </div>
         </div>
       </section>
 
@@ -161,7 +179,7 @@ const Home: React.FC = () => {
             </div>
           </div>
           
-          <div className="grid grid-cols-3 gap-1 md:gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 md:grid-cols-3 md:gap-4">
             {loadingPortfolio ? (
               [...Array(6)].map((_, i) => (
                 <div key={i} className="aspect-square bg-gray-100 animate-pulse" />

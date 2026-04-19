@@ -5,7 +5,7 @@ import { db } from '../firebase';
 import { Calendar, Clock, CheckCircle, AlertCircle, TrendingUp, Users, Camera, Image as ImageIcon, MessageSquare, User as UserIcon } from 'lucide-react';
 import Logo from './Logo';
 import { Link } from 'react-router-dom';
-import { format } from 'date-fns';
+import { format, isValid } from 'date-fns';
 
 interface DashboardProps {
   user: User;
@@ -150,8 +150,8 @@ const Dashboard: React.FC<DashboardProps> = ({ user, role }) => {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       <header className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Welcome back, {user.displayName || 'Creator'}</h1>
-        <p className="text-gray-500 mt-1">Here's what's happening with your photography business today.</p>
+        <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Welcome back, {user.displayName || 'Creator'}</h1>
+        <p className="text-sm text-gray-500 mt-1">Here's what's happening with your photography business today.</p>
       </header>
 
       {role === 'client' && pendingInfoBookings.length > 0 && (
@@ -210,7 +210,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, role }) => {
                           </div>
                           <div>
                             <p className="text-sm font-bold text-gray-900">{order.packageName}</p>
-                            <p className="text-xs text-gray-500">{order.clientName} • {format(new Date(order.date), 'MMM d, yyyy')}</p>
+                            <p className="text-xs text-gray-500">
+                              {order.clientName} • {order.date && isValid(new Date(order.date)) ? format(new Date(order.date), 'MMM d, yyyy') : 'No Date'}
+                            </p>
                           </div>
                         </div>
                         <div className="flex items-center space-x-4">
@@ -246,7 +248,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, role }) => {
                           </div>
                           <div>
                             <p className="text-sm font-bold text-gray-900">{booking.clientName} - {booking.eventType}</p>
-                            <p className="text-xs text-gray-500">{booking.location} • {format(new Date(booking.date), 'MMM d, yyyy')}</p>
+                            <p className="text-xs text-gray-500">
+                              {booking.location} • {booking.date && isValid(new Date(booking.date)) ? format(new Date(booking.date), 'MMM d, yyyy') : 'No Date'}
+                            </p>
                           </div>
                         </div>
                         <div className="flex items-center space-x-4 text-right">
@@ -311,23 +315,23 @@ const Dashboard: React.FC<DashboardProps> = ({ user, role }) => {
 };
 
 const StatCard = ({ title, value, icon, color }: any) => (
-  <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 flex items-center space-x-4">
-    <div className={`w-12 h-12 ${color} rounded-xl flex items-center justify-center`}>
+  <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 flex items-center space-x-4 hover:shadow-md hover:border-gray-300 transition-all group">
+    <div className={`w-12 h-12 ${color} rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform`}>
       {icon}
     </div>
     <div>
       <p className="text-sm font-medium text-gray-500">{title}</p>
-      <p className="text-2xl font-bold text-gray-900">{value}</p>
+      <p className="text-2xl font-black text-gray-900 mt-0.5">{value}</p>
     </div>
   </div>
 );
 
 const QuickAction = ({ icon, label, to }: any) => (
-  <Link to={to} className="flex flex-col items-center justify-center p-4 rounded-xl border border-gray-100 hover:border-black hover:bg-gray-50 transition-all group">
-    <div className="w-10 h-10 bg-gray-50 rounded-lg flex items-center justify-center mb-2 group-hover:bg-black group-hover:text-white transition-colors">
+  <Link to={to} className="flex flex-col items-center justify-center p-3 sm:p-4 rounded-xl border border-gray-100 hover:border-black hover:bg-gray-50 transition-all group">
+    <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gray-50 rounded-lg flex items-center justify-center mb-2 group-hover:bg-black group-hover:text-white transition-colors">
       {icon}
     </div>
-    <span className="text-xs font-medium text-gray-600 group-hover:text-black">{label}</span>
+    <span className="text-[10px] sm:text-xs font-medium text-gray-600 group-hover:text-black">{label}</span>
   </Link>
 );
 

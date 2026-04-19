@@ -5,6 +5,8 @@ import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { Mail, Lock, User, Github } from 'lucide-react';
 import Logo from './Logo';
 import { toast } from 'sonner';
+import { motion, AnimatePresence } from 'motion/react';
+import ThreeDScene from './ThreeDScene';
 
 const Auth: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
@@ -56,30 +58,50 @@ const Auth: React.FC = () => {
   };
 
   return (
-    <div className="min-h-[calc(100vh-64px)] flex items-center justify-center bg-gray-50 p-4">
-      <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
+    <div className="relative min-h-[calc(100vh-64px)] flex items-center justify-center overflow-hidden bg-black p-4">
+      <div className="absolute inset-0 z-0">
+        <ThreeDScene />
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" />
+      </div>
+
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="relative z-10 max-w-md w-full bg-white/95 backdrop-blur-xl rounded-3xl shadow-2xl p-8 border border-white/20"
+      >
         <div className="text-center mb-8">
-          <div className="w-20 h-20 bg-black rounded-2xl flex items-center justify-center mx-auto mb-4">
+          <motion.div 
+            initial={{ scale: 0.8 }}
+            animate={{ scale: 1 }}
+            className="w-20 h-20 bg-black rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl"
+          >
             <Logo className="w-16 h-16" light />
-          </div>
+          </motion.div>
           <h1 className="text-3xl font-bold text-gray-900">Rays of Moment</h1>
           <p className="text-gray-500 mt-2">{isLogin ? 'Welcome back to your creative space' : 'Start your photography journey with us'}</p>
         </div>
 
         <form onSubmit={handleEmailAuth} className="space-y-4">
-          {!isLogin && (
-            <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Full Name"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all"
-                required
-              />
-            </div>
-          )}
+          <AnimatePresence mode="wait">
+            {!isLogin && (
+              <motion.div 
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="relative"
+              >
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Full Name"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all bg-white/50"
+                  required
+                />
+              </motion.div>
+            )}
+          </AnimatePresence>
           <div className="relative">
             <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
@@ -87,7 +109,7 @@ const Auth: React.FC = () => {
               placeholder="Email Address"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all"
+              className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all bg-white/50"
               required
             />
           </div>
@@ -98,14 +120,14 @@ const Auth: React.FC = () => {
               placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all"
+              className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all bg-white/50"
               required
             />
           </div>
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-black text-white py-3 rounded-xl font-semibold hover:bg-gray-800 transition-colors disabled:opacity-50"
+            className="w-full bg-black text-white py-3 rounded-xl font-semibold hover:bg-gray-800 transition-all active:scale-95 disabled:opacity-50 shadow-lg shadow-black/20"
           >
             {loading ? 'Processing...' : (isLogin ? 'Sign In' : 'Create Account')}
           </button>
@@ -122,7 +144,7 @@ const Auth: React.FC = () => {
 
         <button
           onClick={handleGoogleSignIn}
-          className="w-full flex items-center justify-center space-x-2 border border-gray-200 py-3 rounded-xl hover:bg-gray-50 transition-colors"
+          className="w-full flex items-center justify-center space-x-2 border border-gray-200 py-3 rounded-xl hover:bg-gray-50 transition-all active:scale-95 bg-white/50"
         >
           <svg className="w-5 h-5" viewBox="0 0 24 24">
             <path
@@ -154,7 +176,7 @@ const Auth: React.FC = () => {
             {isLogin ? 'Sign Up' : 'Sign In'}
           </button>
         </p>
-      </div>
+      </motion.div>
     </div>
   );
 };
