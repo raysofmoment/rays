@@ -3,6 +3,8 @@ import { Bell, Check, Info, AlertCircle, CheckCircle, XCircle, X } from 'lucide-
 import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, Timestamp, writeBatch } from 'firebase/firestore';
 import { db } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
+import { useNavigate } from 'react-router-dom';
+import { formatDistanceToNow } from 'date-fns';
 
 interface Notification {
   id: string;
@@ -23,7 +25,14 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ userId }) => {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isAllModalOpen, setIsAllModalOpen] = useState(false);
+  const [now, setNow] = useState(new Date());
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60000); // Update every minute
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (!userId) return;
@@ -69,15 +78,30 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ userId }) => {
   };
 
   const handleNotificationClick = async (notification: Notification) => {
+    setIsOpen(false);
+    setIsAllModalOpen(false);
+
     if (!notification.isRead) {
       await markAsRead(notification.id);
     }
     
     if (notification.link) {
-      window.location.href = notification.link;
+      if (notification.link.startsWith('http')) {
+        window.open(notification.link, '_blank');
+      } else {
+        navigate(notification.link);
+      }
     }
-    setIsOpen(false);
-    setIsAllModalOpen(false);
+  };
+
+  const getRelativeTime = (createdAt: any) => {
+    if (!createdAt) return 'Just now';
+    try {
+      const date = createdAt.toDate ? createdAt.toDate() : new Date(createdAt);
+      return formatDistanceToNow(date, { addSuffix: true });
+    } catch {
+      return 'Just now';
+    }
   };
 
   const markAllAsRead = async () => {
@@ -157,9 +181,7 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ userId }) => {
                               {notification.title}
                             </p>
                             <span className="text-[10px] text-gray-400 whitespace-nowrap">
-                              {notification.createdAt?.toDate ? 
-                                new Date(notification.createdAt.toDate()).toLocaleDateString() : 
-                                'Just now'}
+                              {getRelativeTime(notification.createdAt)}
                             </span>
                           </div>
                           <p className="text-xs text-gray-500 mt-1 line-clamp-2 leading-relaxed">
@@ -255,9 +277,7 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ userId }) => {
                               {notification.title}
                             </h4>
                             <span className="text-xs text-gray-400">
-                              {notification.createdAt?.toDate ? 
-                                new Date(notification.createdAt.toDate()).toLocaleString() : 
-                                'Just now'}
+                              {getRelativeTime(notification.createdAt)}
                             </span>
                           </div>
                           <p className="text-sm text-gray-600 leading-relaxed">

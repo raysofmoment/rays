@@ -22,6 +22,7 @@ import {
   PieChart,
   Calendar,
   Camera,
+  Image as ImageIcon,
   Cloud,
   Loader2
 } from 'lucide-react';
@@ -43,13 +44,14 @@ import CRMModal from './CRMModal';
 import BookingManagement from './BookingManagement';
 import ProjectOverview from './ProjectOverview';
 import TeamPortfolio from './TeamPortfolio';
+import PhotoSelection from './PhotoSelection';
 
 interface StudioHubProps {
   user: User;
   role: string | null;
 }
 
-type ActiveTab = 'overview' | 'projects' | 'team' | 'financials' | 'clients' | 'wip' | 'inquiries' | 'project-overview' | 'portfolio';
+type ActiveTab = 'overview' | 'projects' | 'team' | 'financials' | 'clients' | 'wip' | 'inquiries' | 'project-overview' | 'portfolio' | 'selection';
 
 const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
@@ -99,8 +101,27 @@ const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
   useEffect(() => {
     const checkDriveStatus = async () => {
       try {
-        const response = await fetch('/api/auth/google/status');
+        const response = await fetch(`${window.location.origin}/api/auth/google/status`);
         const data = await response.json();
+        
+        if (!data.connected && role === 'admin') {
+          // Sync tokens from Firestore if they exist
+          const { doc, getDoc } = await import('firebase/firestore');
+          const docRef = doc(db, 'settings', 'google_drive');
+          const docSnap = await getDoc(docRef);
+          
+          if (docSnap.exists()) {
+            const tokens = docSnap.data().value;
+            await fetch(`${window.location.origin}/api/auth/google/sync`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ tokens })
+            });
+            setIsDriveConnected(true);
+            return;
+          }
+        }
+        
         setIsDriveConnected(data.connected);
       } catch (err) {
         console.error('Error checking Drive status:', err);
@@ -108,8 +129,15 @@ const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
     };
     checkDriveStatus();
 
-    const handleMessage = (event: MessageEvent) => {
+    const handleMessage = async (event: MessageEvent) => {
       if (event.data?.type === 'GOOGLE_AUTH_SUCCESS') {
+        if (event.data.tokens && role === 'admin') {
+          const { doc, setDoc } = await import('firebase/firestore');
+          await setDoc(doc(db, 'settings', 'google_drive'), {
+            value: event.data.tokens,
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
+        }
         checkDriveStatus();
         toast.success('Google Drive connected successfully!');
         setIsConnectingDrive(false);
@@ -123,7 +151,11 @@ const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
   const handleConnectDrive = async () => {
     setIsConnectingDrive(true);
     try {
-      const response = await fetch('/api/auth/google/url');
+      const response = await fetch(`${window.location.origin}/api/auth/google/url`);
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'Failed to get auth URL');
+      }
       const data = await response.json();
       if (data.url) {
         const width = 600;
@@ -131,15 +163,20 @@ const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
         const left = window.screenX + (window.outerWidth - width) / 2;
         const top = window.screenY + (window.outerHeight - height) / 2;
         
-        window.open(
+        const popup = window.open(
           data.url,
           'google_drive_auth',
           `width=${width},height=${height},left=${left},top=${top}`
         );
+
+        if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+          toast.error('Popup blocked. Please allow popups for this site.');
+          setIsConnectingDrive(false);
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error connecting to Google Drive:', error);
-      toast.error('Failed to initiate Google Drive connection');
+      toast.error(error.message || 'Failed to initiate Google Drive connection');
       setIsConnectingDrive(false);
     }
   };
@@ -150,6 +187,7 @@ const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
     { id: 'project-overview', label: 'Project Status', icon: TrendingUp, roles: ['admin', 'editor'] },
     { id: 'wip', label: 'Work in Progress', icon: Clock, roles: ['admin', 'photographer', 'editor', 'other'] },
     { id: 'portfolio', label: 'Team Portfolio', icon: Camera, roles: ['admin', 'photographer', 'editor', 'other'] },
+    { id: 'selection', label: 'Photo Selection', icon: ImageIcon, roles: ['admin', 'photographer', 'editor'] },
     { id: 'financials', label: 'Payments & Costs', icon: CreditCard, roles: ['admin'] },
     { id: 'team', label: 'Team & Employees', icon: Users, roles: ['admin'] },
     { id: 'clients', label: 'Client CRM', icon: UserSquare2, roles: ['admin'] },
@@ -203,6 +241,8 @@ const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
         return <InquiryManagement />;
       case 'portfolio':
         return <TeamPortfolio />;
+      case 'selection':
+        return <PhotoSelection user={user} role={role} />;
       default:
         return <Dashboard user={user} role={role} />;
     }
@@ -344,7 +384,6 @@ const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
                   </div>
                   <span className="text-[10px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">Revenue</span>
                 </div>
-...
                 <p className="text-sm text-gray-500 font-medium">Total Earnings</p>
                 <h3 className="text-2xl font-bold text-gray-900 mt-1">₹{stats.totalEarnings.toLocaleString()}</h3>
               </div>

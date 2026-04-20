@@ -27,6 +27,7 @@ import FinancialOverview from './components/FinancialOverview';
 import InquiryManagement from './components/InquiryManagement';
 import Profile from './components/Profile';
 import TeamPortfolio from './components/TeamPortfolio';
+import PhotoSelection from './components/PhotoSelection';
 import Cart from './components/Cart';
 import Checkout from './components/Checkout';
 import { CartProvider } from './context/CartContext';
@@ -135,7 +136,9 @@ export default function App() {
               <Route path="/bookings" element={user && (role === 'admin' || role === 'photographer' || role === 'editor') ? <BookingManagement user={user} role={role} /> : <Navigate to="/auth" />} />
               <Route path="/wip" element={user && (role === 'admin' || role === 'photographer' || role === 'editor') ? <WorkInProgress user={user} role={role} /> : <Navigate to="/auth" />} />
               <Route path="/find-my-photos" element={<FindMyPhotos user={user} role={role} />} />
-              <Route path="/payment" element={<Payment />} />
+              <Route path="/photo-selection" element={<PhotoSelection user={user} role={role} />} />
+              <Route path="/photo-selection/:bookingId" element={<PhotoSelection user={user} role={role} />} />
+              <Route path="/payment" element={<Payment user={user} role={role} />} />
               <Route path="/payment-management" element={user && role === 'admin' ? <PaymentManagement /> : <Navigate to="/auth" />} />
               <Route path="/financial-overview" element={user && role === 'admin' ? <FinancialOverview userRole={role} /> : <Navigate to="/auth" />} />
               <Route path="/event-costs" element={user && (role === 'admin' || role === 'photographer' || role === 'editor') ? <EventCostManagement user={user} role={role} /> : <Navigate to="/auth" />} />

@@ -1,10 +1,10 @@
-import React, { useRef, useMemo } from 'react';
+import React, { useRef, useMemo, Suspense } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Points, PointMaterial, Float } from '@react-three/drei';
 import * as THREE from 'three';
 
 const ParticleField = () => {
-  const ref = useRef<any>(null);
+  const ref = useRef<THREE.Points>(null);
   
   const sphere = useMemo(() => {
     const points = new Float32Array(5000 * 3);
@@ -48,13 +48,14 @@ const ParticleField = () => {
 
 const ThreeDScene: React.FC = () => {
   return (
-    <div className="absolute inset-0 z-0">
-      <Canvas camera={{ position: [0, 0, 1] }}>
-        <color attach="background" args={['#000000']} />
-        <ambientLight intensity={0.5} />
-        <Float speed={2} rotationIntensity={0.5} floatIntensity={0.5}>
-          <ParticleField />
-        </Float>
+    <div className="absolute inset-0 z-0 bg-black">
+      <Canvas camera={{ position: [0, 0, 1] }} dpr={[1, 2]}>
+        <Suspense fallback={null}>
+          <ambientLight intensity={0.5} />
+          <Float speed={2} rotationIntensity={0.5} floatIntensity={0.5}>
+            <ParticleField />
+          </Float>
+        </Suspense>
       </Canvas>
     </div>
   );

@@ -293,6 +293,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, role }) => {
               <QuickAction icon={<UserIcon className="w-5 h-5" />} label="My Profile" to="/profile" />
               <QuickAction icon={<Calendar className="w-5 h-5" />} label="New Order" to="/orders" />
               <QuickAction icon={<ImageIcon className="w-5 h-5" />} label="Galleries" to="/gallery" />
+              <QuickAction icon={<CheckCircle className="w-5 h-5" />} label="Photo Selection" to="/photo-selection" />
               <QuickAction icon={<Users className="w-5 h-5" />} label="Team" to="/team" />
               {role === 'admin' && (
                 <QuickAction icon={<MessageSquare className="w-5 h-5" />} label="Inquiries" to="/inquiries" />

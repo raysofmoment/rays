@@ -463,6 +463,25 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "userRole", "type", "url", "createdAt"]
+    },
+    "PhotoSelection": {
+      "title": "Photo Selection",
+      "description": "Client photo selection set for a booking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "clientId": { "type": "string" },
+        "clientName": { "type": "string" },
+        "folderId": { "type": "string" },
+        "folderUrl": { "type": "string" },
+        "selectedIds": { "type": "array", "items": { "type": "string" } },
+        "rejectedIds": { "type": "array", "items": { "type": "string" } },
+        "status": { "type": "string", "enum": ["pending", "completed", "exported"] },
+        "exportedFolderId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clientId", "clientName", "folderId", "status", "createdAt", "updatedAt"]
     }
   },
   "firestore": {
@@ -545,6 +564,10 @@
     "/sampleWorks/{sampleId}": {
       "schema": "SampleWork",
       "description": "Sample work from team members"
+    },
+    "/photoSelections/{selectionId}": {
+      "schema": "PhotoSelection",
+      "description": "Client photo selections for bookings"
     }
   }
 }

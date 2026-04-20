@@ -23,8 +23,16 @@ const Auth: React.FC = () => {
       await signInWithPopup(auth, provider);
       toast.success('Successfully signed in!');
     } catch (error: any) {
-      if (error.code !== 'auth/popup-closed-by-user') {
-        toast.error(error.message);
+      console.error('Google Sign-In Error:', error);
+      if (error.code === 'auth/popup-closed-by-user') return;
+
+      if (error.message.includes('client secret is invalid') || error.code === 'auth/invalid-credential') {
+        toast.error('Firebase Config Error: The Google Client Secret in your Firebase Console is incorrect.', {
+          description: 'Go to Firebase Console > Authentication > Sign-in method > Google and update the Web Client Secret.',
+          duration: 10000,
+        });
+      } else {
+        toast.error(error.message || 'Failed to sign in with Google');
       }
     } finally {
       setLoading(false);

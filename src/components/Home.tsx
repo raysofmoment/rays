@@ -28,20 +28,38 @@ const Home: React.FC = () => {
   useEffect(() => {
     const fetchPortfolio = async () => {
       try {
-        const response = await fetch(`/api/drive/list/${FOLDER_ID}`);
+        const apiUrl = `${window.location.origin}/api/drive/list/${FOLDER_ID}`;
+        console.log('Fetching portfolio from:', apiUrl);
+
+        // First check if server is healthy
+        try {
+          const healthRes = await fetch(`${window.location.origin}/api/health`);
+          if (!healthRes.ok) console.warn('Health check failed:', healthRes.status);
+          else console.log('API Server is healthy');
+        } catch (e) {
+          console.error('API Server seems unreachable at', window.location.origin, e);
+        }
+
+        const response = await fetch(apiUrl);
         if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(errorData.error || `Server responded with ${response.status}`);
+          let errorMsg = `Server responded with ${response.status}`;
+          try {
+            const errorData = await response.json();
+            errorMsg = errorData.error || errorMsg;
+          } catch (e) {
+            // Not JSON
+          }
+          throw new Error(errorMsg);
         }
         const data = await response.json();
         // Filter for images and take first 9 for a 3x3 grid
-        const images = data.filter((f: any) => f.mimeType.startsWith('image/')).slice(0, 9);
+        const images = data.filter((f: any) => f.mimeType && f.mimeType.startsWith('image/')).slice(0, 9);
         setPortfolioItems(images);
       } catch (error: any) {
         console.error('Error fetching portfolio:', error);
         // If it's a network error, it might be "Failed to fetch"
         if (error.message === 'Failed to fetch') {
-          console.warn('Network error detected. This might be due to the server starting up or a connection issue.');
+          console.warn('Network error detected. Ensure the server is running and APP_URL is correctly set.');
         }
       } finally {
         setLoadingPortfolio(false);

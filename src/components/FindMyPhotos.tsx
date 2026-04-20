@@ -153,22 +153,21 @@ const FindMyPhotos: React.FC<FindMyPhotosProps> = ({ user, role }) => {
       
       if (booking.googleDriveFolderUrl || booking.googleDriveFolderId) {
         const folderId = booking.googleDriveFolderId || extractDriveFolderId(booking.googleDriveFolderUrl || '');
-        const apiKey = (import.meta as any).env.VITE_GOOGLE_DRIVE_API_KEY;
         
-        if (folderId && apiKey) {
+        if (folderId) {
           try {
             setScanProgress(5); // Initial progress for fetching Drive list
-            const response = await fetch(
-              `https://www.googleapis.com/drive/v3/files?q='${folderId}'+in+parents+and+mimeType+contains+'image/'&key=${apiKey}&fields=files(id,name)`
-            );
-            const data = await response.json();
-            if (data.files) {
-              const driveUrls = data.files.map((file: any) => `https://drive.google.com/uc?export=view&id=${file.id}`);
+            const response = await fetch(`${window.location.origin}/api/drive/list/${folderId}`);
+            if (!response.ok) throw new Error('Failed to fetch from Drive API');
+            
+            const files = await response.json();
+            if (Array.isArray(files)) {
+              const driveUrls = files.map((file: any) => `${window.location.origin}/api/drive/image/${file.id}`);
               imageUrls = [...imageUrls, ...driveUrls];
             }
           } catch (err) {
             console.error('Error fetching Drive files:', err);
-            toast.error('Failed to access Google Drive folder. Ensure it is public.');
+            toast.error('Failed to access Google Drive folder. Ensure it is connected in Studio Hub.');
           }
         }
       }
@@ -189,7 +188,13 @@ const FindMyPhotos: React.FC<FindMyPhotosProps> = ({ user, role }) => {
         setScanProgress(Math.round(((i + 1) / totalImages) * 100));
         
         try {
-          const img = await faceapi.fetchImage(imageUrls[i]);
+          let url = imageUrls[i];
+          // Use proxy for all non-local/non-blob images to avoid CORS issues with face-api
+          if (url.startsWith('http') && !url.includes(window.location.host)) {
+            url = `${window.location.origin}/api/proxy-image?url=${encodeURIComponent(url)}`;
+          }
+
+          const img = await faceapi.fetchImage(url);
           const detections = await faceapi.detectAllFaces(img).withFaceLandmarks().withFaceDescriptors();
           
           for (const detection of detections) {

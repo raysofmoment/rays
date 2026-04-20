@@ -42,7 +42,7 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() &&
-        ((request.auth.token.email == "saikatbanerjee139@gmail.com" && request.auth.token.email_verified == true) ||
+        (request.auth.token.email == "saikatbanerjee139@gmail.com" ||
          (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'));
     }
 
@@ -159,6 +159,12 @@ service cloud.firestore {
              data.userId is string && data.userRole in ['admin', 'photographer', 'editor', 'other'] &&
              data.type in ['image', 'video', 'link'] && data.url is string &&
              (!('category' in data) || data.category in ['Videos', 'Wedding', 'Music', 'Kids', 'Event', 'Other']);
+    }
+
+    function isValidPhotoSelection(data) {
+      return hasOnlyAllowedFields(['id', 'clientId', 'clientName', 'folderId', 'folderUrl', 'selectedIds', 'rejectedIds', 'status', 'exportedFolderId', 'createdAt', 'updatedAt']) &&
+             data.clientId is string && data.status in ['pending', 'completed', 'exported'] &&
+             data.selectedIds is list && data.rejectedIds is list;
     }
 
     // ===============================================================
@@ -339,6 +345,13 @@ service cloud.firestore {
                     request.resource.data.userId == request.auth.uid && isValidSampleWork(request.resource.data);
       allow update: if isAuthenticated() && (isAdmin() || isOwner(resource.data.userId)) && isValidSampleWork(request.resource.data);
       allow delete: if isAuthenticated() && (isAdmin() || isOwner(resource.data.userId));
+    }
+
+    match /photoSelections/{selectionId} {
+      allow read: if isAdmin() || isTeam() || (isAuthenticated() && resource.data.clientId == request.auth.uid);
+      allow create: if (isAdmin() || isTeam() || (isAuthenticated() && request.resource.data.clientId == request.auth.uid)) && isValidPhotoSelection(request.resource.data);
+      allow update: if (isAdmin() || isTeam() || (isAuthenticated() && resource.data.clientId == request.auth.uid)) && isValidPhotoSelection(request.resource.data);
+      allow delete: if isAdmin();
     }
 
     match /settings/{settingId} {

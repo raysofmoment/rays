@@ -11,7 +11,7 @@ import CRMModal from './CRMModal';
 import BookingForm from './BookingForm';
 import { useCart } from '../context/CartContext';
 
-const stripePromise = loadStripe((import.meta as any).env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_test_placeholder');
+const stripePromise = loadStripe((import.meta as any).env.VITE_STRIPE_PUBLISHABLE_KEY || '');
 
 interface OrderManagementProps {
   user: User;

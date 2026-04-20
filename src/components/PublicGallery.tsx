@@ -407,7 +407,7 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
                     </div>
                   ) : (
                     <img
-                      src={item.thumbnailLink?.replace('=s220', '=s800') || item.webViewLink}
+                      src={item.isDrive ? `${window.location.origin}/api/drive/image/${item.id}` : (item.thumbnailLink?.replace('=s220', '=s800') || item.webViewLink)}
                       alt={item.name}
                       className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"
@@ -619,7 +619,7 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
                   />
                 ) : (
                   <img 
-                    src={selectedFile.type === 'image' ? selectedFile.url : (selectedFile.thumbnailLink?.replace('=s220', '=s1600') || selectedFile.webViewLink)} 
+                    src={selectedFile.isDrive ? `${window.location.origin}/api/drive/image/${selectedFile.id}` : (selectedFile.type === 'image' ? selectedFile.url : (selectedFile.thumbnailLink?.replace('=s220', '=s1600') || selectedFile.webViewLink))} 
                     alt={selectedFile.name || selectedFile.title}
                     className="max-w-full max-h-full object-contain"
                     referrerPolicy="no-referrer"

@@ -21,6 +21,16 @@ class AppRootErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('Uncaught error:', error, errorInfo);
+    // Send to backend for debugging
+    fetch(`${window.location.origin}/api/debug-error`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: error.message,
+        stack: error.stack,
+        componentStack: errorInfo.componentStack
+      })
+    }).catch(() => {});
   }
 
   public render() {

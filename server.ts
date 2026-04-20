@@ -10,25 +10,17 @@ import { google } from "googleapis";
 import multer from "multer";
 import cookieSession from "cookie-session";
 import { Readable } from "stream";
-import admin from "firebase-admin";
-import firebaseConfig from "./firebase-applet-config.json" assert { type: "json" };
 
 dotenv.config();
 
-// Initialize Firebase Admin
-if (!admin.apps.length) {
-  admin.initializeApp({
-    projectId: firebaseConfig.projectId,
-  });
-}
-const firestore = admin.firestore();
+let globalDriveTokens: any = null;
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "sk_test_placeholder");
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
   process.env.GOOGLE_CLIENT_SECRET,
-  process.env.GOOGLE_REDIRECT_URI || `${process.env.APP_URL}/auth/google/callback`
+  "" // Will be set dynamically per request
 );
 
 const upload = multer({ storage: multer.memoryStorage() });
@@ -45,6 +37,10 @@ async function startServer() {
     const start = Date.now();
     res.on('finish', () => {
       const duration = Date.now() - start;
+      // Do not log static vite module fetches which confuse users by making them think a fetched ErrorBoundary component is an actual error
+      if (req.url && (req.url.startsWith('/src/') || req.url.startsWith('/@') || req.url.startsWith('/node_modules/'))) {
+        return;
+      }
       console.log(`${new Date().toISOString()} - ${req.method} ${req.url} - ${res.statusCode} (${duration}ms)`);
     });
     next();
@@ -60,87 +56,164 @@ async function startServer() {
     })
   );
 
+  const getValidRedirectUri = (req: express.Request) => {
+    const protocol = req.headers["x-forwarded-proto"] || "http";
+    const host = req.headers.host;
+    const currentOrigin = `${protocol}://${host}`;
+    
+    let redirectUri = process.env.GOOGLE_REDIRECT_URI;
+    
+    // Check if process.env.GOOGLE_REDIRECT_URI is a valid URL starting with http
+    if (redirectUri && !redirectUri.startsWith('http')) {
+      console.warn(`[OAuth] Ignoring invalid GOOGLE_REDIRECT_URI: ${redirectUri}`);
+      redirectUri = undefined;
+    }
+
+    if (!redirectUri) {
+      let baseUrl = process.env.APP_URL;
+      // Check if process.env.APP_URL is a valid URL starting with http
+      if (baseUrl && !baseUrl.startsWith('http')) {
+        console.warn(`[OAuth] Ignoring invalid APP_URL: ${baseUrl}`);
+        baseUrl = undefined;
+      }
+      
+      const sessionOrigin = baseUrl || currentOrigin;
+      const cleanBaseUrl = sessionOrigin.endsWith('/') ? sessionOrigin.slice(0, -1) : sessionOrigin;
+      redirectUri = `${cleanBaseUrl}/auth/google/callback`;
+    }
+    
+    return redirectUri;
+  };
+
   // API routes
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok" });
+  app.get("/api/health", async (req, res) => {
+    const protocol = req.headers["x-forwarded-proto"] || "http";
+    const host = req.headers.host;
+    
+    res.json({ 
+      status: "ok", 
+      env: process.env.NODE_ENV,
+      detectedOrigin: `${protocol}://${host}`,
+      configAppUrl: process.env.APP_URL,
+      configRedirectUri: process.env.GOOGLE_REDIRECT_URI,
+      driveTokensLoaded: !!globalDriveTokens
+    });
+  });
+
+  app.post("/api/debug-error", (req, res) => {
+    console.error("================ CLIENT ERROR CAUGHT ================");
+    console.error("Message:", req.body.message);
+    console.error("Stack:", req.body.stack);
+    console.error("Component Stack:", req.body.componentStack);
+    console.error("=====================================================");
+    res.json({ status: "logged" });
   });
 
   // Google OAuth routes
   app.get("/api/auth/google/url", (req, res) => {
-    const url = oauth2Client.generateAuthUrl({
-      access_type: "offline",
-      scope: ["https://www.googleapis.com/auth/drive.file"],
-      prompt: "consent",
-    });
-    res.json({ url });
+    const redirectUri = getValidRedirectUri(req);
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    
+    if (!clientId || !clientSecret) {
+      console.error("OAuth error: Missing GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET");
+      return res.status(500).json({ error: "Google OAuth credentials (Client ID/Secret) are not set in Settings." });
+    }
+
+    // Update client with latest config in case it changed
+    oauth2Client.setCredentials({}); // Clear any old creds
+    (oauth2Client as any)._clientId = clientId;
+    (oauth2Client as any)._clientSecret = clientSecret;
+    (oauth2Client as any).redirectUri = redirectUri;
+
+    try {
+      const url = oauth2Client.generateAuthUrl({
+        access_type: "offline",
+        scope: ["https://www.googleapis.com/auth/drive.file"],
+        prompt: "consent",
+        include_granted_scopes: true
+      });
+      
+      console.log(`[OAuth] Generated Auth URL. Redirect URI: ${redirectUri}`);
+      res.json({ url, redirectUri });
+    } catch (err: any) {
+      console.error("[OAuth] generateAuthUrl error:", err);
+      res.status(500).json({ error: "Failed to generate auth URL: " + err.message });
+    }
   });
 
-  app.get("/auth/google/callback", async (req, res) => {
-    const { code } = req.query;
+  app.get(["/auth/google/callback", "/auth/google/callback/"], async (req, res) => {
+    const { code, error } = req.query;
+
+    if (error) {
+      console.error("[OAuth] Callback error from Google:", error);
+      return res.status(400).send(`Authentication error: ${error}`);
+    }
+
+    if (!code) {
+      return res.status(400).send("No authorization code received.");
+    }
+
+    // Ensure the client uses the SAME redirect URI for token exchange
+    const redirectUri = getValidRedirectUri(req);
+    (oauth2Client as any).redirectUri = redirectUri;
+
     try {
       const { tokens } = await oauth2Client.getToken(code as string);
       (req as any).session.tokens = tokens;
-
-      // Persist tokens in Firestore for global access
-      await firestore.collection("settings").doc("google_drive").set({
-        value: tokens,
-        updatedAt: new Date().toISOString()
-      });
+      globalDriveTokens = tokens;
 
       res.send(`
         <html>
-          <body>
-            <script>
-              if (window.opener) {
-                window.opener.postMessage({ type: 'GOOGLE_AUTH_SUCCESS' }, '*');
-                window.close();
-              } else {
-                window.location.href = '/';
-              }
-            </script>
-            <p>Authentication successful. This window should close automatically.</p>
+          <body style="font-family: sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; background: #f9fafb;">
+            <div style="text-align: center; padding: 2rem; background: white; border-radius: 1rem; shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);">
+              <h2 style="color: #111827;">Authentication Successful!</h2>
+              <p style="color: #4b5563;">You can close this window now.</p>
+              <script>
+                if (window.opener) {
+                  window.opener.postMessage({ type: 'GOOGLE_AUTH_SUCCESS', tokens: ${JSON.stringify(tokens)} }, '*');
+                  setTimeout(() => window.close(), 1000);
+                } else {
+                  setTimeout(() => window.location.href = '/', 2000);
+                }
+              </script>
+            </div>
           </body>
         </html>
       `);
-    } catch (error) {
-      console.error("Error getting tokens:", error);
-      res.status(500).send("Authentication failed");
+    } catch (error: any) {
+      console.error("[OAuth] Error exchanging code for tokens:", error);
+      res.status(500).send(`
+        <html>
+          <body style="font-family: sans-serif; padding: 2rem;">
+            <h1>Authentication Failed</h1>
+            <p>Error details: ${error.message}</p>
+            <p>Ensure your <strong>Client Secret</strong> matches what is in Google Cloud Console.</p>
+            <button onclick="window.close()">Close Window</button>
+          </body>
+        </html>
+      `);
+    }
+  });
+
+  app.post("/api/auth/google/sync", (req, res) => {
+    if (req.body.tokens) {
+      globalDriveTokens = req.body.tokens;
+      res.json({ success: true });
+    } else {
+      res.status(400).json({ error: "No tokens provided" });
     }
   });
 
   app.get("/api/auth/google/status", async (req, res) => {
-    let connected = !!(req as any).session?.tokens;
-    if (!connected) {
-      try {
-        const doc = await firestore.collection("settings").doc("google_drive").get();
-        connected = doc.exists;
-      } catch (err: any) {
-        // If it's a 5 NOT_FOUND (document doesn't exist yet), it's not a real error
-        if (err.code === 5 || err.message?.includes('NOT_FOUND')) {
-          connected = false;
-        } else {
-          console.error("Error checking Drive status in Firestore:", err);
-        }
-      }
-    }
+    let connected = !!globalDriveTokens || !!(req as any).session?.tokens;
     res.json({ connected });
   });
 
   app.post("/api/upload-to-drive", upload.single("file"), async (req: any, res) => {
-    let tokens = (req as any).session?.tokens;
-
+    let tokens = req.headers['x-drive-tokens'] ? JSON.parse(req.headers['x-drive-tokens'] as string) : null;
     if (!tokens) {
-      try {
-        const doc = await firestore.collection("settings").doc("google_drive").get();
-        if (doc.exists) {
-          tokens = doc.data()?.value;
-        }
-      } catch (err: any) {
-        // Silently handle NOT_FOUND, log others
-        if (err.code !== 5 && !err.message?.includes('NOT_FOUND')) {
-          console.error("Error fetching tokens from Firestore:", err);
-        }
-      }
+      tokens = globalDriveTokens || (req as any).session?.tokens;
     }
 
     if (!tokens) {
@@ -192,32 +265,34 @@ async function startServer() {
     const { folderId } = req.params;
     console.log(`[Drive] Listing folderContent: ${folderId}`);
     
-    let apiKey = (process.env.GOOGLE_DRIVE_API_KEY || process.env.VITE_GOOGLE_DRIVE_API_KEY || "").trim();
-    
-    // Remove potential surrounding quotes
-    if (apiKey.startsWith('"') && apiKey.endsWith('"')) {
-      apiKey = apiKey.substring(1, apiKey.length - 1);
-    }
-    if (apiKey.startsWith("'") && apiKey.endsWith("'")) {
-      apiKey = apiKey.substring(1, apiKey.length - 1);
-    }
+    let drive;
+    if (globalDriveTokens) {
+      console.log("[Drive] Using authenticated OAuth tokens for listing");
+      oauth2Client.setCredentials(globalDriveTokens);
+      drive = google.drive({ version: "v3", auth: oauth2Client });
+    } else {
+      let apiKey = (process.env.GOOGLE_DRIVE_API_KEY || process.env.VITE_GOOGLE_DRIVE_API_KEY || "").trim();
+      
+      // Remove potential surrounding quotes
+      if (apiKey.startsWith('"') && apiKey.endsWith('"')) {
+        apiKey = apiKey.substring(1, apiKey.length - 1);
+      }
+      if (apiKey.startsWith("'") && apiKey.endsWith("'")) {
+        apiKey = apiKey.substring(1, apiKey.length - 1);
+      }
 
-    if (!apiKey) {
-      console.error("Drive list error: API Key is missing from environment variables.");
-      return res.status(400).json({ 
-        error: "Google Drive API Key is missing. Please set GOOGLE_DRIVE_API_KEY in your environment variables." 
-      });
+      if (!apiKey) {
+        return res.status(400).json({ 
+          error: "Google Drive access required. Please link your Google Drive in Studio Hub or set an API Key." 
+        });
+      }
+      console.log(`[Drive] Using API Key for listing: ${apiKey.substring(0, 6)}...`);
+      drive = google.drive({ version: "v3", auth: apiKey });
     }
-
-    // Log masked key for debugging
-    console.log(`Attempting Drive list with key prefix: ${apiKey.substring(0, 6)}... (Length: ${apiKey.length})`);
 
     try {
-      console.log(`[Drive] Using API Key: ${apiKey ? 'Yes' : 'No'}`);
-      // Use the key explicitly in the drive configuration
-      const drive = google.drive({ version: "v3", auth: apiKey });
       const response = await drive.files.list({
-        q: `'${folderId}' in parents and trashed = false`,
+        q: `'${folderId}' in parents and (mimeType contains 'image/' or mimeType contains 'video/') and trashed = false`,
         fields: "files(id, name, mimeType, thumbnailLink, webContentLink, webViewLink)",
         pageSize: 100,
       });
@@ -226,23 +301,109 @@ async function startServer() {
       res.json(response.data.files || []);
     } catch (error: any) {
       console.error("[Drive] List error details:", error);
+      res.status(error.code || 500).json({ 
+        error: error.message || "Failed to fetch from Drive"
+      });
+    }
+  });
+
+  app.get("/api/drive/image/:fileId", async (req, res) => {
+    const { fileId } = req.params;
+    
+    let drive;
+    if (globalDriveTokens) {
+      oauth2Client.setCredentials(globalDriveTokens);
+      drive = google.drive({ version: "v3", auth: oauth2Client });
+    } else {
+      let apiKey = (process.env.GOOGLE_DRIVE_API_KEY || process.env.VITE_GOOGLE_DRIVE_API_KEY || "").trim();
+      if (!apiKey) return res.status(401).send("Unauthorized");
+      drive = google.drive({ version: "v3", auth: apiKey });
+    }
+
+    try {
+      const response = await drive.files.get(
+        { fileId, alt: "media" },
+        { responseType: "stream" }
+      );
       
-      let message = "Failed to fetch from Drive";
-      if (error.errors && error.errors.length > 0) {
-        message = error.errors[0].message;
-      } else if (error.message) {
-        message = error.message;
+      // Try to get metadata for mimeType and name
+      try {
+        const metadata = await drive.files.get({ fileId, fields: "mimeType, name" });
+        if (metadata.data.mimeType) {
+          res.setHeader("Content-Type", metadata.data.mimeType);
+        }
+        if (metadata.data.name) {
+          res.setHeader("Content-Disposition", `inline; filename="${metadata.data.name}"`);
+        }
+      } catch (metaErr) {
+        // Ignore metadata errors
       }
 
-      res.status(error.code || 500).json({ 
-        error: message,
-        debug: {
-          keyPrefix: apiKey.substring(0, 6),
-          keyLength: apiKey.length,
-          folderId: folderId,
-          code: error.code
-        }
+      response.data.pipe(res);
+    } catch (error: any) {
+      console.error("[Drive] Image stream error:", error);
+      res.status(500).send("Failed to stream image");
+    }
+  });
+
+  app.post("/api/drive/export-selection", async (req, res) => {
+    const { folderId, selectedFileIds, selectionName } = req.body;
+    
+    if (!globalDriveTokens) {
+      return res.status(401).json({ error: "Google Drive not connected" });
+    }
+
+    if (!folderId || !selectedFileIds || !Array.isArray(selectedFileIds)) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    try {
+      oauth2Client.setCredentials(globalDriveTokens);
+      const drive = google.drive({ version: "v3", auth: oauth2Client });
+
+      // 1. Create a subfolder for selected photos
+      const folderMetadata = {
+        name: selectionName || `Selected Photos ${new Date().toLocaleDateString()}`,
+        mimeType: 'application/vnd.google-apps.folder',
+        parents: [folderId]
+      };
+
+      const folderResponse = await drive.files.create({
+        requestBody: folderMetadata,
+        fields: 'id'
       });
+
+      const targetFolderId = folderResponse.data.id;
+
+      // 2. Copy each selected file to the new folder
+      const results = [];
+      for (const fileId of selectedFileIds) {
+        try {
+          // Get original filename
+          const fileMeta = await drive.files.get({ fileId, fields: 'name' });
+          
+          const copyResponse = await drive.files.copy({
+            fileId: fileId,
+            requestBody: {
+              name: fileMeta.data.name,
+              parents: [targetFolderId!]
+            }
+          });
+          results.push({ id: fileId, status: 'success', newId: copyResponse.data.id });
+        } catch (copyErr: any) {
+          console.error(`Failed to copy file ${fileId}:`, copyErr);
+          results.push({ id: fileId, status: 'error', error: copyErr.message });
+        }
+      }
+
+      res.json({
+        success: true,
+        targetFolderId,
+        results
+      });
+    } catch (error: any) {
+      console.error("[Drive] Export error:", error);
+      res.status(500).json({ error: error.message });
     }
   });
 
@@ -330,6 +491,14 @@ async function startServer() {
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+  });
+
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  });
+
+  process.on('uncaughtException', (error) => {
+    console.error('Uncaught Exception:', error);
   });
 }
 
