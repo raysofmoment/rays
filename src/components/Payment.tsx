@@ -37,6 +37,7 @@ const Payment: React.FC<PaymentProps> = ({ user, role }) => {
   const checkDriveStatus = async () => {
     try {
       const response = await fetch(`${window.location.origin}/api/auth/google/status`);
+      if (!response.ok) return;
       const data = await response.json();
       setIsDriveConnected(data.connected);
     } catch (err) {

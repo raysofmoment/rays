@@ -49,6 +49,7 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
     const checkDriveStatus = async () => {
       try {
         const response = await fetch('/api/auth/google/status');
+        if (!response.ok) return;
         const data = await response.json();
         setIsDriveConnected(data.connected);
       } catch (err) {

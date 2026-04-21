@@ -3,13 +3,14 @@ import { User } from 'firebase/auth';
 import { collection, query, where, getDocs, addDoc, updateDoc, doc, deleteDoc, orderBy, onSnapshot, writeBatch } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { notifyAdmins, notifyUser } from '../services/notificationService';
-import { Calendar, Plus, Search, Filter, MoreVertical, Trash2, Edit2, CreditCard, Image as ImageIcon, User as UserIcon, Eye, Bell, ShoppingCart } from 'lucide-react';
+import { Calendar, Plus, Search, Filter, MoreVertical, Trash2, Edit2, CreditCard, Image as ImageIcon, User as UserIcon, Eye, Bell, ShoppingCart, Download } from 'lucide-react';
 import { format, isValid } from 'date-fns';
 import { toast } from 'sonner';
 import { loadStripe } from '@stripe/stripe-js';
 import CRMModal from './CRMModal';
 import BookingForm from './BookingForm';
 import { useCart } from '../context/CartContext';
+import { exportToExcel } from '../utils/excelExport';
 
 const stripePromise = loadStripe((import.meta as any).env.VITE_STRIPE_PUBLISHABLE_KEY || '');
 
@@ -342,33 +343,60 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
           <h1 className="text-3xl font-bold text-gray-900">Order Management</h1>
           <p className="text-gray-500 mt-1">Manage your bookings and track project status.</p>
         </div>
-        {role === 'client' && (
-          <div className="flex space-x-4">
-            {cart.length > 0 && (
-              <button
-                onClick={() => {
-                  setNewOrder({
-                    ...newOrder,
-                    packageName: cart.map(item => item.name).join(', '),
-                    totalAmount: totalAmount
-                  });
-                  setShowAddModal(true);
-                }}
-                className="bg-green-600 text-white px-6 py-3 rounded-xl font-semibold flex items-center space-x-2 hover:bg-green-700 transition-colors"
-              >
-                <ShoppingCart className="w-5 h-5" />
-                <span>Checkout Cart (₹{totalAmount.toLocaleString()})</span>
-              </button>
-            )}
+        <div className="flex space-x-4">
+          {role === 'admin' && (
             <button
-              onClick={() => setShowAddModal(true)}
-              className="bg-black text-white px-6 py-3 rounded-xl font-semibold flex items-center space-x-2 hover:bg-gray-800 transition-colors"
+              onClick={() => {
+                const exportData = orders.map(o => ({
+                  'Invoice Number': o.invoiceNumber || '-',
+                  'Client Name': o.clientName,
+                  'Mobile': o.mobileNumber,
+                  'Package': o.packageName,
+                  'Date': o.date && isValid(new Date(o.date)) ? format(new Date(o.date), 'yyyy-MM-dd') : '-',
+                  'Location': o.location || '-',
+                  'Status': o.status,
+                  'Total Amount': o.totalAmount,
+                  'Final Amount': o.finalAmount || o.totalAmount,
+                  'Paid Amount': o.paidAmount || 0,
+                  'Due Amount': (o.finalAmount || o.totalAmount) - (o.paidAmount || 0),
+                  'Created At': o.createdAt ? format(new Date(o.createdAt), 'yyyy-MM-dd') : '-'
+                }));
+                exportToExcel(exportData, 'Orders_List');
+              }}
+              className="bg-purple-600 text-white px-6 py-3 rounded-xl font-semibold flex items-center space-x-2 hover:bg-purple-700 transition-colors"
             >
-              <Plus className="w-5 h-5" />
-              <span>Book a Session</span>
+              <Download className="w-5 h-5" />
+              <span>Export Excel</span>
             </button>
-          </div>
-        )}
+          )}
+          {role === 'client' && (
+            <>
+              {cart.length > 0 && (
+                <button
+                  onClick={() => {
+                    setNewOrder({
+                      ...newOrder,
+                      packageName: cart.map(item => item.name).join(', '),
+                      totalAmount: totalAmount
+                    });
+                    setShowAddModal(true);
+                  }}
+                  className="bg-green-600 text-white px-6 py-3 rounded-xl font-semibold flex items-center space-x-2 hover:bg-green-700 transition-colors"
+                >
+                  <ShoppingCart className="w-5 h-5" />
+                  <span>Checkout Cart (₹{totalAmount.toLocaleString()})</span>
+                </button>
+              )}
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="bg-black text-white px-6 py-3 rounded-xl font-semibold flex items-center space-x-2 hover:bg-gray-800 transition-colors"
+              >
+                <Plus className="w-5 h-5" />
+                <span>Book a Session</span>
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {(role === 'client' || role === 'admin') && requests.length > 0 && (

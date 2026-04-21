@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, deleteDoc, doc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { Plus, Search, Trash2, Camera, Calendar, DollarSign, Activity, Briefcase, X, Save } from 'lucide-react';
+import { Plus, Search, Trash2, Camera, Calendar, DollarSign, Activity, Briefcase, X, Save, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import ConfirmModal from './ConfirmModal';
+import { exportToExcel } from '../utils/excelExport';
 
 interface Equipment {
   id: string;
@@ -66,15 +67,35 @@ const EquipmentManagement: React.FC<{ userRole: string | null }> = ({ userRole }
           <h1 className="text-3xl font-bold text-gray-900">Equipment Inventory</h1>
           <p className="text-gray-500 mt-1">Track and manage your photography gear.</p>
         </div>
-        {(userRole === 'admin' || userRole === 'photographer') && (
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="bg-black text-white px-6 py-3 rounded-xl font-bold flex items-center space-x-2 hover:bg-gray-800 transition-all shadow-lg shadow-black/20"
-          >
-            <Plus className="w-5 h-5" />
-            <span>Add Equipment</span>
-          </button>
-        )}
+        <div className="flex space-x-4">
+          {(userRole === 'admin' || userRole === 'photographer') && (
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="bg-black text-white px-6 py-3 rounded-xl font-bold flex items-center space-x-2 hover:bg-gray-800 transition-all shadow-lg shadow-black/20"
+            >
+              <Plus className="w-5 h-5" />
+              <span>Add Equipment</span>
+            </button>
+          )}
+          {userRole === 'admin' && (
+            <button
+              onClick={() => {
+                const exportData = equipment.map(e => ({
+                  'Name': e.name,
+                  'Purchase Date': e.purchaseDate || '-',
+                  'Price': e.price || 0,
+                  'Status': e.status || '-',
+                  'Work Using': e.workUsing || '-'
+                }));
+                exportToExcel(exportData, 'Equipment_List');
+              }}
+              className="bg-purple-600 text-white px-6 py-3 rounded-xl font-semibold flex items-center space-x-2 hover:bg-purple-700 transition-colors shadow-lg shadow-purple-600/20"
+            >
+              <Download className="w-5 h-5" />
+              <span>Export Excel</span>
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="mb-6">

@@ -17,6 +17,9 @@ interface BookingFormProps {
 const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, clientId, onClose }) => {
   const [bookingId, setBookingId] = useState<string | null>(null);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [verifyingDrive, setVerifyingDrive] = useState(false);
+  const [driveConnected, setDriveConnected] = useState<boolean | null>(null);
+
   const [formData, setFormData] = useState({
     clientName: '',
     clientMobile: '',
@@ -122,6 +125,33 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
     };
     fetchTeamMembers();
   }, []);
+
+  const verifyDriveLink = async () => {
+    if (!formData.googleDriveFolderId) {
+      toast.error('No Folder ID found. Please extract it from a link first.');
+      return;
+    }
+    setVerifyingDrive(true);
+    setDriveConnected(null);
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch(`/api/drive/list/${formData.googleDriveFolderId}?limit=1`, { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        toast.success('Connected to Google Drive successfully!');
+        setDriveConnected(true);
+      } else {
+        toast.error('Cannot connect to Drive folder. Ensure the link is shared/public.');
+        setDriveConnected(false);
+      }
+    } catch {
+      toast.error('Network error verifying Drive folder.');
+      setDriveConnected(false);
+    } finally {
+      setVerifyingDrive(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -242,6 +272,19 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
     if (['clientMobile', 'brideNumber', 'groomNumber'].includes(name)) {
       const cleaned = value.replace(/\D/g, '').slice(0, 10);
       setFormData(prev => ({ ...prev, [name]: cleaned }));
+      return;
+    }
+
+    // Auto extract Drive Folder ID
+    if (name === 'googleDriveFolderUrl') {
+      const match = value.match(/folders\/([a-zA-Z0-9-_]+)/) || value.match(/id=([a-zA-Z0-9-_]+)/);
+      const extractedId = match ? match[1] : '';
+      setFormData(prev => ({ 
+        ...prev, 
+        googleDriveFolderUrl: value,
+        googleDriveFolderId: extractedId 
+      }));
+      setDriveConnected(null);
       return;
     }
 
@@ -613,19 +656,36 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
                 </select>
               </div>
               <div className="md:col-span-1 space-y-1">
-                <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Google Drive Folder Link</label>
-                <input 
-                  type="text" 
-                  name="googleDriveFolderUrl" 
-                  value={formData.googleDriveFolderUrl || ''} 
-                  onChange={handleChange} 
-                  className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none" 
-                  placeholder="https://drive.google.com/..." 
-                />
+                <div className="flex justify-between items-center">
+                  <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Google Drive Folder Link</label>
+                  {driveConnected !== null && (
+                    <span className={`text-[10px] font-bold ${driveConnected ? 'text-green-500' : 'text-red-500'}`}>
+                      {driveConnected ? 'Connected' : 'Invalid Link'}
+                    </span>
+                  )}
+                </div>
+                <div className="flex space-x-2">
+                  <input 
+                    type="text" 
+                    name="googleDriveFolderUrl" 
+                    value={formData.googleDriveFolderUrl || ''} 
+                    onChange={handleChange} 
+                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none" 
+                    placeholder="https://drive.google.com/..." 
+                  />
+                  <button
+                    type="button"
+                    onClick={verifyDriveLink}
+                    disabled={verifyingDrive || !formData.googleDriveFolderId}
+                    className="px-4 py-3 bg-gray-100 rounded-xl hover:bg-gray-200 disabled:opacity-50 text-gray-700 font-bold whitespace-nowrap transition-colors"
+                  >
+                    {verifyingDrive ? '...' : 'Verify'}
+                  </button>
+                </div>
               </div>
               <div className="md:col-span-1 space-y-1">
                 <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Google Drive Folder ID</label>
-                <input type="text" name="googleDriveFolderId" value={formData.googleDriveFolderId} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none" placeholder="Auto-fills from link" />
+                <input type="text" name="googleDriveFolderId" value={formData.googleDriveFolderId} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:border-black outline-none" placeholder="Auto-fills from link" readOnly />
               </div>
             </div>
 

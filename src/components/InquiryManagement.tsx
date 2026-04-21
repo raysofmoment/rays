@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Mail, Phone, MapPin, Calendar, Trash2, Search, Filter, Loader2, MessageSquare } from 'lucide-react';
+import { Mail, Phone, MapPin, Calendar, Trash2, Search, Filter, Loader2, MessageSquare, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 import ConfirmModal from './ConfirmModal';
+import { exportToExcel } from '../utils/excelExport';
 
 interface Inquiry {
   id: string;
@@ -92,6 +93,25 @@ const InquiryManagement: React.FC = () => {
           <p className="text-gray-500">Manage and respond to client inquiries from the website.</p>
         </div>
         <div className="flex flex-col sm:flex-row gap-4">
+          <button
+            onClick={() => {
+              const exportData = inquiries.map(i => ({
+                'Service': i.serviceTitle,
+                'Name': i.name,
+                'Email': i.email,
+                'Phone': i.phoneNumber,
+                'Location': i.location,
+                'Requirements': i.requirements,
+                'Date': new Date(i.createdAt).toLocaleString()
+              }));
+              exportToExcel(exportData, 'Inquiries_List');
+            }}
+            className="bg-purple-600 text-white px-4 py-2 rounded-xl font-semibold flex items-center justify-center space-x-2 hover:bg-purple-700 transition-colors shadow-sm"
+          >
+            <Download className="w-5 h-5" />
+            <span>Export Excel</span>
+          </button>
+          
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input

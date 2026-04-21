@@ -157,7 +157,15 @@ const FindMyPhotos: React.FC<FindMyPhotosProps> = ({ user, role }) => {
         if (folderId) {
           try {
             setScanProgress(5); // Initial progress for fetching Drive list
-            const response = await fetch(`${window.location.origin}/api/drive/list/${folderId}`);
+            
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+            const response = await fetch(`${window.location.origin}/api/drive/list/${folderId}`, {
+              signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+
             if (!response.ok) throw new Error('Failed to fetch from Drive API');
             
             const files = await response.json();
@@ -229,11 +237,40 @@ const FindMyPhotos: React.FC<FindMyPhotosProps> = ({ user, role }) => {
     setIsUpdatingDrive(true);
     try {
       const folderId = extractDriveFolderId(driveFolderUrl);
+      if (!folderId) {
+        toast.error('Invalid Google Drive folder link format.');
+        setIsUpdatingDrive(false);
+        return;
+      }
+
+      const checkToast = toast.loading('Verifying Google Drive connection...');
+      
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        const checkRes = await fetch(`/api/drive/list/${folderId}?limit=1`, { signal: controller.signal });
+        clearTimeout(timeoutId);
+        
+        if (!checkRes.ok) {
+          toast.dismiss(checkToast);
+          toast.error('Cannot connect to Drive folder. Please ensure the link is correct and accessible.');
+          setIsUpdatingDrive(false);
+          return;
+        }
+        
+        toast.dismiss(checkToast);
+        toast.success('Drive link verified and connected!');
+      } catch (err) {
+        toast.dismiss(checkToast);
+        toast.error('Network error while checking Drive folder connection.');
+        setIsUpdatingDrive(false);
+        return;
+      }
+
       await updateDoc(doc(db, 'bookings', bookingId), {
         googleDriveFolderUrl: driveFolderUrl.trim(),
         googleDriveFolderId: folderId
       });
-      toast.success('Google Drive folder linked successfully');
       fetchAllBookings();
       if (selectedBookingForPhotos) {
         setSelectedBookingForPhotos(prev => ({ 
@@ -374,13 +411,13 @@ const FindMyPhotos: React.FC<FindMyPhotosProps> = ({ user, role }) => {
                           <button 
                             onClick={() => handleUpdateDriveFolder(selectedBookingForPhotos.id)}
                             disabled={isUpdatingDrive}
-                            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-colors disabled:opacity-50"
+                            className="px-4 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center min-w-[100px]"
                           >
-                            {isUpdatingDrive ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Link'}
+                            {isUpdatingDrive ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Verify & Link'}
                           </button>
                         </div>
                         <p className="text-[10px] text-blue-500 mt-2 italic">
-                          Ensure the folder is set to "Anyone with the link can view".
+                          Ensure the folder is set to "Anyone with the link" and has viewer permissions. The system will verify the connection before linking.
                         </p>
                       </div>
 

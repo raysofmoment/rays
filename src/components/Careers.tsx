@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Briefcase, MapPin, Clock, ArrowRight, Camera, Users, Award, Star, Search, Plus, Trash2, Edit2, Phone, Mail, X, Save, FileText, Globe, Check, ShieldCheck } from 'lucide-react';
+import { Briefcase, MapPin, Clock, ArrowRight, Camera, Users, Award, Star, Search, Plus, Trash2, Edit2, Phone, Mail, X, Save, FileText, Globe, Check, ShieldCheck, Download } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc, doc, where, getDocs, getDoc, setDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
@@ -7,6 +7,7 @@ import { notifyAdmins } from '../services/notificationService';
 import { toast } from 'sonner';
 import Captcha from './Captcha';
 import ConfirmModal from './ConfirmModal';
+import { exportToExcel } from '../utils/excelExport';
 
 interface JobApplication {
   id: string;
@@ -485,6 +486,23 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
                     className="w-full pl-10 pr-4 py-2 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all"
                   />
                 </div>
+                <button
+                  onClick={() => {
+                    const exportData = applications.map(app => ({
+                      'Name': app.name,
+                      'Email': app.email,
+                      'Phone Number': app.phoneNumber,
+                      'Designation': app.designation,
+                      'Portfolio URL': app.portfolioUrl || '-',
+                      'Date': new Date(app.createdAt).toLocaleString()
+                    }));
+                    exportToExcel(exportData, 'Job_Applications');
+                  }}
+                  className="bg-purple-600 text-white px-4 py-2 rounded-xl font-semibold flex items-center space-x-2 hover:bg-purple-700 transition-colors shadow-lg shadow-purple-600/20"
+                >
+                  <Download className="w-5 h-5" />
+                  <span className="hidden sm:inline">Export Excel</span>
+                </button>
                 <button
                   onClick={() => handleOpenAdminModal()}
                   className="bg-black text-white px-4 py-2 rounded-xl font-bold flex items-center space-x-2 hover:bg-gray-800 transition-all shadow-lg shadow-black/20"

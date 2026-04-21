@@ -70,7 +70,7 @@ async function startServer() {
     }
 
     if (!redirectUri) {
-      let baseUrl = process.env.APP_URL;
+      let baseUrl = process.env.APP_URL || "https://www.raysofmoment.com";
       // Check if process.env.APP_URL is a valid URL starting with http
       if (baseUrl && !baseUrl.startsWith('http')) {
         console.warn(`[OAuth] Ignoring invalid APP_URL: ${baseUrl}`);
@@ -261,47 +261,116 @@ async function startServer() {
     }
   });
 
+  const getApiKey = () => {
+    let apiKey = (process.env.GOOGLE_DRIVE_API_KEY || process.env.VITE_GOOGLE_DRIVE_API_KEY || "").trim();
+    if (apiKey.startsWith('"') && apiKey.endsWith('"')) apiKey = apiKey.substring(1, apiKey.length - 1);
+    if (apiKey.startsWith("'") && apiKey.endsWith("'")) apiKey = apiKey.substring(1, apiKey.length - 1);
+    return apiKey;
+  };
+
   app.get("/api/drive/list/:folderId", async (req, res) => {
     const { folderId } = req.params;
     console.log(`[Drive] Listing folderContent: ${folderId}`);
     
-    let drive;
-    if (globalDriveTokens) {
-      console.log("[Drive] Using authenticated OAuth tokens for listing");
-      oauth2Client.setCredentials(globalDriveTokens);
-      drive = google.drive({ version: "v3", auth: oauth2Client });
-    } else {
-      let apiKey = (process.env.GOOGLE_DRIVE_API_KEY || process.env.VITE_GOOGLE_DRIVE_API_KEY || "").trim();
-      
-      // Remove potential surrounding quotes
-      if (apiKey.startsWith('"') && apiKey.endsWith('"')) {
-        apiKey = apiKey.substring(1, apiKey.length - 1);
-      }
-      if (apiKey.startsWith("'") && apiKey.endsWith("'")) {
-        apiKey = apiKey.substring(1, apiKey.length - 1);
-      }
+    let drive: any = null;
+    let apiKey = getApiKey();
 
-      if (!apiKey) {
-        return res.status(400).json({ 
-          error: "Google Drive access required. Please link your Google Drive in Studio Hub or set an API Key." 
-        });
-      }
-      console.log(`[Drive] Using API Key for listing: ${apiKey.substring(0, 6)}...`);
-      drive = google.drive({ version: "v3", auth: apiKey });
-    }
+    const tryGetFolder = async (dClient: any) => {
+      await dClient.files.get({ fileId: folderId, fields: "id, name" });
+    };
+
+    let authMethod = "None";
 
     try {
-      const response = await drive.files.list({
-        q: `'${folderId}' in parents and (mimeType contains 'image/' or mimeType contains 'video/') and trashed = false`,
-        fields: "files(id, name, mimeType, thumbnailLink, webContentLink, webViewLink)",
-        pageSize: 100,
-      });
+      if (globalDriveTokens) {
+        console.log("[Drive] Trying authenticated OAuth tokens for listing");
+        oauth2Client.setCredentials(globalDriveTokens);
+        drive = google.drive({ version: "v3", auth: oauth2Client });
+        try {
+          await tryGetFolder(drive);
+          authMethod = "OAuth";
+        } catch (err: any) {
+          // Silent fallback
+          drive = null; // Reset to try API key
+        }
+      }
 
-      console.log(`[Drive] Found ${response.data.files?.length || 0} files`);
-      res.json(response.data.files || []);
+      if (!drive) {
+        if (!apiKey) {
+           return res.status(400).json({ 
+             error: "Google Drive access required. Please link your Google Drive in Studio Hub or set an API Key." 
+           });
+        }
+        console.log(`[Drive] Trying API Key for listing: ${apiKey.substring(0, 6)}...`);
+        drive = google.drive({ version: "v3", auth: apiKey });
+        try {
+           await tryGetFolder(drive);
+           authMethod = "API Key";
+        } catch (folderErr: any) {
+           console.warn(`[Drive] Pre-check failed for folder ${folderId} with API Key:`, folderErr.message);
+           if (folderErr.code === 404) {
+             throw new Error(`Folder not found or is private. Make sure the folder sharing is set to 'Anyone with the link can view'.`);
+           } else if (folderErr.code === 403) {
+             throw new Error("Permission Denied. The API key does not have access, or the folder is restricted.");
+           }
+           throw folderErr;
+        }
+      }
+
+      // Helper function to fetch all files recursively/paginated for a given query
+      const fetchAllFiles = async (folderIdToSearch: string) => {
+        let allItems: any[] = [];
+        let pageToken: string | undefined = undefined;
+        let pagesChecked = 0;
+        
+        do {
+          const response = await drive.files.list({
+            q: `'${folderIdToSearch}' in parents and trashed = false`,
+            fields: "nextPageToken, files(id, name, mimeType, thumbnailLink, webContentLink, webViewLink)",
+            pageSize: 1000,
+            pageToken: pageToken,
+          });
+          
+          if (response.data.files) {
+            allItems = allItems.concat(response.data.files);
+          }
+          pageToken = response.data.nextPageToken || undefined;
+          pagesChecked++;
+          
+          // Safeguard: limit to max 10 pages (10,000 files) per directory to prevent infinite loops
+        } while (pageToken && pagesChecked < 10);
+        
+        return allItems;
+      };
+
+      let allFiles = await fetchAllFiles(folderId);
+      let mediaFiles = allFiles.filter(f => f.mimeType?.includes('image/') || f.mimeType?.includes('video/'));
+      
+      // If no media but we found folders, check ONE LEVEL deep.
+      if (mediaFiles.length === 0) {
+        const subfolders = allFiles.filter(f => f.mimeType === 'application/vnd.google-apps.folder');
+        if (subfolders.length > 0) {
+          console.log(`[Drive] No media in root, checking ${subfolders.length} subfolders...`);
+          // Note: To avoid rate-limiting or massive fetches, we might want to cap how many subfolders/files we fetch.
+          for (let subfolder of subfolders.slice(0, 5)) { // limit to first 5 subfolders to avoid rate limits
+            if (!subfolder.id) continue;
+            try {
+              const subFiles = await fetchAllFiles(subfolder.id);
+              const subMedia = subFiles.filter(f => f.mimeType?.includes('image/') || f.mimeType?.includes('video/'));
+              mediaFiles = [...mediaFiles, ...subMedia];
+            } catch (e) {
+              console.warn(`[Drive] Could not check subfolder ${subfolder.id}`);
+            }
+          }
+        }
+      }
+
+      console.log(`[Drive] Search in folder ${folderId} returned ${mediaFiles.length} media files`);
+      res.json(mediaFiles);
     } catch (error: any) {
       console.error("[Drive] List error details:", error);
-      res.status(error.code || 500).json({ 
+      const statusCode = (typeof error.code === 'number' && error.code >= 100 && error.code < 600) ? error.code : 500;
+      res.status(statusCode).json({ 
         error: error.message || "Failed to fetch from Drive"
       });
     }
@@ -310,21 +379,36 @@ async function startServer() {
   app.get("/api/drive/image/:fileId", async (req, res) => {
     const { fileId } = req.params;
     
-    let drive;
-    if (globalDriveTokens) {
-      oauth2Client.setCredentials(globalDriveTokens);
-      drive = google.drive({ version: "v3", auth: oauth2Client });
-    } else {
-      let apiKey = (process.env.GOOGLE_DRIVE_API_KEY || process.env.VITE_GOOGLE_DRIVE_API_KEY || "").trim();
-      if (!apiKey) return res.status(401).send("Unauthorized");
-      drive = google.drive({ version: "v3", auth: apiKey });
-    }
+    let drive: any = null;
+    let apiKey = getApiKey();
 
-    try {
-      const response = await drive.files.get(
+    const tryGetImage = async (dClient: any) => {
+       const response = await dClient.files.get(
         { fileId, alt: "media" },
         { responseType: "stream" }
-      );
+       );
+       return response;
+    };
+
+    try {
+      let response: any;
+      
+      if (globalDriveTokens) {
+        oauth2Client.setCredentials(globalDriveTokens);
+        drive = google.drive({ version: "v3", auth: oauth2Client });
+        try {
+          response = await tryGetImage(drive);
+        } catch (err: any) {
+          // Silent fallback
+          drive = null; // Reset to try API key
+        }
+      }
+
+      if (!drive) {
+        if (!apiKey) return res.status(401).send("Unauthorized");
+        drive = google.drive({ version: "v3", auth: apiKey });
+        response = await tryGetImage(drive);
+      }
       
       // Try to get metadata for mimeType and name
       try {
@@ -370,29 +454,79 @@ async function startServer() {
 
       const folderResponse = await drive.files.create({
         requestBody: folderMetadata,
-        fields: 'id'
+        fields: 'id',
+        supportsAllDrives: true
       });
 
       const targetFolderId = folderResponse.data.id;
 
       // 2. Copy each selected file to the new folder
       const results = [];
+
+      // Create an anonymous drive client for reading if the OAuth user doesn't have read access to the specific file
+      const getApiKey = () => {
+        let key = (process.env.GOOGLE_DRIVE_API_KEY || process.env.VITE_GOOGLE_DRIVE_API_KEY || "").trim();
+        if (key.startsWith('"') && key.endsWith('"')) key = key.substring(1, key.length - 1);
+        if (key.startsWith("'") && key.endsWith("'")) key = key.substring(1, key.length - 1);
+        return key;
+      };
+      const apiKey = getApiKey();
+      const anonymousDrive = apiKey ? google.drive({ version: "v3", auth: apiKey }) : null;
+
       for (const fileId of selectedFileIds) {
         try {
           // Get original filename
-          const fileMeta = await drive.files.get({ fileId, fields: 'name' });
+          let fileName = "Selected Photo";
+          try {
+             const fileMeta = await drive.files.get({ fileId, fields: 'name', supportsAllDrives: true });
+             fileName = fileMeta.data.name || fileName;
+          } catch (metaErr: any) {
+             if (anonymousDrive) {
+               const anonMeta = await anonymousDrive.files.get({ fileId, fields: 'name', supportsAllDrives: true });
+               fileName = anonMeta.data.name || fileName;
+             } else {
+               throw metaErr; // If no API key, we have to abort
+             }
+          }
           
-          const copyResponse = await drive.files.copy({
-            fileId: fileId,
-            requestBody: {
-              name: fileMeta.data.name,
-              parents: [targetFolderId!]
-            }
-          });
-          results.push({ id: fileId, status: 'success', newId: copyResponse.data.id });
-        } catch (copyErr: any) {
-          console.error(`Failed to copy file ${fileId}:`, copyErr);
-          results.push({ id: fileId, status: 'error', error: copyErr.message });
+          try {
+            const copyResponse = await drive.files.copy({
+              fileId: fileId,
+              supportsAllDrives: true,
+              requestBody: {
+                name: fileName,
+                parents: [targetFolderId!]
+              }
+            });
+            results.push({ id: fileId, status: 'success', newId: copyResponse.data.id });
+          } catch (copyErr: any) {
+             if (copyErr.code === 404 || copyErr.message?.includes('File not found')) {
+                if (!anonymousDrive) throw copyErr;
+                
+                // Manually download with API key and upload with OAuth
+                const res = await anonymousDrive.files.get({ fileId, alt: 'media', supportsAllDrives: true }, { responseType: 'stream' });
+                const mimeType = res.headers['content-type'] || 'image/jpeg';
+                
+                const uploadResponse = await drive.files.create({
+                  requestBody: {
+                    name: fileName,
+                    parents: [targetFolderId!]
+                  },
+                  media: {
+                    mimeType: mimeType,
+                    body: res.data
+                  },
+                  fields: 'id',
+                  supportsAllDrives: true
+                });
+                results.push({ id: fileId, status: 'success', newId: uploadResponse.data.id });
+             } else {
+                throw copyErr;
+             }
+          }
+        } catch (err: any) {
+          console.error(`Failed to process file ${fileId}:`, err.message);
+          results.push({ id: fileId, status: 'error', error: err.message });
         }
       }
 
@@ -411,6 +545,7 @@ async function startServer() {
     try {
       const { orderId, amount, clientName, clientEmail, type = "order" } = req.body;
       
+      const appUrl = process.env.APP_URL || "https://www.raysofmoment.com";
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
         customer_email: clientEmail,
@@ -428,8 +563,8 @@ async function startServer() {
           },
         ],
         mode: "payment",
-        success_url: `${process.env.APP_URL}/payment-success?orderId=${orderId}&type=${type}`,
-        cancel_url: `${process.env.APP_URL}/payment-cancel?orderId=${orderId}&type=${type}`,
+        success_url: `${appUrl}/payment-success?orderId=${orderId}&type=${type}`,
+        cancel_url: `${appUrl}/payment-cancel?orderId=${orderId}&type=${type}`,
         metadata: {
           orderId,
           type,
@@ -482,7 +617,7 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const buildPath = path.join(process.cwd(), "build");
+    const buildPath = path.join(process.cwd(), "dist");
     app.use(express.static(buildPath));
     app.get("*", (req, res) => {
       res.sendFile(path.join(buildPath, "index.html"));

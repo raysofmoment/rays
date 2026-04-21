@@ -102,6 +102,7 @@ const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
     const checkDriveStatus = async () => {
       try {
         const response = await fetch(`${window.location.origin}/api/auth/google/status`);
+        if (!response.ok) return; // Prevent parsing non-200 responses like 'Rate exceeded'
         const data = await response.json();
         
         if (!data.connected && role === 'admin') {
@@ -153,8 +154,13 @@ const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
     try {
       const response = await fetch(`${window.location.origin}/api/auth/google/url`);
       if (!response.ok) {
-        const errData = await response.json();
-        throw new Error(errData.error || 'Failed to get auth URL');
+        try {
+          const errData = await response.json();
+          throw new Error(errData.error || 'Failed to get auth URL');
+        } catch {
+          const errText = await response.text();
+          throw new Error(errText || 'Failed to get auth URL');
+        }
       }
       const data = await response.json();
       if (data.url) {

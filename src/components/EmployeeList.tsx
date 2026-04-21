@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc, doc, where, getDocs, setDoc, getDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { Plus, Search, Trash2, Edit2, Phone, Mail, Briefcase, Globe, User, Users, X, Save, Check } from 'lucide-react';
+import { Plus, Search, Trash2, Edit2, Phone, Mail, Briefcase, Globe, User, Users, X, Save, Check, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 import ConfirmModal from './ConfirmModal';
+import { exportToExcel } from '../utils/excelExport';
 
 interface Employee {
   id: string;
@@ -232,7 +233,7 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ userRole }) => {
           <p className="text-gray-500 mt-1">Manage and view our photography team profiles.</p>
         </div>
         
-        <div className="flex items-center space-x-4">
+        <div className="flex flex-wrap items-center gap-4">
           <div className="relative flex-grow md:w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
@@ -244,13 +245,31 @@ const EmployeeList: React.FC<EmployeeListProps> = ({ userRole }) => {
             />
           </div>
           {isAdmin && (
-            <button
-              onClick={() => handleOpenModal()}
-              className="bg-black text-white px-4 py-2 rounded-xl font-bold flex items-center space-x-2 hover:bg-gray-800 transition-all shadow-lg shadow-black/20"
-            >
-              <Plus className="w-5 h-5" />
-              <span className="hidden sm:inline">Add Profile</span>
-            </button>
+            <>
+              <button
+                onClick={() => {
+                  const exportData = employees.map(emp => ({
+                    'Name': emp.name,
+                    'Designation': emp.designation,
+                    'Email': emp.email,
+                    'Phone Number': emp.phoneNumber || '-',
+                    'Work Assigned': emp.workAssigned || '-'
+                  }));
+                  exportToExcel(exportData, 'Employee_List');
+                }}
+                className="bg-purple-600 text-white px-4 py-2 rounded-xl font-semibold flex items-center space-x-2 hover:bg-purple-700 transition-colors shadow-lg shadow-purple-600/20"
+              >
+                <Download className="w-5 h-5" />
+                <span className="hidden sm:inline">Export Excel</span>
+              </button>
+              <button
+                onClick={() => handleOpenModal()}
+                className="bg-black text-white px-4 py-2 rounded-xl font-bold flex items-center space-x-2 hover:bg-gray-800 transition-all shadow-lg shadow-black/20"
+              >
+                <Plus className="w-5 h-5" />
+                <span className="hidden sm:inline">Add Profile</span>
+              </button>
+            </>
           )}
         </div>
       </div>

@@ -66,9 +66,11 @@ const PhotoSelection: React.FC<PhotoSelectionProps> = ({ user, role }) => {
   const [isAdminView, setIsAdminView] = useState(false);
   const [booking, setBooking] = useState<any>(null);
   const [photos, setPhotos] = useState<any[]>([]);
+  const [photosLoaded, setPhotosLoaded] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectionSet, setSelectionSet] = useState<SelectionSet | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   
   // Admin view states
   const [allSelections, setAllSelections] = useState<SelectionSet[]>([]);
@@ -86,6 +88,9 @@ const PhotoSelection: React.FC<PhotoSelectionProps> = ({ user, role }) => {
       return Math.max(1 - distance / 400, 0);
     }
   );
+  
+  const shortlistOpacity = useTransform(y, [-50, -150], [0, 1]);
+  const skipOpacity = useTransform(y, [50, 150], [0, 1]);
 
   const isAdmin = role === 'admin' || role === 'photographer' || role === 'editor';
 
@@ -108,13 +113,33 @@ const PhotoSelection: React.FC<PhotoSelectionProps> = ({ user, role }) => {
 
   const loadPhotos = async (folderId: string) => {
     try {
-      const response = await fetch(`/api/drive/list/${folderId}`);
-      if (!response.ok) throw new Error('Failed to load photos from Drive');
+      setPhotosLoaded(false);
+      setErrorMsg(null);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+
+      const response = await fetch(`/api/drive/list/${folderId}`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+         try {
+           const data = await response.json();
+           throw new Error(data.error || 'Failed to load photos from Drive');
+         } catch {
+           const text = await response.text();
+           throw new Error(text || 'Failed to load photos from Drive');
+         }
+      }
       const data = await response.json();
       setPhotos(data);
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error('Error fetching photos:', err);
       toast.error('Error loading photos from Google Drive');
+      setErrorMsg(err.message || 'Error loading photos');
+    } finally {
+      setPhotosLoaded(true);
     }
   };
 
@@ -235,9 +260,8 @@ const PhotoSelection: React.FC<PhotoSelectionProps> = ({ user, role }) => {
       if (currentIndex < photos.length - 1) {
         setCurrentIndex(prev => prev + 1);
       } else {
-        // Finished
-        await updateDoc(doc(db, 'photoSelections', selectionSet.id), { status: 'completed' });
-        setSelectionSet(prev => prev ? { ...prev, status: 'completed' } : null);
+        setCurrentIndex(prev => prev + 1);
+        toast.success('All photos reviewed! Please submit your selection.');
       }
     } catch (err) {
       console.error(err);
@@ -264,6 +288,16 @@ const PhotoSelection: React.FC<PhotoSelectionProps> = ({ user, role }) => {
           selectionName: `Selected for ${set.clientName}`
         })
       });
+
+      if (!response.ok) {
+         try {
+           const errData = await response.json();
+           throw new Error(errData.error || 'Export failed');
+         } catch {
+           const text = await response.text();
+           throw new Error(text || 'Export failed');
+         }
+      }
 
       const data = await response.json();
       if (data.success) {
@@ -406,7 +440,7 @@ const PhotoSelection: React.FC<PhotoSelectionProps> = ({ user, role }) => {
       );
     }
 
-    if (photos.length === 0) {
+    if (!photosLoaded) {
       return (
         <div className="min-h-screen flex items-center justify-center">
           <div className="text-center">
@@ -417,8 +451,109 @@ const PhotoSelection: React.FC<PhotoSelectionProps> = ({ user, role }) => {
       );
     }
 
+    if (photos.length === 0) {
+      return (
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="text-center bg-white p-10 rounded-3xl shadow-sm border border-gray-100">
+            <ImageIcon className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+            <p className="text-gray-500 font-medium max-w-sm mx-auto">
+              {errorMsg ? errorMsg : !booking.googleDriveFolderId 
+                ? "No Google Drive folder has been linked to this event." 
+                : "No photos found in this gallery yet."}
+            </p>
+            {booking.googleDriveFolderId && !errorMsg && (
+               <p className="text-xs text-gray-400 mt-2">Folder ID: {booking.googleDriveFolderId}</p>
+            )}
+            <button
+               onClick={() => {
+                 setBooking(null);
+                 setSelectionSet(null);
+               }}
+               className="mt-6 px-6 py-2 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200"
+            >
+              Go Back
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     const currentPhoto = photos[currentIndex];
-    const proxyUrl = `/api/drive/image/${currentPhoto.id}`;
+    if (!currentPhoto && currentIndex >= photos.length && photos.length > 0) {
+      return (
+        <div className="fixed inset-0 bg-gray-950 flex flex-col md:flex-row z-50">
+          <div className="flex-1 flex flex-col items-center justify-center p-6 lg:p-12 text-center h-screen overflow-y-auto w-full max-w-4xl mx-auto pb-40 lg:pb-12">
+            <div className="w-20 h-20 bg-green-500/20 shadow-[0_0_40px_rgba(34,197,94,0.3)] rounded-full flex items-center justify-center mb-6 border border-green-500/30">
+              <CheckCircle2 className="w-10 h-10 text-green-500" />
+            </div>
+            <h2 className="text-3xl font-bold text-white mb-2 mt-4">Gallery Reviewed!</h2>
+            <p className="text-gray-400 mb-8 max-w-sm">
+              You've chosen {selectionSet.selectedIds.length} out of {photos.length} photos.
+            </p>
+            
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 w-full mb-10 text-left">
+              {selectionSet.selectedIds.map(id => (
+                 <div key={id} className="relative aspect-square rounded-2xl overflow-hidden bg-white/5 border border-white/10 group">
+                   <img 
+                     src={`/api/drive/image/${id}`} 
+                     className="w-full h-full object-cover" 
+                     alt="Shortlisted"
+                     referrerPolicy="no-referrer"
+                   />
+                   <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 to-transparent flex justify-end">
+                     <button
+                       onClick={() => {
+                          const newIds = selectionSet.selectedIds.filter(x => x !== id);
+                          updateDoc(doc(db, 'photoSelections', selectionSet.id), { selectedIds: newIds });
+                       }}
+                       className="p-2 bg-red-500 rounded-full text-white hover:scale-110 transition-transform shadow-lg"
+                     >
+                       <Trash2 className="w-4 h-4" />
+                     </button>
+                   </div>
+                 </div>
+              ))}
+              {selectionSet.selectedIds.length === 0 && (
+                <div className="col-span-full py-16 bg-white/5 rounded-3xl border border-white/10 flex flex-col items-center">
+                   <ImageIcon className="w-12 h-12 text-white/20 mb-4" />
+                   <p className="text-white/50 italic text-sm">No photos were shortlisted.</p>
+                </div>
+              )}
+            </div>
+          </div>
+          
+          {/* Bottom fixed action bar for mobile, integrated differently on desktop */}
+          <div className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-white/10 p-6 flex flex-col sm:flex-row gap-4 items-center justify-center backdrop-blur-xl z-[60]">
+            <button 
+              onClick={() => {
+                toast.success('Selection finalized! Notifying admin.');
+                setTimeout(() => {
+                  updateDoc(doc(db, 'photoSelections', selectionSet.id), { status: 'completed' });
+                  setSelectionSet(prev => prev ? { ...prev, status: 'completed' } : null);
+                }, 1000);
+              }}
+              className="w-full sm:w-auto py-4 px-10 bg-green-500 text-black text-lg rounded-full font-black hover:bg-green-400 transition-all shadow-[0_0_30px_rgba(34,197,94,0.3)] shadow-[inset_0_1px_rgba(255,255,255,0.4)]"
+            >
+              Submit Final Selection
+            </button>
+            <button
+               onClick={() => setCurrentIndex(photos.length - 1)}
+               className="w-full sm:w-auto py-4 px-10 bg-white/10 text-white rounded-full font-bold hover:bg-white/20 transition-all border border-white/10"
+            >
+              Go Back to Review
+            </button>
+          </div>
+        </div>
+      );
+    } else if (!currentPhoto) {
+       return null; // Safety fallback
+    }
+    
+    // Prefer Google CDN thumbnail, fallback to our proxy
+    let photoUrl = `/api/drive/image/${currentPhoto.id}`;
+    if (currentPhoto.thumbnailLink) {
+      photoUrl = currentPhoto.thumbnailLink.replace(/=s\d+/, '=s2048');
+    }
 
     return (
       <div className="fixed inset-0 bg-gray-950 flex flex-col md:flex-row">
@@ -464,7 +599,7 @@ const PhotoSelection: React.FC<PhotoSelectionProps> = ({ user, role }) => {
               className="relative w-[90%] h-[70vh] md:w-[450px] md:h-[650px] rounded-3xl overflow-hidden bg-gray-900 shadow-2xl cursor-grab active:cursor-grabbing border border-white/5"
             >
               <img 
-                src={proxyUrl} 
+                src={photoUrl} 
                 alt="Selection" 
                 className="w-full h-full object-cover pointer-events-none select-none"
                 referrerPolicy="no-referrer"
@@ -472,7 +607,7 @@ const PhotoSelection: React.FC<PhotoSelectionProps> = ({ user, role }) => {
               
               {/* Swipe Feedback Overlays */}
               <motion.div 
-                style={{ opacity: useTransform(y, [-50, -150], [0, 1]) }}
+                style={{ opacity: shortlistOpacity }}
                 className="absolute inset-0 bg-green-500/20 flex items-center justify-center pointer-events-none"
               >
                 <div className="px-6 py-3 border-4 border-green-500 rounded-2xl text-green-500 font-black text-4xl uppercase -rotate-12">
@@ -481,7 +616,7 @@ const PhotoSelection: React.FC<PhotoSelectionProps> = ({ user, role }) => {
               </motion.div>
               
               <motion.div 
-                style={{ opacity: useTransform(y, [50, 150], [0, 1]) }}
+                style={{ opacity: skipOpacity }}
                 className="absolute inset-0 bg-red-500/20 flex items-center justify-center pointer-events-none"
               >
                 <div className="px-6 py-3 border-4 border-red-500 rounded-2xl text-red-500 font-black text-4xl uppercase rotate-12">
@@ -529,8 +664,9 @@ const PhotoSelection: React.FC<PhotoSelectionProps> = ({ user, role }) => {
                   <ChevronLeft className="w-5 h-5" />
                 </button>
                 <button 
+                  disabled={currentIndex >= photos.length}
                   onClick={() => setCurrentIndex(prev => prev + 1)}
-                  className="p-3 bg-white/5 rounded-xl text-white/50 hover:bg-white/10 transition-all"
+                  className="p-3 bg-white/5 rounded-xl text-white/50 hover:bg-white/10 disabled:opacity-20 transition-all"
                 >
                   <ChevronRight className="w-5 h-5" />
                 </button>

@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { User } from 'firebase/auth';
 import { collection, query, orderBy, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { Plus, Search, Trash2, IndianRupee, Receipt, User as UserIcon } from 'lucide-react';
+import { Plus, Search, Trash2, IndianRupee, Receipt, User as UserIcon, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import EventCostForm from './EventCostForm';
 import ConfirmModal from './ConfirmModal';
+import { exportToExcel } from '../utils/excelExport';
 
 interface EventCostManagementProps {
   user: User;
@@ -63,15 +64,64 @@ const EventCostManagement: React.FC<EventCostManagementProps> = ({ user, role })
           <h1 className="text-3xl font-bold text-gray-900">Event Cost</h1>
           <p className="text-gray-500 mt-1">Manage and track event-related expenses.</p>
         </div>
-        {(role === 'admin' || role === 'photographer' || role === 'editor') && (
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="bg-black text-white px-6 py-3 rounded-xl font-bold flex items-center space-x-2 hover:bg-gray-800 transition-all shadow-lg shadow-black/20"
-          >
-            <Plus className="w-5 h-5" />
-            <span>Add Cost</span>
-          </button>
-        )}
+        <div className="flex space-x-4">
+          {(role === 'admin' || role === 'photographer' || role === 'editor') && (
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="bg-black text-white px-6 py-3 rounded-xl font-bold flex items-center space-x-2 hover:bg-gray-800 transition-all shadow-lg shadow-black/20"
+            >
+              <Plus className="w-5 h-5" />
+              <span>Add Cost</span>
+            </button>
+          )}
+          {role === 'admin' && (
+             <button
+               onClick={() => {
+                 const exportData = costs.map(c => ({
+                   'Invoice': c.invoice || '-',
+                   'Name': c.name || '-',
+                   'Travel Extra': c.travelExtra || 0,
+                   'Caligraphy': c.caligraphy || 0,
+                   'Wedding Video': c.weddingVideo || 0,
+                   'Wedding Teaser': c.weddingTeaser || 0,
+                   'Wedding Photo': c.weddingPhoto || 0,
+                   'Box': c.box || 0,
+                   'Other': c.other || 0,
+                   'Album Design': c.albumDesign || 0,
+                   'Album Print': c.albumPrint || 0,
+                   'Pre Photo': c.prePhoto || 0,
+                   'Pre Video': c.preVideo || 0,
+                   'Lid Generate': c.lidGenerate || 0,
+                   'Gift': c.gift || 0,
+                   'Pendrive': c.pendrive || 0,
+                   'TV/LED/Projector': c.tvLedProjector || 0,
+                   'Total Cost': (
+                      Number(c.travelExtra || 0) +
+                      Number(c.caligraphy || 0) +
+                      Number(c.weddingVideo || 0) +
+                      Number(c.weddingTeaser || 0) +
+                      Number(c.weddingPhoto || 0) +
+                      Number(c.box || 0) +
+                      Number(c.other || 0) +
+                      Number(c.albumDesign || 0) +
+                      Number(c.albumPrint || 0) +
+                      Number(c.prePhoto || 0) +
+                      Number(c.preVideo || 0) +
+                      Number(c.lidGenerate || 0) +
+                      Number(c.gift || 0) +
+                      Number(c.pendrive || 0) +
+                      Number(c.tvLedProjector || 0)
+                   )
+                 }));
+                 exportToExcel(exportData, 'Event_Costs');
+               }}
+               className="bg-purple-600 text-white px-6 py-3 rounded-xl font-semibold flex items-center space-x-2 hover:bg-purple-700 transition-colors shadow-lg shadow-purple-600/20"
+             >
+               <Download className="w-5 h-5" />
+               <span>Export Excel</span>
+             </button>
+          )}
+        </div>
       </div>
 
       <div className="mb-6">
