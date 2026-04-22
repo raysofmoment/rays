@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Users, Award, Mail, Phone, MapPin, ArrowRight, Star, Instagram, Twitter, Facebook, Linkedin, MessageCircle, Loader2, ImageIcon } from 'lucide-react';
+import { Users, Award, Mail, Phone, MapPin, ArrowRight, Star, Instagram, Twitter, Facebook, Linkedin, MessageCircle, Loader2, ImageIcon, Heart, Music, Baby, Calendar, Filter, MoreHorizontal } from 'lucide-react';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { collection, addDoc } from 'firebase/firestore';
@@ -23,50 +23,47 @@ const Home: React.FC = () => {
   });
   const [portfolioItems, setPortfolioItems] = useState<any[]>([]);
   const [loadingPortfolio, setLoadingPortfolio] = useState(true);
-  const FOLDER_ID = '14s9KpnT6uwVnN-lXrzF7ixn_qq-Wp7OI';
+  const [activeCategory, setActiveCategory] = useState('All');
+
+  const FOLDER_MAP: Record<string, string> = {
+    'All': '14s9KpnT6uwVnN-lXrzF7ixn_qq-Wp7OI',
+    'Wedding': '1sWUCrEJQHgZfzF0C3ZbqL5xbYGxYo4Qn',
+    'Music': '1UIs_4grBIKa2aq7qGLxWIlTmBm8gsXBg',
+    'Kids': '1tX7LLW8IuorWPEh4_GZWir79T4SkPMM3',
+    'Event': '1RUcpnCc3NIV87PI4OEhsiTQHd13FBAa0',
+    'Other': '1WkAnOgDEioFqAyvD5BzTGi2ybB6ohc0V'
+  };
+
+  const categories = [
+    { name: 'All', icon: Filter },
+    { name: 'Wedding', icon: Heart },
+    { name: 'Music', icon: Music },
+    { name: 'Kids', icon: Baby },
+    { name: 'Event', icon: Calendar },
+    { name: 'Other', icon: MoreHorizontal }
+  ];
 
   useEffect(() => {
     const fetchPortfolio = async () => {
       try {
-        const apiUrl = `${window.location.origin}/api/drive/list/${FOLDER_ID}`;
-        console.log('Fetching portfolio from:', apiUrl);
-
-        // First check if server is healthy
-        try {
-          const healthRes = await fetch(`${window.location.origin}/api/health`);
-          if (!healthRes.ok) console.warn('Health check failed:', healthRes.status);
-          else console.log('API Server is healthy');
-        } catch (e) {
-          console.error('API Server seems unreachable at', window.location.origin, e);
-        }
-
+        setLoadingPortfolio(true);
+        const folderId = FOLDER_MAP[activeCategory];
+        const apiUrl = `${window.location.origin}/api/drive/list/${folderId}`;
+        
         const response = await fetch(apiUrl);
-        if (!response.ok) {
-          let errorMsg = `Server responded with ${response.status}`;
-          try {
-            const errorData = await response.json();
-            errorMsg = errorData.error || errorMsg;
-          } catch (e) {
-            // Not JSON
-          }
-          throw new Error(errorMsg);
-        }
+        if (!response.ok) throw new Error('Failed to fetch portfolio');
+        
         const data = await response.json();
-        // Filter for images and take first 9 for a 3x3 grid
         const images = data.filter((f: any) => f.mimeType && f.mimeType.startsWith('image/')).slice(0, 9);
         setPortfolioItems(images);
       } catch (error: any) {
         console.error('Error fetching portfolio:', error);
-        // If it's a network error, it might be "Failed to fetch"
-        if (error.message === 'Failed to fetch') {
-          console.warn('Network error detected. Ensure the server is running and APP_URL is correctly set.');
-        }
       } finally {
         setLoadingPortfolio(false);
       }
     };
     fetchPortfolio();
-  }, []);
+  }, [activeCategory]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -197,6 +194,34 @@ const Home: React.FC = () => {
             </div>
           </div>
           
+          {/* Category Highlights (like Gallery) */}
+          <div className="flex justify-start md:justify-center items-start gap-4 md:gap-8 lg:gap-12 py-8 md:py-12 overflow-x-auto no-scrollbar scroll-smooth mb-8 border-y border-gray-100">
+            {categories.map((cat) => (
+              <button
+                key={cat.name}
+                onClick={() => setActiveCategory(cat.name)}
+                className="flex flex-col items-center gap-3 group min-w-[72px] md:min-w-[80px] shrink-0"
+              >
+                <div className={`relative p-[1.5px] rounded-full transition-all duration-500 transform ${
+                  activeCategory === cat.name 
+                    ? 'bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600 scale-110 active:scale-100' 
+                    : 'bg-gray-200 group-hover:bg-gray-300'
+                }`}>
+                  <div className="w-14 h-14 md:w-16 md:h-16 rounded-full border-2 border-white bg-white flex items-center justify-center overflow-hidden">
+                    <cat.icon className={`w-6 h-6 md:w-7 md:h-7 transition-colors ${
+                      activeCategory === cat.name ? 'text-black' : 'text-gray-400 group-hover:text-gray-600'
+                    }`} />
+                  </div>
+                </div>
+                <span className={`text-[10px] md:text-xs font-bold leading-tight transition-colors ${
+                  activeCategory === cat.name ? 'text-black' : 'text-gray-500 group-hover:text-gray-700'
+                }`}>
+                  {cat.name}
+                </span>
+              </button>
+            ))}
+          </div>
+          
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 md:grid-cols-3 md:gap-4">
             {loadingPortfolio ? (
               [...Array(6)].map((_, i) => (
@@ -249,7 +274,7 @@ const Home: React.FC = () => {
                 >
                   <Link to="/gallery">
                     <img 
-                      src={url} 
+                      src={url || undefined} 
                       alt="Portfolio" 
                       className="w-full h-full object-cover" 
                       referrerPolicy="no-referrer" 

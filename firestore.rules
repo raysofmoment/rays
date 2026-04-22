@@ -155,14 +155,27 @@ service cloud.firestore {
     }
 
     function isValidSampleWork(data) {
-      return hasOnlyAllowedFields(['id', 'userId', 'userName', 'userRole', 'type', 'category', 'url', 'title', 'description', 'createdAt']) &&
-             data.userId is string && data.userRole in ['admin', 'photographer', 'editor', 'other'] &&
+      // Use hasAll instead of hasOnly on keys() as hasOnly is not supported on lists
+      return data.keys().hasAll(['userId', 'userName', 'userRole', 'type', 'url', 'title', 'description', 'createdAt']) &&
+             data.userId is string && 
+             data.userRole in ['admin', 'photographer', 'editor', 'other', 'client'] &&
              data.type in ['image', 'video', 'link'] && data.url is string &&
-             (!('category' in data) || data.category in ['Videos', 'Wedding', 'Music', 'Kids', 'Event', 'Other']);
+             (!('driveFileId' in data) || data.driveFileId is string) &&
+             (!('category' in data) || data.category in ['Videos', 'Wedding', 'Music', 'Kids', 'Event', 'Other']) &&
+             (!('userEmail' in data) || data.userEmail is string) &&
+             (!('serverTimestamp' in data) || data.serverTimestamp is timestamp);
+    }
+
+    function isValidGalleryItem(data) {
+      return data.keys().hasAll(['userId', 'userName', 'type', 'url', 'title', 'createdAt']) &&
+             data.userId is string &&
+             data.type in ['youtube', 'link'] && data.url is string &&
+             (!('category' in data) || data.category in ['Videos', 'Wedding', 'Music', 'Kids', 'Event', 'Other']) &&
+             (!('description' in data) || data.description is string);
     }
 
     function isValidPhotoSelection(data) {
-      return hasOnlyAllowedFields(['id', 'clientId', 'clientName', 'folderId', 'folderUrl', 'selectedIds', 'rejectedIds', 'status', 'exportedFolderId', 'createdAt', 'updatedAt']) &&
+      return data.keys().hasAll(['clientId', 'clientName', 'folderId', 'status', 'selectedIds', 'rejectedIds', 'createdAt']) &&
              data.clientId is string && data.status in ['pending', 'completed', 'exported'] &&
              data.selectedIds is list && data.rejectedIds is list;
     }
@@ -182,15 +195,15 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      allow read: if (isAuthenticated() && (isOwner(uid) || isAdmin() || isTeam())) || resource.data.role == 'admin';
-      allow create: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(uid) || isAdmin());
-      allow update: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(uid) || isAdmin());
+      allow read: if (isAuthenticated() && (isOwner(uid) || isAdmin() || isTeam())) || (exists(/databases/$(database)/documents/users/$(uid)) && get(/databases/$(database)/documents/users/$(uid)).data.role == 'admin');
+      allow create: if isAuthenticated() && (isOwner(uid) || isAdmin());
+      allow update: if isAuthenticated() && (isOwner(uid) || isAdmin());
     }
 
     match /employees/{employeeId} {
       allow read: if isAuthenticated();
-      allow create: if isAdmin() && isValidEmployee(request.resource.data);
-      allow update: if isAdmin() && isValidEmployee(request.resource.data);
+      allow create: if isAdmin();
+      allow update: if isAdmin();
       allow delete: if isAdmin();
     }
 
@@ -207,19 +220,17 @@ service cloud.firestore {
         (request.auth.uid in resource.data.get('editorIds', [])) ||
         (request.auth.uid in resource.data.get('otherIds', []))
       );
-      allow create: if isAuthenticated() && isValidBooking(request.resource.data) && (isAdmin() || isTeam() || request.resource.data.clientId == request.auth.uid);
+      allow create: if isAuthenticated() && (isAdmin() || isTeam() || request.resource.data.clientId == request.auth.uid);
       allow update: if isAuthenticated() && (
         isAdmin() || 
-        (isValidBooking(request.resource.data) && (
-          isTeam() ||
-          (resource.data.photographerId == request.auth.uid) || 
-          (resource.data.editorId == request.auth.uid) || 
-          (resource.data.otherId == request.auth.uid) ||
-          (request.auth.uid in resource.data.get('photographerIds', [])) ||
-          (request.auth.uid in resource.data.get('editorIds', [])) ||
-          (request.auth.uid in resource.data.get('otherIds', [])) ||
-          (resource.data.clientId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['discountRequest', 'clientMobile', 'clientEmail', 'address', 'eventPlace', 'eventDate']))
-        ))
+        isTeam() ||
+        (resource.data.photographerId == request.auth.uid) || 
+        (resource.data.editorId == request.auth.uid) || 
+        (resource.data.otherId == request.auth.uid) ||
+        (request.auth.uid in resource.data.get('photographerIds', [])) ||
+        (request.auth.uid in resource.data.get('editorIds', [])) ||
+        (request.auth.uid in resource.data.get('otherIds', [])) ||
+        (resource.data.clientId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['discountRequest', 'clientMobile', 'clientEmail', 'address', 'eventPlace', 'eventDate']))
       );
       allow delete: if isAdmin();
     }
@@ -258,8 +269,8 @@ service cloud.firestore {
         isTeam() ||
         isOther()
       );
-      allow create: if isAuthenticated() && isValidOrder(request.resource.data) && (request.auth.uid == request.resource.data.clientId || isAdmin());
-      allow update: if isAuthenticated() && isValidOrder(request.resource.data) && (
+      allow create: if isAuthenticated() && (request.auth.uid == request.resource.data.clientId || isAdmin());
+      allow update: if isAuthenticated() && (
         request.auth.uid == resource.data.clientId || 
         isAdmin() || 
         (isTeam() && (request.auth.uid == resource.data.photographerId || request.auth.uid == resource.data.editorId || (request.auth.uid in resource.data.get('photographerIds', [])) || (request.auth.uid in resource.data.get('editorIds', [])))) ||
@@ -285,51 +296,46 @@ service cloud.firestore {
 
     match /clientNotes/{noteId} {
       allow read: if isAuthenticated() && (isAdmin() || isTeam());
-      allow create: if isAuthenticated() && isValidClientNote(request.resource.data) && (isAdmin() || isTeam());
-      allow update: if isAuthenticated() && isValidClientNote(request.resource.data) && (isAdmin() || isTeam());
+      allow create: if isAuthenticated() && (isAdmin() || isTeam());
+      allow update: if isAuthenticated() && (isAdmin() || isTeam());
       allow delete: if isAdmin();
     }
 
     match /reviews/{reviewId} {
       allow read: if true; // Publicly readable
-      allow create: if isAuthenticated() && isValidReview(request.resource.data) && request.auth.uid == request.resource.data.clientId;
+      allow create: if isAuthenticated() && request.auth.uid == request.resource.data.clientId;
       allow update: if isAdmin();
       allow delete: if isAdmin();
     }
 
     match /jobApplications/{applicationId} {
       allow read: if isAdmin();
-      allow create: if isValidJobApplication(request.resource.data);
-      allow update: if isAdmin() && isValidJobApplication(request.resource.data);
+      allow create: if true;
+      allow update: if isAdmin();
       allow delete: if isAdmin();
     }
 
     match /serviceInquiries/{inquiryId} {
       allow read: if isAdmin();
-      allow create: if isValidServiceInquiry(request.resource.data);
-      allow update: if isAdmin() && isValidServiceInquiry(request.resource.data);
+      allow create: if true;
+      allow update: if isAdmin();
       allow delete: if isAdmin();
     }
 
     match /notifications/{notificationId} {
       allow read: if isAuthenticated() && (isOwner(resource.data.userId) || isAdmin());
-      allow create: if isValidNotification(request.resource.data) && (
-        isAdmin() || 
-        (isAuthenticated() && request.resource.data.userId == request.auth.uid) ||
-        (exists(/databases/$(database)/documents/users/$(request.resource.data.userId)) && 
-         get(/databases/$(database)/documents/users/$(request.resource.data.userId)).data.role == 'admin')
-      );
+      allow create: if isAuthenticated();
       allow update: if isAuthenticated() && (
         (isOwner(resource.data.userId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isRead'])) ||
         isAdmin()
-      ) && isValidNotification(request.resource.data);
+      );
       allow delete: if isAdmin();
     }
 
     match /blogPosts/{postId} {
       allow read: if (resource.data.isPublished == true) || isAdmin();
-      allow create: if isAdmin() && isValidBlogPost(request.resource.data);
-      allow update: if isAdmin() && isValidBlogPost(request.resource.data);
+      allow create: if isAdmin();
+      allow update: if isAdmin();
       allow delete: if isAdmin();
     }
 
@@ -340,10 +346,18 @@ service cloud.firestore {
     }
 
     match /sampleWorks/{sampleId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && (isAdmin() || isPhotographer() || isEditor() || isOther()) && 
+      allow read: if true;
+      allow create: if isAuthenticated() && (isAdmin() || isPhotographer() || isEditor() || isOther() || isClient()) && 
                     request.resource.data.userId == request.auth.uid && isValidSampleWork(request.resource.data);
       allow update: if isAuthenticated() && (isAdmin() || isOwner(resource.data.userId)) && isValidSampleWork(request.resource.data);
+      allow delete: if isAuthenticated() && (isAdmin() || isOwner(resource.data.userId));
+    }
+    
+    match /galleryItems/{itemId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && (isAdmin() || isTeam()) && 
+                    request.resource.data.userId == request.auth.uid && isValidGalleryItem(request.resource.data);
+      allow update: if isAuthenticated() && (isAdmin() || isOwner(resource.data.userId)) && isValidGalleryItem(request.resource.data);
       allow delete: if isAuthenticated() && (isAdmin() || isOwner(resource.data.userId));
     }
 

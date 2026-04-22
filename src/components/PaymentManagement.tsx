@@ -19,7 +19,11 @@ interface PaymentRecord {
   clientName?: string;
 }
 
-const PaymentManagement: React.FC = () => {
+interface PaymentManagementProps {
+  role?: string | null;
+}
+
+const PaymentManagement: React.FC<PaymentManagementProps> = ({ role }) => {
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'pending' | 'confirmed' | 'rejected'>('pending');
@@ -325,7 +329,7 @@ const PaymentManagement: React.FC = () => {
                       </button>
                     )}
                     
-                    {payment.status === 'pending' && (
+                    {payment.status === 'pending' && role === 'admin' && (
                       <div className="flex items-center space-x-2">
                         <button
                           onClick={() => handleReject(payment.id)}

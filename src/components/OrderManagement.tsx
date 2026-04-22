@@ -681,7 +681,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
                         (order.editorIds || []).includes(user.uid) || 
                         (order.otherIds || []).includes(user.uid)) && (
                         <>
-                          {(role === 'admin' || role === 'editor' || (order.editorIds || []).includes(user.uid)) && (
+                          {role === 'admin' && (
                             <button
                               onClick={() => {
                                 setSelectedOrder(order);
@@ -693,13 +693,15 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
                               <Edit2 className="w-5 h-5" />
                             </button>
                           )}
-                          <button
-                            onClick={() => setSelectedClientId(order.clientId)}
-                            className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-                            title="View Client CRM"
-                          >
-                            <UserIcon className="w-5 h-5" />
-                          </button>
+                          {role === 'admin' && (
+                            <button
+                              onClick={() => setSelectedClientId(order.clientId)}
+                              className="p-2 text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                              title="View Client CRM"
+                            >
+                              <UserIcon className="w-5 h-5" />
+                            </button>
+                          )}
                           <select
                             onChange={(e) => updateStatus(order.id, e.target.value)}
                             value={order.status}

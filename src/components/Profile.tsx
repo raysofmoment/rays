@@ -252,7 +252,7 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
               <div className="absolute -bottom-12 left-8">
                 <div className="w-24 h-24 bg-white rounded-2xl shadow-lg flex items-center justify-center border-4 border-white overflow-hidden">
                   {user.photoURL ? (
-                    <img src={user.photoURL} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                    <img src={user.photoURL || null} alt="Profile" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   ) : (
                     <UserIcon className="w-12 h-12 text-gray-400" />
                   )}
@@ -661,7 +661,7 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
                     <div key={sample.id} className="bg-gray-50 rounded-3xl border border-gray-100 overflow-hidden group hover:shadow-xl transition-all">
                       <div className="aspect-video bg-gray-200 relative overflow-hidden">
                         {sample.type === 'image' ? (
-                          <img src={sample.url} alt={sample.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" referrerPolicy="no-referrer" />
+                          <img src={sample.url || null} alt={sample.title} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" referrerPolicy="no-referrer" />
                         ) : sample.type === 'video' ? (
                           <div className="w-full h-full flex items-center justify-center bg-black">
                             <Video className="w-12 h-12 text-white opacity-50" />

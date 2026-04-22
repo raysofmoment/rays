@@ -139,7 +139,7 @@ export default function App() {
               <Route path="/photo-selection" element={<PhotoSelection user={user} role={role} />} />
               <Route path="/photo-selection/:bookingId" element={<PhotoSelection user={user} role={role} />} />
               <Route path="/payment" element={<Payment user={user} role={role} />} />
-              <Route path="/payment-management" element={user && role === 'admin' ? <PaymentManagement /> : <Navigate to="/auth" />} />
+              <Route path="/payment-management" element={user && role === 'admin' ? <PaymentManagement role={role} /> : <Navigate to="/auth" />} />
               <Route path="/financial-overview" element={user && role === 'admin' ? <FinancialOverview userRole={role} /> : <Navigate to="/auth" />} />
               <Route path="/event-costs" element={user && (role === 'admin' || role === 'photographer' || role === 'editor') ? <EventCostManagement user={user} role={role} /> : <Navigate to="/auth" />} />
               <Route path="/equipment" element={user && (role === 'admin' || role === 'photographer' || role === 'editor') ? <EquipmentManagement userRole={role} /> : <Navigate to="/auth" />} />
@@ -147,7 +147,7 @@ export default function App() {
               <Route path="/employees" element={user && role === 'admin' ? <EmployeeList userRole={role} /> : <Navigate to="/auth" />} />
               <Route path="/inquiries" element={user && role === 'admin' ? <InquiryManagement /> : <Navigate to="/auth" />} />
               <Route path="/team" element={user && (role === 'admin' || role === 'photographer' || role === 'editor') ? <TeamManagement user={user} role={role} /> : <Navigate to="/auth" />} />
-              <Route path="/team-portfolio" element={user && (role === 'admin' || role === 'photographer' || role === 'editor' || role === 'other') ? <TeamPortfolio /> : <Navigate to="/auth" />} />
+              <Route path="/team-portfolio" element={user && (role === 'admin' || role === 'photographer' || role === 'editor' || role === 'other') ? <TeamPortfolio user={user} role={role} /> : <Navigate to="/auth" />} />
               <Route path="/profile" element={user ? <Profile user={user} role={role} /> : <Navigate to="/auth" />} />
               <Route path="/gallery/:galleryId" element={<Gallery user={user} role={role} />} />
               <Route path="/blog" element={<Blog user={user} role={role} />} />

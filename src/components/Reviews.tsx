@@ -157,7 +157,7 @@ const Reviews: React.FC<ReviewsProps> = ({ user }) => {
                       <div className="flex items-center space-x-4 mb-6">
                         <div className="w-14 h-14 bg-gray-100 rounded-2xl overflow-hidden flex-shrink-0">
                           {review.clientPhoto ? (
-                            <img src={review.clientPhoto} alt={review.clientName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            <img src={review.clientPhoto || undefined} alt={review.clientName} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center text-gray-400">
                               <UserIcon className="w-6 h-6" />

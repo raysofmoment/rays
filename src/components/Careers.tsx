@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Briefcase, MapPin, Clock, ArrowRight, Camera, Users, Award, Star, Search, Plus, Trash2, Edit2, Phone, Mail, X, Save, FileText, Globe, Check, ShieldCheck, Download } from 'lucide-react';
+import { Briefcase, MapPin, Clock, ArrowRight, Camera, Users, Award, Star, Search, Plus, Trash2, Edit2, Phone, Mail, X, Save, FileText, Globe, Check, ShieldCheck, Download, Link as LinkIcon, Video, Image as ImageIcon } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { collection, query, orderBy, onSnapshot, addDoc, updateDoc, deleteDoc, doc, where, getDocs, getDoc, setDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
@@ -9,6 +9,12 @@ import Captcha from './Captcha';
 import ConfirmModal from './ConfirmModal';
 import { exportToExcel } from '../utils/excelExport';
 
+interface PortfolioItem {
+  type: 'image' | 'link';
+  url: string;
+  name?: string;
+}
+
 interface JobApplication {
   id: string;
   name: string;
@@ -16,6 +22,9 @@ interface JobApplication {
   phoneNumber: string;
   designation: string;
   portfolioUrl?: string;
+  portfolioItems?: PortfolioItem[];
+  aboutMe?: string;
+  experience?: string;
   createdAt: string;
 }
 
@@ -44,8 +53,14 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
     email: '',
     phoneNumber: '',
     designation: '',
-    portfolioUrl: ''
+    portfolioUrl: '',
+    aboutMe: '',
+    experience: '',
+    portfolioItems: [] as PortfolioItem[]
   });
+  
+  const [newLink, setNewLink] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
 
   const [acceptFormData, setAcceptFormData] = useState({
     name: '',
@@ -84,9 +99,68 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
       email: user?.email || '',
       phoneNumber: '',
       designation: jobTitle,
-      portfolioUrl: ''
+      portfolioUrl: '',
+      aboutMe: '',
+      experience: '',
+      portfolioItems: []
     });
     setIsApplyModalOpen(true);
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploading(true);
+    try {
+      const newItems: PortfolioItem[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const uploadFormData = new FormData();
+        uploadFormData.append('file', file);
+        
+        const response = await fetch('/api/upload-to-drive', {
+          method: 'POST',
+          body: uploadFormData
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          newItems.push({
+            type: 'image',
+            url: data.url,
+            name: file.name
+          });
+        }
+      }
+      setFormData(prev => ({
+        ...prev,
+        portfolioItems: [...prev.portfolioItems, ...newItems]
+      }));
+      toast.success(`${newItems.length} file(s) uploaded`);
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast.error('Failed to upload files');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleAddLink = () => {
+    if (!newLink.trim()) return;
+    setFormData(prev => ({
+      ...prev,
+      portfolioItems: [...prev.portfolioItems, { type: 'link', url: newLink.trim() }]
+    }));
+    setNewLink('');
+    toast.success('Link added');
+  };
+
+  const handleRemovePortfolioItem = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      portfolioItems: prev.portfolioItems.filter((_, i) => i !== index)
+    }));
   };
 
   const handleOpenAdminModal = (application?: JobApplication) => {
@@ -97,7 +171,10 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
         email: application.email,
         phoneNumber: application.phoneNumber,
         designation: application.designation,
-        portfolioUrl: application.portfolioUrl || ''
+        portfolioUrl: application.portfolioUrl || '',
+        aboutMe: application.aboutMe || '',
+        experience: application.experience || '',
+        portfolioItems: application.portfolioItems || []
       });
     } else {
       setEditingApplication(null);
@@ -106,7 +183,10 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
         email: '',
         phoneNumber: '',
         designation: '',
-        portfolioUrl: ''
+        portfolioUrl: '',
+        aboutMe: '',
+        experience: '',
+        portfolioItems: []
       });
     }
     setIsAdminModalOpen(true);
@@ -313,86 +393,114 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
     setSortConfig({ key, direction });
   };
 
+  const [activeCategory, setActiveCategory] = useState('All');
+
+  const jobCategories = [
+    { name: 'All', icon: <Briefcase className="w-6 h-6" /> },
+    { name: 'Creative', icon: <Camera className="w-6 h-6" /> },
+    { name: 'Photo', icon: <ImageIcon className="w-6 h-6" /> },
+    { name: 'Video', icon: <Video className="w-6 h-6" /> },
+    { name: 'Events', icon: <Users className="w-6 h-6" /> },
+    { name: 'Other', icon: <Plus className="w-6 h-6" /> }
+  ];
+
   const jobs = [
     {
       title: "Vlogger & Content Creator",
+      category: "Creative",
       location: "Berhampore, West Bengal",
       type: "Full-time / Contract",
       description: "Create engaging behind-the-scenes content, vlogs, and social media shorts to showcase our creative process and event highlights."
     },
     {
       title: "Lead Wedding Photographer",
+      category: "Photo",
       location: "Berhampore, West Bengal",
       type: "Full-time",
       description: "We're looking for an experienced wedding photographer with a keen eye for storytelling and emotional moments."
     },
     {
       title: "Videographer & Cinematographer",
+      category: "Video",
       location: "Berhampore, West Bengal",
       type: "Full-time",
       description: "Capture cinematic wedding films and event highlights with high-end production value and storytelling."
     },
     {
       title: "Video Editor",
+      category: "Video",
       location: "Remote / Hybrid",
       type: "Full-time",
       description: "Craft compelling stories from raw footage, specializing in wedding highlights and cinematic films."
     },
     {
       title: "Photo Editor & Retoucher",
+      category: "Photo",
       location: "Remote / Hybrid",
       type: "Full-time",
       description: "Join our post-production team to bring our captures to life with professional editing and retouching."
     },
     {
       title: "Drone Pilot",
+      category: "Video",
       location: "Berhampore, West Bengal",
       type: "Contract",
       description: "Provide breathtaking aerial perspectives for our outdoor events and cinematic productions."
     },
     {
       title: "Makeup Artist",
+      category: "Events",
       location: "Berhampore, West Bengal",
       type: "Part-time / Contract",
       description: "Join our bridal team to provide professional makeup services for our clients' special moments."
     },
     {
       title: "Decorators",
+      category: "Events",
       location: "Berhampore, West Bengal",
       type: "Contract",
       description: "Help us create stunning visual environments for our studio shoots and event setups."
     },
     {
       title: "Catering",
+      category: "Events",
       location: "Berhampore, West Bengal",
       type: "Contract",
       description: "Join our event management team to provide exceptional culinary experiences for our high-end productions."
     },
     {
       title: "Other",
+      category: "Other",
       location: "Berhampore, West Bengal",
       type: "Freelance",
       description: "Other creative or event-related services. We are always looking for talented individuals to join our network."
     },
     {
       title: "Event Photography Assistant",
+      category: "Photo",
       location: "Berhampore, West Bengal",
       type: "Part-time / Contract",
       description: "Perfect for aspiring photographers looking to gain experience in high-end event coverage."
     },
     {
       title: "Social Media Manager",
+      category: "Creative",
       location: "Remote",
       type: "Full-time",
       description: "Help us share our stories with the world across Instagram, TikTok, and Pinterest."
     },
     {
       title: "Other Creative Roles",
+      category: "Creative",
       location: "Flexible",
       type: "Full-time / Part-time",
       description: "Have a unique skill that fits our creative studio? We're always open to meeting talented people across various disciplines."
     }
   ];
+
+  const filteredJobs = activeCategory === 'All' 
+    ? jobs 
+    : jobs.filter(job => job.category === activeCategory);
 
   return (
     <div className="py-24 bg-white min-h-screen">
@@ -420,15 +528,47 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
         </div>
 
         <div className="space-y-8">
-          <h2 className="text-3xl font-bold text-gray-900 mb-8">Open Positions</h2>
-          {jobs.map((job, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.1 }}
-              className="group bg-white border border-gray-100 rounded-3xl p-8 shadow-sm hover:shadow-xl hover:border-black transition-all"
-            >
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6 mb-8">
+            <div>
+              <h2 className="text-3xl font-bold text-gray-900">Open Positions</h2>
+              <p className="text-gray-500 mt-1">Explore opportunities to join our team.</p>
+            </div>
+            
+            {/* Gallery Style Category Highlights */}
+            <div className="flex overflow-x-auto no-scrollbar py-2 space-x-6 md:space-x-8">
+              {jobCategories.map((cat) => (
+                <button
+                  key={cat.name}
+                  onClick={() => setActiveCategory(cat.name)}
+                  className="group flex flex-col items-center space-y-2 focus:outline-none flex-shrink-0"
+                >
+                  <div className={`relative w-16 h-16 sm:w-20 sm:h-20 rounded-full p-1 transition-all duration-300 ${activeCategory === cat.name ? 'bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600' : 'bg-gray-200 group-hover:bg-gray-300'}`}>
+                    <div className="w-full h-full rounded-full bg-white flex items-center justify-center overflow-hidden border-2 border-white shadow-sm transition-transform active:scale-95">
+                      <div className={`transition-colors duration-300 ${activeCategory === cat.name ? 'text-black' : 'text-gray-400'}`}>
+                        {cat.icon}
+                      </div>
+                    </div>
+                  </div>
+                  <span className={`text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors ${activeCategory === cat.name ? 'text-black' : 'text-gray-400'}`}>
+                    {cat.name}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-6">
+            <AnimatePresence mode="popLayout">
+              {filteredJobs.map((job, i) => (
+                <motion.div
+                  key={job.title}
+                  layout
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  transition={{ duration: 0.3 }}
+                  className="group bg-white border border-gray-100 rounded-3xl p-8 shadow-sm hover:shadow-xl hover:border-black transition-all"
+                >
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div className="flex-grow">
                   <div className="flex flex-wrap items-center gap-3 mb-3">
@@ -453,7 +593,9 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
               </div>
             </motion.div>
           ))}
-        </div>
+        </AnimatePresence>
+      </div>
+    </div>
 
         {isAdmin && (
           <div className="mt-24">
@@ -540,7 +682,7 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
                           )}
                         </div>
                       </th>
-                      <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Portfolio</th>
+                      <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Portfolio & Samples</th>
                       <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Contact</th>
                       <th className="px-6 py-4 text-xs font-bold text-gray-400 uppercase tracking-wider text-right">Actions</th>
                     </tr>
@@ -558,19 +700,48 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
                           </span>
                         </td>
                         <td className="px-6 py-4">
-                          {app.portfolioUrl ? (
-                            <a 
-                              href={app.portfolioUrl} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center space-x-2 px-3 py-1 bg-black text-white rounded-lg text-[10px] font-bold hover:bg-gray-800 transition-colors"
-                            >
-                              <Globe className="w-3 h-3" />
-                              <span>View Portfolio</span>
-                            </a>
-                          ) : (
-                            <span className="text-xs text-gray-400 italic">No link</span>
-                          )}
+                          <div className="space-y-2">
+                            {app.portfolioUrl && (
+                              <a 
+                                href={app.portfolioUrl} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center space-x-2 px-3 py-1 bg-black text-white rounded-lg text-[10px] font-bold hover:bg-gray-800 transition-colors"
+                              >
+                                <Globe className="w-3 h-3" />
+                                <span>Main Link</span>
+                              </a>
+                            )}
+                            
+                            {app.portfolioItems && app.portfolioItems.length > 0 && (
+                              <div className="flex flex-wrap gap-1 max-w-[200px]">
+                                {app.portfolioItems.slice(0, 4).map((item, idx) => (
+                                  <a
+                                    key={idx}
+                                    href={item.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="relative w-8 h-8 rounded border border-gray-100 overflow-hidden bg-gray-50 flex items-center justify-center hover:scale-105 transition-transform"
+                                  >
+                                    {item.type === 'image' ? (
+                                      <img src={item.url} className="w-full h-full object-cover" alt="Sample" />
+                                    ) : (
+                                      <LinkIcon className="w-3 h-3 text-gray-400" />
+                                    )}
+                                  </a>
+                                ))}
+                                {app.portfolioItems.length > 4 && (
+                                  <div className="w-8 h-8 rounded bg-gray-100 flex items-center justify-center text-[10px] font-bold text-gray-500">
+                                    +{app.portfolioItems.length - 4}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {!app.portfolioUrl && (!app.portfolioItems || app.portfolioItems.length === 0) && (
+                              <span className="text-xs text-gray-400 italic">No samples</span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex flex-col space-y-1">
@@ -660,59 +831,164 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
                 </button>
               </div>
 
-              <form onSubmit={handleApplySubmit} className="p-6 space-y-4">
+              <form onSubmit={handleApplySubmit} className="p-6 space-y-6 overflow-y-auto max-h-[80vh]">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Full Name</label>
+                    <input
+                      required
+                      type="text"
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-black outline-none"
+                      placeholder="Your Name"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Email Address</label>
+                    <input
+                      required
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-black outline-none"
+                      placeholder="email@example.com"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Phone Number</label>
+                    <input
+                      required
+                      type="tel"
+                      value={formData.phoneNumber}
+                      onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
+                      className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-black outline-none"
+                      placeholder="Your Phone Number"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Experience (Years)</label>
+                    <input
+                      type="number"
+                      value={formData.experience}
+                      onChange={(e) => setFormData({ ...formData, experience: e.target.value })}
+                      className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-black outline-none"
+                      placeholder="e.g. 3"
+                    />
+                  </div>
+                </div>
+
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Full Name</label>
-                  <input
-                    required
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-black outline-none"
-                    placeholder="Your Name"
+                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">About Me / Cover Letter</label>
+                  <textarea
+                    value={formData.aboutMe}
+                    onChange={(e) => setFormData({ ...formData, aboutMe: e.target.value })}
+                    className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-black outline-none min-h-[100px]"
+                    placeholder="Tell us about yourself and why you're a good fit..."
                   />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Email Address</label>
-                  <input
-                    required
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-black outline-none"
-                    placeholder="email@example.com"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Phone Number</label>
-                  <input
-                    required
-                    type="tel"
-                    value={formData.phoneNumber}
-                    onChange={(e) => setFormData({ ...formData, phoneNumber: e.target.value })}
-                    className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-black outline-none"
-                    placeholder="Your Phone Number"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-400 uppercase tracking-wider">Portfolio Link (Google Drive/Website)</label>
-                  <input
-                    required
-                    type="url"
-                    value={formData.portfolioUrl}
-                    onChange={(e) => setFormData({ ...formData, portfolioUrl: e.target.value })}
-                    className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-black outline-none"
-                    placeholder="https://drive.google.com/..."
-                  />
+
+                {/* Portfolio Section with Gallery Style Preview */}
+                <div className="space-y-4 p-4 bg-gray-50 rounded-2xl border border-gray-100">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-bold text-gray-900 flex items-center space-x-2">
+                      <Camera className="w-4 h-4" />
+                      <span>Portfolio & Work Samples</span>
+                    </h3>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Add File */}
+                    <div className="relative">
+                      <input
+                        type="file"
+                        multiple
+                        onChange={handleFileUpload}
+                        className="hidden"
+                        id="portfolio-file"
+                        accept="image/*,.pdf"
+                      />
+                      <label
+                        htmlFor="portfolio-file"
+                        className={`flex flex-col items-center justify-center p-4 border-2 border-dashed border-gray-300 rounded-xl hover:border-black hover:bg-white transition-all cursor-pointer ${isUploading ? 'opacity-50 pointer-events-none' : ''}`}
+                      >
+                        {isUploading ? (
+                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-black"></div>
+                        ) : (
+                          <>
+                            <Plus className="w-6 h-6 text-gray-400 mb-1" />
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Add Files</span>
+                          </>
+                        )}
+                      </label>
+                    </div>
+
+                    {/* Add Link */}
+                    <div className="flex space-x-2">
+                      <input
+                        type="url"
+                        value={newLink}
+                        onChange={(e) => setNewLink(e.target.value)}
+                        placeholder="Add Portfolio Link..."
+                        className="flex-grow px-3 py-2 text-xs rounded-xl border border-gray-200 focus:border-black outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddLink}
+                        className="p-2 bg-black text-white rounded-xl hover:bg-gray-800 transition-all"
+                      >
+                        <Plus className="w-5 h-5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Preview Area */}
+                  {formData.portfolioItems.length > 0 && (
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 pt-2">
+                      {formData.portfolioItems.map((item, idx) => (
+                        <div key={idx} className="relative aspect-square rounded-lg overflow-hidden group border border-gray-100 bg-white">
+                          {item.type === 'image' ? (
+                            <img src={item.url || undefined} alt="Preview" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center bg-blue-50 text-blue-600">
+                              <Globe className="w-4 h-4" />
+                              <span className="text-[6px] font-bold uppercase mt-1">Link</span>
+                            </div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleRemovePortfolioItem(idx)}
+                            className="absolute top-1 right-1 p-1 bg-black/50 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            <X className="w-2 h-2" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Main Portfolio URL (Optional)</label>
+                    <input
+                      type="url"
+                      value={formData.portfolioUrl}
+                      onChange={(e) => setFormData({ ...formData, portfolioUrl: e.target.value })}
+                      className="w-full px-4 py-2 text-xs rounded-xl border border-gray-200 focus:border-black outline-none"
+                      placeholder="https://drive.google.com/..."
+                    />
+                  </div>
                 </div>
                 
                 <Captcha onVerify={setIsCaptchaVerified} className="bg-white" />
 
-                <div className="pt-4">
+                <div className="pt-2">
                   <button
                     type="submit"
-                    disabled={!isCaptchaVerified}
-                    className="w-full bg-black text-white py-3 rounded-2xl font-bold flex items-center justify-center space-x-2 hover:bg-gray-800 transition-all shadow-lg shadow-black/20 disabled:opacity-50"
+                    disabled={!isCaptchaVerified || isUploading}
+                    className="w-full bg-black text-white py-4 rounded-2xl font-bold flex items-center justify-center space-x-2 hover:bg-gray-800 transition-all shadow-lg shadow-black/20 disabled:opacity-50"
                   >
                     <span>Submit Application</span>
                     <ArrowRight className="w-5 h-5" />

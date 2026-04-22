@@ -217,7 +217,7 @@ const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
                 <h3 className="text-lg font-bold mb-4">Recent Payments</h3>
-                <PaymentManagement />
+                <PaymentManagement role={role} />
               </div>
               <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
                 <h3 className="text-lg font-bold mb-4">Event Costs</h3>
@@ -246,7 +246,7 @@ const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
       case 'inquiries':
         return <InquiryManagement />;
       case 'portfolio':
-        return <TeamPortfolio />;
+        return <TeamPortfolio user={user} role={role} />;
       case 'selection':
         return <PhotoSelection user={user} role={role} />;
       default:

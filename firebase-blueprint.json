@@ -458,11 +458,29 @@
         "type": { "type": "string", "enum": ["image", "video", "link"] },
         "category": { "type": "string", "enum": ["Wedding", "Music", "Kids", "Event", "Other"] },
         "url": { "type": "string" },
+        "driveFileId": { "type": "string" },
         "title": { "type": "string" },
         "description": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "userRole", "type", "url", "createdAt"]
+    },
+    "GalleryItem": {
+      "title": "Gallery Item",
+      "description": "YouTube or Link items displayed in the Public Gallery",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "type": { "type": "string", "enum": ["youtube", "link"] },
+        "category": { "type": "string" },
+        "url": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "type", "url", "title", "createdAt"]
     },
     "PhotoSelection": {
       "title": "Photo Selection",
@@ -564,6 +582,10 @@
     "/sampleWorks/{sampleId}": {
       "schema": "SampleWork",
       "description": "Sample work from team members"
+    },
+    "/galleryItems/{itemId}": {
+      "schema": "GalleryItem",
+      "description": "Public gallery YouTube and link items"
     },
     "/photoSelections/{selectionId}": {
       "schema": "PhotoSelection",

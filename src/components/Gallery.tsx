@@ -212,6 +212,7 @@ const Gallery: React.FC<GalleryProps> = ({ user, role }) => {
           galleryId,
           url: data.url,
           thumbnailUrl: data.thumbnailUrl,
+          driveFileId: data.id,
           type,
           uploadedAt: new Date().toISOString()
         });
@@ -240,13 +241,33 @@ const Gallery: React.FC<GalleryProps> = ({ user, role }) => {
 
   const confirmDelete = async () => {
     if (!itemToDelete || !galleryId) return;
+    
+    // Find the photo to check for driveFileId before deleting from Firestore
+    const photoToDelete = photos.find(p => p.id === itemToDelete);
+    
     try {
+      // 1. Delete from Firestore
       await deleteDoc(doc(db, `galleries/${galleryId}/photos`, itemToDelete));
-      toast.success('File deleted');
+      
+      // 2. If it is a Drive file, delete from Drive too
+      if (photoToDelete?.driveFileId) {
+        try {
+          await fetch(`/api/drive/file/${photoToDelete.driveFileId}`, {
+            method: 'DELETE',
+            credentials: 'include',
+          });
+        } catch (driveErr) {
+          console.warn('Failed to delete associated Drive file:', driveErr);
+        }
+      }
+      
+      toast.success('File deleted successfully');
     } catch (error) {
+      console.error('Delete error:', error);
       toast.error('Failed to delete file');
     } finally {
       setItemToDelete(null);
+      setDeleteConfirmOpen(false);
     }
   };
 
@@ -362,6 +383,15 @@ const Gallery: React.FC<GalleryProps> = ({ user, role }) => {
                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
                 referrerPolicy="no-referrer"
               />
+            )}
+            {(role === 'admin' || role === 'team') && (
+              <button 
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDelete(photo.id); }}
+                className="absolute top-2 right-2 p-2 bg-red-500 text-white rounded-full shadow-lg z-20 md:hidden flex items-center justify-center border border-white/20"
+                title="Delete item"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
             )}
             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center space-x-4">
               <button className="p-3 bg-white rounded-full text-black hover:bg-gray-100 transition-colors shadow-lg">

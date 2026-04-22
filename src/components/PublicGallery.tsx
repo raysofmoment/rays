@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { collection, query, where, onSnapshot, orderBy, addDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, orderBy, addDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { ImageIcon, ArrowRight, Camera, Filter, Search, Plus, X, Download, Play, Heart, ChevronLeft, ChevronRight, Youtube, Music, Baby, Calendar, MoreHorizontal } from 'lucide-react';
+import { ImageIcon, ArrowRight, Camera, Filter, Search, Plus, X, Download, Play, Heart, ChevronLeft, ChevronRight, Youtube, Music, Baby, Calendar, MoreHorizontal, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import ConfirmModal from './ConfirmModal';
 
 interface PublicGalleryProps {
   user: any;
@@ -26,6 +27,9 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
   const [youtubeVideos, setYoutubeVideos] = useState<any[]>([]);
   const [isDriveConnected, setIsDriveConnected] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadCategory, setUploadCategory] = useState('Other');
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<any>(null);
   
   const FOLDER_MAP: Record<string, string> = {
     'Wedding': '1sWUCrEJQHgZfzF0C3ZbqL5xbYGxYo4Qn',
@@ -58,12 +62,12 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
     };
     checkDriveStatus();
 
-    const q = query(collection(db, 'sampleWorks'), orderBy('createdAt', 'desc'));
+    const q = query(collection(db, 'galleryItems'), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const videos = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
-        isYoutube: true
+        isYoutube: doc.data().type === 'youtube' || doc.data().type === 'link'
       }));
       setYoutubeVideos(videos);
     });
@@ -88,11 +92,11 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
 
     setIsSubmitting(true);
     try {
-      await addDoc(collection(db, 'sampleWorks'), {
+      await addDoc(collection(db, 'galleryItems'), {
         userId: user.uid,
         userName: user.displayName || 'Admin',
         userRole: role || 'admin',
-        type: 'link',
+        type: 'youtube',
         category: youtubeForm.category,
         url: youtubeForm.url,
         title: youtubeForm.title || 'YouTube Video',
@@ -110,6 +114,49 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
     }
   };
 
+  const handleDeleteItem = async (item: any) => {
+    console.log('[Gallery] Preparing to delete item:', item);
+    setItemToDelete(item);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    const item = itemToDelete;
+    if (!item) return;
+
+    if (item.isYoutube && item.id) {
+      try {
+        console.log('[Gallery] Deleting item from Firestore:', item.id);
+        await deleteDoc(doc(db, 'galleryItems', item.id));
+        toast.success('Gallery item deleted successfully');
+      } catch (err) {
+        console.error('Error deleting item:', err);
+        toast.error('Failed to delete item');
+      }
+    } else if (item.isDrive && item.id) {
+        try {
+          console.log('[Gallery] Deleting Drive item via API:', item.id);
+          const response = await fetch(`/api/drive/file/${item.id}`, {
+            method: 'DELETE',
+            credentials: 'include',
+          });
+          if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.error || 'Failed to delete file from Drive');
+          }
+          toast.success('File deleted from Drive successfully');
+          setDriveFiles(prev => prev.filter(f => f.id !== item.id));
+        } catch (err: any) {
+          console.error('Error deleting Drive file:', err);
+          toast.error(err.message || 'Failed to delete file');
+        }
+    } else {
+      console.warn('[Gallery] Item missing ID or type for deletion:', item);
+    }
+    
+    setItemToDelete(null);
+  };
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -118,8 +165,8 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
     const formData = new FormData();
     formData.append('file', file);
     
-    // Determine target folder based on active category
-    const targetFolderId = FOLDER_MAP[activeCategory] || FOLDER_MAP['Other'];
+    // Determine target folder based on selected category in modal
+    const targetFolderId = FOLDER_MAP[uploadCategory] || FOLDER_MAP['Other'];
     formData.append('folderId', targetFolderId);
 
     try {
@@ -255,8 +302,13 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
             {role === 'admin' && (
               <button 
                 onClick={() => {
-                  if (activeCategory === 'Videos') setAddType('youtube');
-                  else setAddType('drive');
+                  if (activeCategory === 'Videos') {
+                    setAddType('youtube');
+                    setYoutubeForm(prev => ({ ...prev, category: 'Videos' }));
+                  } else {
+                    setAddType('drive');
+                    setUploadCategory(activeCategory === 'All' ? 'Other' : activeCategory);
+                  }
                   setShowAddModal(true);
                 }}
                 className="absolute bottom-1 right-1 md:bottom-2 md:right-2 p-1.5 md:p-2 bg-blue-500 text-white rounded-full border-2 border-white shadow-lg hover:scale-110 transition-transform"
@@ -314,21 +366,32 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="max-w-4xl mx-auto border-t border-gray-200">
-        <div className="flex justify-center gap-4 md:gap-12 -mt-px overflow-x-auto no-scrollbar px-4">
+      {/* Tabs / Highlights */}
+      <div className="max-w-4xl mx-auto border-gray-200">
+        <div className="flex justify-start md:justify-center items-start gap-4 md:gap-8 lg:gap-12 py-6 md:py-10 overflow-x-auto no-scrollbar scroll-smooth px-4">
           {categories.map((cat) => (
             <button
               key={cat.name}
               onClick={() => setActiveCategory(cat.name)}
-              className={`flex items-center gap-2 py-4 text-[10px] md:text-xs font-semibold tracking-widest uppercase transition-all border-t whitespace-nowrap ${
-                activeCategory === cat.name 
-                  ? 'border-black text-black' 
-                  : 'border-transparent text-gray-400 hover:text-gray-600'
-              }`}
+              className="flex flex-col items-center gap-3 group min-w-[72px] md:min-w-[80px] shrink-0"
+              id={`category-${cat.name.toLowerCase()}`}
             >
-              <cat.icon className="w-3 h-3" />
-              {cat.name}
+              <div className={`relative p-[1.5px] rounded-full transition-all duration-500 transform ${
+                activeCategory === cat.name 
+                  ? 'bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600 scale-110 active:scale-100' 
+                  : 'bg-gray-200 group-hover:bg-gray-300'
+              }`}>
+                <div className="w-14 h-14 md:w-16 md:h-16 lg:w-18 lg:h-18 rounded-full border-2 border-white bg-white flex items-center justify-center overflow-hidden transition-transform duration-300">
+                  <cat.icon className={`w-6 h-6 md:w-7 md:h-7 lg:w-8 lg:h-8 transition-colors ${
+                    activeCategory === cat.name ? 'text-black' : 'text-gray-400 group-hover:text-gray-600'
+                  }`} />
+                </div>
+              </div>
+              <span className={`text-[10px] md:text-xs font-bold leading-tight transition-colors truncate max-w-full ${
+                activeCategory === cat.name ? 'text-black' : 'text-gray-500 group-hover:text-gray-700'
+              }`}>
+                {cat.name}
+              </span>
             </button>
           ))}
           {role === 'admin' && activeCategory === 'Videos' && (
@@ -337,10 +400,14 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
                 setAddType('youtube');
                 setShowAddModal(true);
               }}
-              className="flex items-center gap-2 py-4 text-[10px] md:text-xs font-semibold tracking-widest uppercase transition-all border-t border-transparent text-blue-600 hover:text-blue-800 whitespace-nowrap"
+              className="flex flex-col items-center gap-3 group min-w-[72px] md:min-w-[80px] shrink-0"
             >
-              <Plus className="w-3 h-3" />
-              Add Video
+              <div className="p-[1.5px] rounded-full bg-blue-500/20 group-hover:bg-blue-500/40 transition-colors">
+                <div className="w-14 h-14 md:w-16 md:h-16 lg:w-18 lg:h-18 rounded-full border-2 border-white bg-gray-50 flex items-center justify-center">
+                  <Plus className="w-6 h-6 md:w-7 md:h-7 lg:w-8 lg:h-8 text-blue-600" />
+                </div>
+              </div>
+              <span className="text-[10px] md:text-xs font-bold text-blue-600">Add New</span>
             </button>
           )}
         </div>
@@ -370,6 +437,20 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
                   className="group relative aspect-square overflow-hidden bg-gray-200 cursor-pointer"
                   onClick={() => setSelectedFile(item)}
                 >
+                  {role === 'admin' && (item.isYoutube || item.isDrive || item.type === 'video' || item.mimeType?.startsWith('video/') || item.mimeType?.startsWith('image/')) && (
+                    <button 
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleDeleteItem(item);
+                      }}
+                      className="absolute top-2 right-2 md:top-3 md:left-3 p-2 md:p-2.5 bg-red-500 hover:bg-red-600 active:scale-90 text-white rounded-full z-[40] opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all shadow-xl pointer-events-auto flex items-center justify-center border border-white/20"
+                      title="Delete Item"
+                    >
+                      <Trash2 className="w-4 h-4 md:w-5 md:h-5" />
+                    </button>
+                  )}
                   {item.isYoutube ? (
                     <div className="w-full h-full relative">
                       <img
@@ -388,7 +469,7 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
                     </div>
                   ) : item.type === 'image' ? (
                     <img
-                      src={item.url}
+                      src={item.url || null}
                       alt={item.title}
                       className="w-full h-full object-cover"
                     />
@@ -416,7 +497,7 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
                   )}
                   
                   {/* Instagram Hover Overlay */}
-                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-6 text-white font-bold">
+                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-6 text-white font-bold pointer-events-none">
                     <div className="flex items-center gap-1.5">
                       <Heart className="w-6 h-6 fill-white" />
                       <span>{Math.floor(Math.random() * 500) + 50}</span>
@@ -487,38 +568,55 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
                       </button>
                     </div>
                   ) : (
-                    <div className="space-y-6">
-                      <div className="p-8 border-2 border-dashed border-blue-200 rounded-2xl text-center bg-blue-50/30 relative">
-                        <input 
-                          type="file" 
-                          className="absolute inset-0 opacity-0 cursor-pointer" 
-                          onChange={handleFileUpload}
-                          disabled={isUploading}
-                        />
-                        <div className="pointer-events-none">
-                          <Plus className="w-12 h-12 text-blue-500 mx-auto mb-4" />
-                          <h3 className="text-lg font-bold text-gray-900 mb-1">
-                            {isUploading ? 'Uploading...' : 'Click to Upload'}
-                          </h3>
-                          <p className="text-sm text-gray-500">Photos or Videos (Max 10MB)</p>
+                      <div className="space-y-6">
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Target Category</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            {Object.keys(FOLDER_MAP).map(cat => (
+                              <button
+                                key={cat}
+                                type="button"
+                                onClick={() => setUploadCategory(cat)}
+                                className={`px-4 py-2 text-xs font-bold rounded-lg border-2 transition-all ${uploadCategory === cat ? 'border-black bg-black text-white' : 'border-gray-100 bg-gray-50 text-gray-500 hover:border-gray-200'}`}
+                              >
+                                {cat}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="p-8 border-2 border-dashed border-blue-200 rounded-2xl text-center bg-blue-50/30 relative py-12">
+                          <input 
+                            type="file" 
+                            className="absolute inset-0 opacity-0 cursor-pointer" 
+                            onChange={handleFileUpload}
+                            disabled={isUploading}
+                          />
+                          <div className="pointer-events-none">
+                            <Plus className="w-12 h-12 text-blue-500 mx-auto mb-4" />
+                            <h3 className="text-lg font-bold text-gray-900 mb-1">
+                              {isUploading ? 'Uploading...' : 'Click to Upload'}
+                            </h3>
+                            <p className="text-sm text-gray-500 px-4">Selected Category: <span className="text-blue-600 font-bold uppercase">{uploadCategory}</span></p>
+                            <p className="text-[10px] text-gray-400 mt-2">Photos or Videos (Max 10MB)</p>
+                          </div>
+                        </div>
+                        <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+                          <p className="text-xs text-gray-500 text-center">
+                            Files will be uploaded to the <span className="font-bold text-gray-700">{uploadCategory}</span> folder in your Google Drive.
+                          </p>
+                        </div>
+                        <div className="text-center">
+                          <a 
+                            href={`https://drive.google.com/drive/folders/${FOLDER_MAP[uploadCategory] || FOLDER_MAP['Other']}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm font-semibold text-blue-600 hover:underline"
+                          >
+                            View Folder in Google Drive
+                          </a>
                         </div>
                       </div>
-                      <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                        <p className="text-xs text-gray-500 text-center">
-                          Files will be uploaded to your linked Google Drive folder and appear in the gallery automatically.
-                        </p>
-                      </div>
-                      <div className="text-center">
-                        <a 
-                          href={`https://drive.google.com/drive/folders/${FOLDER_MAP[activeCategory] || FOLDER_MAP['Other']}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm font-semibold text-blue-600 hover:underline"
-                        >
-                          View Folder in Google Drive
-                        </a>
-                      </div>
-                    </div>
                   )}
                 </div>
               ) : (
@@ -551,7 +649,10 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
                       value={youtubeForm.category}
                       onChange={e => setYoutubeForm({...youtubeForm, category: e.target.value})}
                     >
-                      <option value="Videos">Videos</option>
+                      <option value="Videos">Videos Only</option>
+                      {Object.keys(FOLDER_MAP).map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
                     </select>
                   </div>
                   <button 
@@ -620,7 +721,7 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
                   />
                 ) : (
                   <img 
-                    src={selectedFile.isDrive ? `${window.location.origin}/api/drive/image/${selectedFile.id}` : (selectedFile.type === 'image' ? selectedFile.url : (selectedFile.thumbnailLink?.replace('=s220', '=s1600') || selectedFile.webViewLink))} 
+                    src={selectedFile.isDrive ? `${window.location.origin}/api/drive/image/${selectedFile.id}` : (selectedFile.type === 'image' ? (selectedFile.url || undefined) : (selectedFile.thumbnailLink?.replace('=s220', '=s1600') || selectedFile.webViewLink))} 
                     alt={selectedFile.name || selectedFile.title}
                     className="max-w-full max-h-full object-contain"
                     referrerPolicy="no-referrer"
@@ -644,9 +745,23 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
                     <span className="font-semibold text-sm">rays_of_moment</span>
                     <span className="text-blue-500 font-semibold text-sm cursor-pointer hover:text-blue-700">• Follow</span>
                   </div>
-                  <button onClick={() => setSelectedFile(null)} className="hidden md:block">
-                    <X className="w-5 h-5 text-gray-500" />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {role === 'admin' && (
+                      <button 
+                        onClick={() => {
+                          handleDeleteItem(selectedFile);
+                          setSelectedFile(null);
+                        }}
+                        className="p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors"
+                        title="Delete this post"
+                      >
+                        <Trash2 className="w-5 h-5" />
+                      </button>
+                    )}
+                    <button onClick={() => setSelectedFile(null)} className="hidden md:block p-2 hover:bg-gray-100 rounded-full transition-colors">
+                      <X className="w-5 h-5 text-gray-500" />
+                    </button>
+                  </div>
                 </div>
 
                 <div className="flex-grow p-4 overflow-y-auto">
@@ -712,6 +827,16 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
           </div>
         )}
       </AnimatePresence>
+
+      <ConfirmModal
+        isOpen={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        onConfirm={confirmDelete}
+        title="Delete Item"
+        message="Are you sure you want to delete this item? If it's a file, it will be permanently removed from Google Drive. Links will be removed from the gallery."
+        confirmLabel="Delete"
+        variant="danger"
+      />
     </div>
   );
 };

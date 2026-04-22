@@ -15,7 +15,14 @@ dotenv.config();
 
 let globalDriveTokens: any = null;
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
+// These will be initialized lazily
+let stripeClient: Stripe | null = null;
+const getStripe = () => {
+  if (!stripeClient) {
+    stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY || "");
+  }
+  return stripeClient;
+};
 
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
@@ -261,6 +268,40 @@ async function startServer() {
     }
   });
 
+  app.get("/api/drive/image/:fileId", async (req, res) => {
+    const { fileId } = req.params;
+    let tokens = globalDriveTokens || (req as any).session?.tokens;
+
+    // Optional: could also support API key for public files if needed
+    if (!tokens) {
+      return res.status(401).send("Not authenticated with Google Drive");
+    }
+
+    try {
+      oauth2Client.setCredentials(tokens);
+      const drive = google.drive({ version: "v3", auth: oauth2Client });
+      
+      const file = await drive.files.get({
+        fileId: fileId,
+        alt: "media"
+      }, { responseType: "stream" });
+
+      const metadata = await drive.files.get({
+        fileId: fileId,
+        fields: "mimeType"
+      });
+
+      res.setHeader("Content-Type", metadata.data.mimeType || "image/jpeg");
+      (file.data as any).pipe(res);
+    } catch (error: any) {
+      console.error("[Drive Proxy] Error fetching image:", error.response?.data || error.message || error);
+      res.status(error.response?.status || 500).json({ 
+        error: "Failed to fetch image from Drive",
+        details: error.response?.data?.error?.message || error.message
+      });
+    }
+  });
+
   const getApiKey = () => {
     let apiKey = (process.env.GOOGLE_DRIVE_API_KEY || process.env.VITE_GOOGLE_DRIVE_API_KEY || "").trim();
     if (apiKey.startsWith('"') && apiKey.endsWith('"')) apiKey = apiKey.substring(1, apiKey.length - 1);
@@ -430,6 +471,34 @@ async function startServer() {
     }
   });
 
+  app.delete("/api/drive/file/:fileId", async (req: any, res) => {
+    const { fileId } = req.params;
+    
+    let tokens = req.headers['x-drive-tokens'] ? JSON.parse(req.headers['x-drive-tokens'] as string) : null;
+    if (!tokens) {
+      tokens = globalDriveTokens || (req as any).session?.tokens;
+    }
+
+    if (!tokens) {
+      return res.status(401).json({ error: "Google Drive not connected. Admin must connect Drive in Studio Hub." });
+    }
+
+    try {
+      oauth2Client.setCredentials(tokens);
+      const drive = google.drive({ version: "v3", auth: oauth2Client });
+      
+      await drive.files.delete({
+        fileId: fileId,
+      });
+      
+      console.log(`[Drive] Deleted file ${fileId}`);
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("[Drive] Delete file error:", error);
+      res.status(500).json({ error: error.message || "Failed to delete file from Drive" });
+    }
+  });
+
   app.post("/api/drive/export-selection", async (req, res) => {
     const { folderId, selectedFileIds, selectionName } = req.body;
     
@@ -546,7 +615,7 @@ async function startServer() {
       const { orderId, amount, clientName, clientEmail, type = "order" } = req.body;
       
       const appUrl = process.env.APP_URL || "https://www.raysofmoment.com";
-      const session = await stripe.checkout.sessions.create({
+      const session = await getStripe().checkout.sessions.create({
         payment_method_types: ["card"],
         customer_email: clientEmail,
         line_items: [
@@ -607,6 +676,20 @@ async function startServer() {
   console.log(`GOOGLE_CLIENT_SECRET: ${process.env.GOOGLE_CLIENT_SECRET ? "SET" : "MISSING"}`);
   console.log(`GOOGLE_REDIRECT_URI: ${process.env.GOOGLE_REDIRECT_URI || "DEFAULT"}`);
   console.log("--------------------------");
+
+  // Global error handler for API routes
+  app.use("/api", (err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error("API Error caught by global handler:", err);
+    res.status(err.status || 500).json({
+      error: err.message || "Internal Server Error",
+      code: err.code
+    });
+  });
+
+  // Specific 404 for API routes to prevent falling through to Vite SPA
+  app.all("/api/*", (req, res) => {
+    res.status(404).json({ error: `API route not found: ${req.method} ${req.url}` });
+  });
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
