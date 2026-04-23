@@ -6,7 +6,7 @@
 [[redirects]]
   from = "/api/*"
   # Change the URL below to your actual Cloud Run or Render.com backend URL!
-  to = "https://YOUR-BACKEND-URL-GOES-HERE.run.app/api/:splat"
+  to = "https://ais-pre-t3gs7beuood4vbvsvwufg3-435864974997.asia-southeast1.run.app/api/:splat"
   status = 200
   force = true
   
