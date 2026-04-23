@@ -1,0 +1,18 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# PROXY RULE: Route all backend /api/ traffic to your live backend server
+[[redirects]]
+  from = "/api/*"
+  # Change the URL below to your actual Cloud Run or Render.com backend URL!
+  to = "https://YOUR-BACKEND-URL-GOES-HERE.run.app/api/:splat"
+  status = 200
+  force = true
+  
+# SPA RULE: Catch-all rule for React Router (Keep this at the bottom!)
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+  force = false

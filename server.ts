@@ -294,10 +294,16 @@ async function startServer() {
       res.setHeader("Content-Type", metadata.data.mimeType || "image/jpeg");
       (file.data as any).pipe(res);
     } catch (error: any) {
-      console.error("[Drive Proxy] Error fetching image:", error.response?.data || error.message || error);
+      if (error.response?.status === 404 || (error.message && error.message.includes("File not found"))) {
+        console.warn(`[Drive Proxy] Image not found: ${fileId}`);
+        res.status(404).json({ error: "Image not found" });
+        return;
+      }
+      const errorMessage = error.response?.data?.error?.message || error.message || "Unknown error";
+      console.error("[Drive Proxy] Error fetching image:", errorMessage);
       res.status(error.response?.status || 500).json({ 
         error: "Failed to fetch image from Drive",
-        details: error.response?.data?.error?.message || error.message
+        details: errorMessage
       });
     }
   });
@@ -494,7 +500,12 @@ async function startServer() {
       console.log(`[Drive] Deleted file ${fileId}`);
       res.json({ success: true });
     } catch (error: any) {
-      console.error("[Drive] Delete file error:", error);
+      if (error.response?.status === 404 || (error.message && error.message.includes("File not found"))) {
+        console.log(`[Drive] File ${fileId} already deleted or not found, treating as success.`);
+        res.json({ success: true, message: "File already deleted" });
+        return;
+      }
+      console.error("[Drive] Delete file error:", error.message || "Unknown error");
       res.status(500).json({ error: error.message || "Failed to delete file from Drive" });
     }
   });

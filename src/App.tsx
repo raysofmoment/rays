@@ -57,36 +57,57 @@ export default function App() {
           const userDocRef = doc(db, 'users', currentUser.uid);
           const userDoc = await getDoc(userDocRef);
           
+          let determinedRole = 'client';
+
           if (!isMounted) return;
 
           if (userDoc.exists()) {
             const userData = userDoc.data();
             if (currentUser.email === 'saikatbanerjee139@gmail.com' && userData.role !== 'admin') {
               await setDoc(userDocRef, { ...userData, role: 'admin' }, { merge: true });
-              if (isMounted) setRole('admin');
+              determinedRole = 'admin';
             } else {
-              if (isMounted) setRole(userData.role);
+              determinedRole = userData.role;
             }
+            if (isMounted) setRole(determinedRole);
             
             // Check for upcoming events when a user logs in
-            checkUpcomingEvents(currentUser.uid, userData.role);
+            checkUpcomingEvents(currentUser.uid, determinedRole);
           } else {
-            const newRole = currentUser.email === 'saikatbanerjee139@gmail.com' ? 'admin' : 'client';
+            determinedRole = currentUser.email === 'saikatbanerjee139@gmail.com' ? 'admin' : 'client';
             const userData = {
               uid: currentUser.uid,
               email: currentUser.email,
               displayName: currentUser.displayName,
               photoURL: currentUser.photoURL,
-              role: newRole,
+              role: determinedRole,
               createdAt: new Date().toISOString()
             };
             await setDoc(userDocRef, userData);
-            if (isMounted) setRole(newRole);
+            if (isMounted) setRole(determinedRole);
             
             // Check for upcoming events for new user
-            checkUpcomingEvents(currentUser.uid, newRole);
+            checkUpcomingEvents(currentUser.uid, determinedRole);
           }
           if (isMounted) setUser(currentUser);
+
+          // Silent background sync for Drive tokens if Admin (crucial for Cloud Run cold starts)
+          if (determinedRole === 'admin') {
+            try {
+              const driveDocRef = doc(db, 'settings', 'google_drive');
+              const driveDoc = await getDoc(driveDocRef);
+              if (driveDoc.exists() && driveDoc.data().value) {
+                const tokens = driveDoc.data().value;
+                await fetch('/api/auth/google/sync', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ tokens })
+                }).catch(() => {}); // ignore frontend errors invisibly
+              }
+            } catch (err) {
+              console.warn("Drive background sync skipped.");
+            }
+          }
         } catch (error) {
           console.error("Error fetching user data:", error);
         }
