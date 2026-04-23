@@ -358,8 +358,8 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
                 📍 Based in Murshidabad, West Bengal<br />
                 ✨ Open for bookings worldwide
               </p>
-              <a href="https://raysofmoment.com" className="text-blue-900 text-xs md:text-sm font-semibold mt-2 block hover:underline">
-                raysofmoment.com
+              <a href="https://www.instagram.com/rays.of.moment/" target="_blank" rel="noopener noreferrer" className="text-blue-900 text-xs md:text-sm font-semibold mt-2 block hover:underline">
+                instagram.com/rays.of.moment
               </a>
             </div>
           </div>
