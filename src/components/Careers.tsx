@@ -131,6 +131,15 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
             url: data.url,
             name: file.name
           });
+        } else {
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorData = await response.json();
+            toast.error(errorData.error || 'Upload failed');
+          } else {
+            console.error('[Careers Upload] Server error:', await response.text());
+            toast.error(`Server error (${response.status}): Failed to upload`);
+          }
         }
       }
       setFormData(prev => ({

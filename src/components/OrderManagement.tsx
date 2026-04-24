@@ -3,7 +3,7 @@ import { User } from 'firebase/auth';
 import { collection, query, where, getDocs, addDoc, updateDoc, doc, deleteDoc, orderBy, onSnapshot, writeBatch } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { notifyAdmins, notifyUser } from '../services/notificationService';
-import { Calendar, Plus, Search, Filter, MoreVertical, Trash2, Edit2, CreditCard, Image as ImageIcon, User as UserIcon, Eye, Bell, ShoppingCart, Download } from 'lucide-react';
+import { Calendar, Plus, Search, Filter, MoreVertical, Trash2, Edit2, CreditCard, Image as ImageIcon, User as UserIcon, Eye, Bell, ShoppingCart, Download, X, Camera } from 'lucide-react';
 import { format, isValid } from 'date-fns';
 import { toast } from 'sonner';
 import { loadStripe } from '@stripe/stripe-js';
@@ -12,7 +12,11 @@ import BookingForm from './BookingForm';
 import { useCart } from '../context/CartContext';
 import { exportToExcel } from '../utils/excelExport';
 
-const stripePromise = loadStripe((import.meta as any).env.VITE_STRIPE_PUBLISHABLE_KEY || '');
+const stripePublishableKey = ((import.meta as any).env.VITE_STRIPE_PUBLISHABLE_KEY || '').trim();
+if (stripePublishableKey && !stripePublishableKey.startsWith('pk_')) {
+  console.warn('[Stripe] Warning: VITE_STRIPE_PUBLISHABLE_KEY does not appear to be a valid Stripe publishable key.');
+}
+const stripePromise = loadStripe(stripePublishableKey);
 
 interface OrderManagementProps {
   user: User;
@@ -276,33 +280,79 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
     }
   };
 
-  const handleToggleAssignment = async (orderId: string, memberId: string, field: 'photographerIds' | 'editorIds' | 'otherIds', currentIds: string[] = []) => {
+  const handleToggleAssignment = async (order: any, memberId: string, type: 'photographer' | 'editor' | 'other') => {
     try {
-      let newIds = [...(currentIds || [])];
-      if (newIds.includes(memberId)) {
-        newIds = newIds.filter(id => id !== memberId);
-      } else {
-        newIds.push(memberId);
-      }
+      const field = `${type}Ids`;
+      const currentIds = order[field] || [];
+      let newIds: string[];
       
+      if (currentIds.includes(memberId)) {
+        newIds = currentIds.filter((id: string) => id !== memberId);
+      } else {
+        newIds = [...currentIds, memberId];
+      }
+
       const updates: any = { 
         [field]: newIds,
+        // For backwards compatibility, keep the first one in the singular field
+        [`${type}Id`]: newIds.length > 0 ? newIds[0] : '',
         updatedAt: new Date().toISOString(),
         updatedBy: user.uid
       };
       
-      // Update singular field for backward compatibility
-      if (field === 'photographerIds') updates.photographerId = newIds[0] || '';
-      if (field === 'editorIds') updates.editorId = newIds[0] || '';
-      if (field === 'otherIds') updates.otherId = newIds[0] || '';
+      await updateDoc(doc(db, 'orders', order.id), updates);
       
-      await updateDoc(doc(db, 'orders', orderId), updates);
+      // Update staff payments if added
+      if (!currentIds.includes(memberId)) {
+        const currentStaffPayments = order.staffPayments || {};
+        if (!currentStaffPayments[memberId]) {
+          const staffPayments = {
+            ...currentStaffPayments,
+            [memberId]: { totalFee: 0, paidAmount: 0, payments: [] }
+          };
+          updates.staffPayments = staffPayments;
+          await updateDoc(doc(db, 'orders', order.id), { staffPayments });
+        }
+      } else {
+        // If removed, optionally keep or remove payment record? 
+        // User might want to keep it if they paid already. 
+        // For now let's keep it to avoid data loss.
+      }
+      
+      // Also update the corresponding booking if it exists
+      if (order.bookingId) {
+        await updateDoc(doc(db, 'bookings', order.bookingId), updates);
+      }
       
       toast.success('Assignment updated successfully');
     } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `orders/${orderId}`);
-      console.error('Error updating assignment:', error);
+      handleFirestoreError(error, OperationType.UPDATE, `orders/${order.id}`);
       toast.error('Failed to update assignment');
+    }
+  };
+
+  const handleUpdateStaffFee = async (order: any, memberId: string, fee: number) => {
+    try {
+      const currentStaffPayments = order.staffPayments || {};
+      const staffData = currentStaffPayments[memberId] || { totalFee: 0, paidAmount: 0, payments: [] };
+      
+      const newStaffPayments = {
+        ...currentStaffPayments,
+        [memberId]: {
+          ...staffData,
+          totalFee: fee
+        }
+      };
+
+      const updates = { staffPayments: newStaffPayments };
+      await updateDoc(doc(db, 'orders', order.id), updates);
+      if (order.bookingId) {
+        await updateDoc(doc(db, 'bookings', order.bookingId), updates);
+      }
+      toast.success('Fee updated');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `orders/${order.id}`);
+      toast.error('Failed to update fee');
     }
   };
 
@@ -476,8 +526,14 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
       )}
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
+        <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex items-center justify-between">
           <h3 className="text-lg font-bold text-gray-900">Project Orders</h3>
+          {role === 'admin' && (
+            <div className="flex items-center space-x-2">
+              <span className="text-xs font-bold text-gray-400 uppercase">Total Revenue:</span>
+              <span className="text-lg font-bold text-green-600">₹{orders.reduce((sum, o) => sum + (o.finalAmount || o.totalAmount || 0), 0).toLocaleString()}</span>
+            </div>
+          )}
         </div>
 
         <div className="overflow-x-auto">
@@ -487,11 +543,15 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Order Details</th>
                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Client Info</th>
                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Payment</th>
+                {(role === 'admin' || role === 'client') && (
+                  <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Payment</th>
+                )}
                 {role === 'admin' && (
                   <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Assignments</th>
                 )}
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Amount</th>
+                {(role === 'admin' || role === 'client') && (
+                  <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Amount</th>
+                )}
                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Actions</th>
               </tr>
             </thead>
@@ -518,15 +578,14 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
                   </td>
                   <td className="px-6 py-4">
                     <div className="text-sm text-gray-900 font-medium">{order.clientName}</div>
-                    {(role === 'admin' || role === 'photographer' || role === 'other') && (
-                      <div className="text-xs text-gray-500">{order.mobileNumber}</div>
-                    )}
+                    <div className="text-xs text-gray-500">{order.mobileNumber}</div>
                   </td>
                   <td className="px-6 py-4">
                     <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
                       {order.status}
                     </span>
                   </td>
+                  {(role === 'admin' || role === 'client') && (
                   <td className="px-6 py-4">
                     <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
                       (order.totalAmount - (order.paidAmount || 0)) <= 0 ? 'bg-green-100 text-green-700' : 
@@ -535,95 +594,154 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
                       {(order.totalAmount - (order.paidAmount || 0)) <= 0 ? 'Paid' : ((order.paidAmount || 0) > 0 ? 'Partial' : 'Unpaid')}
                     </span>
                   </td>
+                  )}
                   {role === 'admin' && (
                     <td className="px-6 py-4">
-                      <div className="space-y-3 min-w-[150px]">
-                        {/* Photographers */}
-                        <div>
-                          <p className="text-[9px] font-bold text-gray-400 uppercase mb-1">Photographers</p>
-                          <div className="flex flex-wrap gap-1 mb-1">
+                      <div className="space-y-4 min-w-[200px]">
+                        {/* Photographer Assignment */}
+                        <div className="space-y-2">
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                            <Camera className="w-3 h-3" /> Photographers
+                          </p>
+                          <div className="flex flex-col gap-2 mb-2">
                             {(order.photographerIds || []).map((id: string) => {
-                              const member = teamMembers.find(m => m.id === id);
+                              const member = teamMembers.find(m => m.uid === id);
+                              const fee = order.staffPayments?.[id]?.totalFee || 0;
                               return (
-                                <span key={id} className="px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-[9px] font-medium flex items-center gap-1">
-                                  {member?.displayName || 'User'}
-                                  <button onClick={() => handleToggleAssignment(order.id, id, 'photographerIds', order.photographerIds)} className="hover:text-red-500 font-bold">×</button>
-                                </span>
+                                <div key={id} className="flex flex-col gap-1 p-2 bg-blue-50 rounded-lg border border-blue-100">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-bold text-blue-700 truncate mr-1">
+                                      {member?.displayName || member?.email?.split('@')[0]}
+                                    </span>
+                                    <button onClick={() => handleToggleAssignment(order, id, 'photographer')} className="text-red-400 hover:text-red-600">
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                  <div className="flex items-center space-x-1">
+                                    <span className="text-[8px] font-bold text-blue-400 uppercase">Fee:</span>
+                                    <input 
+                                      type="number"
+                                      defaultValue={fee}
+                                      onBlur={(e) => handleUpdateStaffFee(order, id, Number(e.target.value))}
+                                      placeholder="₹"
+                                      className="w-16 px-1 py-0.5 text-[9px] font-bold border border-blue-100 rounded bg-white outline-none focus:border-blue-500"
+                                    />
+                                  </div>
+                                </div>
                               );
                             })}
                           </div>
                           <select
+                            value=""
                             onChange={(e) => {
-                              if (e.target.value) handleToggleAssignment(order.id, e.target.value, 'photographerIds', order.photographerIds);
-                              e.target.value = '';
+                              if (e.target.value) handleToggleAssignment(order, e.target.value, 'photographer');
                             }}
-                            className="text-[10px] border border-gray-200 rounded p-1 w-full bg-white"
+                            className="text-[10px] border border-gray-200 rounded-lg p-1.5 w-full bg-white font-bold focus:border-black outline-none transition-all"
                           >
-                            <option value="">+ Add Photographer</option>
-                            {teamMembers.filter(m => m.role === 'photographer' && !(order.photographerIds || []).includes(m.id)).map(m => (
-                              <option key={m.id} value={m.id}>{m.displayName || m.email}</option>
+                            <option value="">Add Photographer</option>
+                            {teamMembers.filter(m => (m.role === 'photographer' || m.role === 'admin') && !(order.photographerIds || []).includes(m.uid)).map(m => (
+                              <option key={m.uid} value={m.uid}>{m.displayName || m.email}</option>
                             ))}
                           </select>
                         </div>
 
-                        {/* Editors */}
-                        <div>
-                          <p className="text-[9px] font-bold text-gray-400 uppercase mb-1">Editors</p>
-                          <div className="flex flex-wrap gap-1 mb-1">
+                        {/* Editor Assignment */}
+                        <div className="space-y-2">
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                            <Edit2 className="w-3 h-3" /> Editors
+                          </p>
+                          <div className="flex flex-col gap-2 mb-2">
                             {(order.editorIds || []).map((id: string) => {
-                              const member = teamMembers.find(m => m.id === id);
+                              const member = teamMembers.find(m => m.uid === id);
+                              const fee = order.staffPayments?.[id]?.totalFee || 0;
                               return (
-                                <span key={id} className="px-2 py-0.5 bg-purple-50 text-purple-700 rounded text-[9px] font-medium flex items-center gap-1">
-                                  {member?.displayName || 'User'}
-                                  <button onClick={() => handleToggleAssignment(order.id, id, 'editorIds', order.editorIds)} className="hover:text-red-500 font-bold">×</button>
-                                </span>
+                                <div key={id} className="flex flex-col gap-1 p-2 bg-purple-50 rounded-lg border border-purple-100">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-bold text-purple-700 truncate mr-1">
+                                      {member?.displayName || member?.email?.split('@')[0]}
+                                    </span>
+                                    <button onClick={() => handleToggleAssignment(order, id, 'editor')} className="text-red-400 hover:text-red-600">
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                  <div className="flex items-center space-x-1">
+                                    <span className="text-[8px] font-bold text-purple-400 uppercase">Fee:</span>
+                                    <input 
+                                      type="number"
+                                      defaultValue={fee}
+                                      onBlur={(e) => handleUpdateStaffFee(order, id, Number(e.target.value))}
+                                      placeholder="₹"
+                                      className="w-16 px-1 py-0.5 text-[9px] font-bold border border-purple-100 rounded bg-white outline-none focus:border-purple-500"
+                                    />
+                                  </div>
+                                </div>
                               );
                             })}
                           </div>
                           <select
+                            value=""
                             onChange={(e) => {
-                              if (e.target.value) handleToggleAssignment(order.id, e.target.value, 'editorIds', order.editorIds);
-                              e.target.value = '';
+                              if (e.target.value) handleToggleAssignment(order, e.target.value, 'editor');
                             }}
-                            className="text-[10px] border border-gray-200 rounded p-1 w-full bg-white"
+                            className="text-[10px] border border-gray-200 rounded-lg p-1.5 w-full bg-white font-bold focus:border-black outline-none transition-all"
                           >
-                            <option value="">+ Add Editor</option>
-                            {teamMembers.filter(m => m.role === 'editor' && !(order.editorIds || []).includes(m.id)).map(m => (
-                              <option key={m.id} value={m.id}>{m.displayName || m.email}</option>
+                            <option value="">Add Editor</option>
+                            {teamMembers.filter(m => (m.role === 'editor' || m.role === 'admin') && !(order.editorIds || []).includes(m.uid)).map(m => (
+                              <option key={m.uid} value={m.uid}>{m.displayName || m.email}</option>
                             ))}
                           </select>
                         </div>
 
-                        {/* Others */}
-                        <div>
-                          <p className="text-[9px] font-bold text-gray-400 uppercase mb-1">Others</p>
-                          <div className="flex flex-wrap gap-1 mb-1">
+                        {/* Other Assignment */}
+                        <div className="space-y-2">
+                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider flex items-center gap-1">
+                            <UserIcon className="w-3 h-3" /> Other Staff
+                          </p>
+                          <div className="flex flex-col gap-2 mb-2">
                             {(order.otherIds || []).map((id: string) => {
-                              const member = teamMembers.find(m => m.id === id);
+                              const member = teamMembers.find(m => m.uid === id);
+                              const fee = order.staffPayments?.[id]?.totalFee || 0;
                               return (
-                                <span key={id} className="px-2 py-0.5 bg-gray-50 text-gray-700 rounded text-[9px] font-medium flex items-center gap-1">
-                                  {member?.displayName || 'User'}
-                                  <button onClick={() => handleToggleAssignment(order.id, id, 'otherIds', order.otherIds)} className="hover:text-red-500 font-bold">×</button>
-                                </span>
+                                <div key={id} className="flex flex-col gap-1 p-2 bg-green-50 rounded-lg border border-green-100">
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-[10px] font-bold text-green-700 truncate mr-1">
+                                      {member?.displayName || member?.email?.split('@')[0]}
+                                    </span>
+                                    <button onClick={() => handleToggleAssignment(order, id, 'other')} className="text-red-400 hover:text-red-600">
+                                      <X className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                  <div className="flex items-center space-x-1">
+                                    <span className="text-[8px] font-bold text-green-400 uppercase">Fee:</span>
+                                    <input 
+                                      type="number"
+                                      defaultValue={fee}
+                                      onBlur={(e) => handleUpdateStaffFee(order, id, Number(e.target.value))}
+                                      placeholder="₹"
+                                      className="w-16 px-1 py-0.5 text-[9px] font-bold border border-green-100 rounded bg-white outline-none focus:border-green-500"
+                                    />
+                                  </div>
+                                </div>
                               );
                             })}
                           </div>
                           <select
+                            value=""
                             onChange={(e) => {
-                              if (e.target.value) handleToggleAssignment(order.id, e.target.value, 'otherIds', order.otherIds);
-                              e.target.value = '';
+                              if (e.target.value) handleToggleAssignment(order, e.target.value, 'other');
                             }}
-                            className="text-[10px] border border-gray-200 rounded p-1 w-full bg-white"
+                            className="text-[10px] border border-gray-200 rounded-lg p-1.5 w-full bg-white font-bold focus:border-black outline-none transition-all"
                           >
-                            <option value="">+ Add Other</option>
-                            {teamMembers.filter(m => m.role === 'other' && !(order.otherIds || []).includes(m.id)).map(m => (
-                              <option key={m.id} value={m.id}>{m.displayName || m.email}</option>
+                            <option value="">Add Other Staff</option>
+                            {teamMembers.filter(m => (m.role === 'other' || m.role === 'admin') && !(order.otherIds || []).includes(m.uid)).map(m => (
+                              <option key={m.uid} value={m.uid}>{m.displayName || m.email}</option>
                             ))}
                           </select>
                         </div>
                       </div>
                     </td>
                   )}
+                  {(role === 'admin' || role === 'client') && (
                   <td className="px-6 py-4">
                     <div className="text-sm font-bold text-gray-900">₹{(order.finalAmount || order.totalAmount).toLocaleString()}</div>
                     {order.finalAmount && order.finalAmount !== order.totalAmount && (
@@ -633,6 +751,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
                       <div className="text-[10px] text-red-500 font-bold">Due: ₹{(order.finalAmount || order.totalAmount) - (order.paidAmount || 0)}</div>
                     )}
                   </td>
+                  )}
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end space-x-2">
                       <button

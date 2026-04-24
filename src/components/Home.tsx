@@ -48,16 +48,25 @@ const Home: React.FC = () => {
       try {
         setLoadingPortfolio(true);
         const folderId = FOLDER_MAP[activeCategory];
-        const apiUrl = `${window.location.origin}/api/drive/list/${folderId}`;
+        // Use relative path for more reliable fetching in varying environments
+        const apiUrl = `/api/drive/list/${folderId}`;
         
         const response = await fetch(apiUrl);
-        if (!response.ok) throw new Error('Failed to fetch portfolio');
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`Portfolio fetch failed with status ${response.status}:`, errorText);
+          throw new Error(`Failed to fetch portfolio: ${response.status}`);
+        }
         
         const data = await response.json();
         const images = data.filter((f: any) => f.mimeType && f.mimeType.startsWith('image/')).slice(0, 9);
         setPortfolioItems(images);
       } catch (error: any) {
         console.error('Error fetching portfolio:', error);
+        // If it's a network error (Failed to fetch), provide more context
+        if (error.message === 'Failed to fetch') {
+          console.warn('Network error detected. Check if the server is running and accessible.');
+        }
       } finally {
         setLoadingPortfolio(false);
       }

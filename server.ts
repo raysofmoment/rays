@@ -19,7 +19,11 @@ let globalDriveTokens: any = null;
 let stripeClient: Stripe | null = null;
 const getStripe = () => {
   if (!stripeClient) {
-    stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY || "");
+    const key = (process.env.STRIPE_SECRET_KEY || "").trim();
+    if (key && !key.startsWith('sk_') && !key.startsWith('rk_')) {
+      console.warn(`[Stripe] Warning: STRIPE_SECRET_KEY does not appear to be a valid Stripe key. It starts with: ${key.substring(0, 8)}`);
+    }
+    stripeClient = new Stripe(key);
   }
   return stripeClient;
 };
@@ -218,20 +222,29 @@ async function startServer() {
   });
 
   app.post("/api/upload-to-drive", upload.single("file"), async (req: any, res) => {
-    let tokens = req.headers['x-drive-tokens'] ? JSON.parse(req.headers['x-drive-tokens'] as string) : null;
-    if (!tokens) {
-      tokens = globalDriveTokens || (req as any).session?.tokens;
-    }
-
-    if (!tokens) {
-      return res.status(401).json({ error: "Google Drive not connected. Admin must connect Drive in Studio Hub." });
-    }
-
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
-    }
-
     try {
+      let tokens = null;
+      try {
+        tokens = req.headers['x-drive-tokens'] ? JSON.parse(req.headers['x-drive-tokens'] as string) : null;
+      } catch (parseErr) {
+        console.error("[Drive Upload] Error parsing x-drive-tokens header:", parseErr);
+      }
+
+      if (!tokens) {
+        tokens = globalDriveTokens || (req as any).session?.tokens;
+      }
+
+      if (!tokens) {
+        console.warn("[Drive Upload] Unauthorized - No tokens found in session, headers, or global state");
+        return res.status(401).json({ error: "Google Drive not connected. Admin must connect Drive in Studio Hub." });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+
+      console.log(`[Drive Upload] Starting upload for ${req.file.originalname} (${req.file.size} bytes)`);
+
       oauth2Client.setCredentials(tokens);
       const drive = google.drive({ version: "v3", auth: oauth2Client });
       const { folderId } = req.body;
@@ -255,59 +268,20 @@ async function startServer() {
         fields: "id, webViewLink, webContentLink, thumbnailLink",
       });
 
-      // Make file public if needed, or just return the link
-      // For this demo, we'll just return the links
+      console.log(`[Drive Upload] Successfully uploaded file ID: ${response.data.id}`);
+
       res.json({
         id: response.data.id,
         url: response.data.webViewLink,
         thumbnailUrl: response.data.thumbnailLink || response.data.webViewLink,
       });
     } catch (error: any) {
-      console.error("Error uploading to Drive:", error);
-      res.status(500).json({ error: error.message });
+      console.error("[Drive Upload] Error:", error);
+      res.status(500).json({ error: error.message || "Internal server error during upload" });
     }
   });
 
-  app.get("/api/drive/image/:fileId", async (req, res) => {
-    const { fileId } = req.params;
-    let tokens = globalDriveTokens || (req as any).session?.tokens;
-
-    // Optional: could also support API key for public files if needed
-    if (!tokens) {
-      return res.status(401).send("Not authenticated with Google Drive");
-    }
-
-    try {
-      oauth2Client.setCredentials(tokens);
-      const drive = google.drive({ version: "v3", auth: oauth2Client });
-      
-      const file = await drive.files.get({
-        fileId: fileId,
-        alt: "media"
-      }, { responseType: "stream" });
-
-      const metadata = await drive.files.get({
-        fileId: fileId,
-        fields: "mimeType"
-      });
-
-      res.setHeader("Content-Type", metadata.data.mimeType || "image/jpeg");
-      (file.data as any).pipe(res);
-    } catch (error: any) {
-      if (error.response?.status === 404 || (error.message && error.message.includes("File not found"))) {
-        console.warn(`[Drive Proxy] Image not found: ${fileId}`);
-        res.status(404).json({ error: "Image not found" });
-        return;
-      }
-      const errorMessage = error.response?.data?.error?.message || error.message || "Unknown error";
-      console.error("[Drive Proxy] Error fetching image:", errorMessage);
-      res.status(error.response?.status || 500).json({ 
-        error: "Failed to fetch image from Drive",
-        details: errorMessage
-      });
-    }
-  });
-
+  // Helper for API Key
   const getApiKey = () => {
     let apiKey = (process.env.GOOGLE_DRIVE_API_KEY || process.env.VITE_GOOGLE_DRIVE_API_KEY || "").trim();
     if (apiKey.startsWith('"') && apiKey.endsWith('"')) apiKey = apiKey.substring(1, apiKey.length - 1);
@@ -317,10 +291,14 @@ async function startServer() {
 
   app.get("/api/drive/list/:folderId", async (req, res) => {
     const { folderId } = req.params;
-    console.log(`[Drive] Listing folderContent: ${folderId}`);
+    console.log(`[Drive] API Request Received - Listing folder: ${folderId}`);
     
     let drive: any = null;
     let apiKey = getApiKey();
+
+    if (!apiKey && !globalDriveTokens) {
+      console.warn("[Drive] API Error: No API Key or OAuth tokens available");
+    }
 
     const tryGetFolder = async (dClient: any) => {
       await dClient.files.get({ fileId: folderId, fields: "id, name" });

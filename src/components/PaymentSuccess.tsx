@@ -33,7 +33,16 @@ const PaymentSuccess: React.FC = () => {
             });
 
             // Update linked order
-            const ordersQuery = query(collection(db, 'orders'), where('bookingId', '==', orderId));
+            let conditions: any[] = [where('bookingId', '==', orderId)];
+            // If the user isn't an admin (which we can't fully know synchronously easily here), 
+            // but we can add clientId if we know auth.currentUser exists and isn't an admin.
+            // Since we can't reliably detect role without async fetch, we'll try catching the error 
+            // and doing a fallback or adding it if we have the clientId from the booking doc itself!
+            if (docData.clientId) {
+               conditions.push(where('clientId', '==', docData.clientId));
+            }
+
+            const ordersQuery = query(collection(db, 'orders'), ...conditions);
             const orderSnapshot = await getDocs(ordersQuery);
             if (!orderSnapshot.empty) {
               const orderDoc = orderSnapshot.docs[0];

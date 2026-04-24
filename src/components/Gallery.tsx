@@ -202,7 +202,15 @@ const Gallery: React.FC<GalleryProps> = ({ user, role }) => {
         });
 
         if (!response.ok) {
-          throw new Error('Upload failed');
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Upload failed');
+          } else {
+            const text = await response.text();
+            console.error('Server error (non-JSON):', text.substring(0, 200));
+            throw new Error(`Server error (${response.status}): Failed to upload to Drive`);
+          }
         }
 
         const data = await response.json();

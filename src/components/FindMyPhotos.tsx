@@ -94,9 +94,20 @@ const FindMyPhotos: React.FC<FindMyPhotosProps> = ({ user, role }) => {
       return;
     }
 
+    if (!user) {
+      toast.error('Please log in securely to find your photos.');
+      return;
+    }
+
     setLoading(true);
     try {
-      const q = query(collection(db, 'bookings'), where('clientMobile', '==', clientMobile));
+      const conditions: any[] = [where('clientMobile', '==', clientMobile)];
+      const isPrivileged = role === 'admin' || role === 'photographer' || role === 'editor' || role === 'other';
+      if (user && !isPrivileged) {
+        conditions.push(where('clientId', '==', user.uid));
+      }
+
+      const q = query(collection(db, 'bookings'), ...conditions);
       const querySnapshot = await getDocs(q);
       
       if (querySnapshot.empty) {
@@ -161,21 +172,28 @@ const FindMyPhotos: React.FC<FindMyPhotosProps> = ({ user, role }) => {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-            const response = await fetch(`${window.location.origin}/api/drive/list/${folderId}`, {
+            // Use relative path for more reliable fetching
+            const response = await fetch(`/api/drive/list/${folderId}`, {
               signal: controller.signal
             });
             clearTimeout(timeoutId);
 
-            if (!response.ok) throw new Error('Failed to fetch from Drive API');
+            if (!response.ok) {
+              const errorText = await response.text();
+              console.error(`Drive API failed with status ${response.status}:`, errorText);
+              throw new Error(`Failed to fetch from Drive API: ${response.status}`);
+            }
             
             const files = await response.json();
             if (Array.isArray(files)) {
-              const driveUrls = files.map((file: any) => `${window.location.origin}/api/drive/image/${file.id}`);
+              // Use relative path for drive images as well
+              const driveUrls = files.map((file: any) => `/api/drive/image/${file.id}`);
               imageUrls = [...imageUrls, ...driveUrls];
             }
-          } catch (err) {
+          } catch (err: any) {
             console.error('Error fetching Drive files:', err);
-            toast.error('Failed to access Google Drive folder. Ensure it is connected in Studio Hub.');
+            const isTimeout = err.name === 'AbortError';
+            toast.error(isTimeout ? 'Request timed out. Please try again.' : 'Failed to access Google Drive folder. Ensure it is connected in Studio Hub.');
           }
         }
       }

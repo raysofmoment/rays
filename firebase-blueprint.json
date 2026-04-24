@@ -148,15 +148,10 @@
         "brideAddress": { "type": "string" },
         "brideNumber": { "type": "string" },
         "brideName": { "type": "string" },
-        "brideBengaliName": { "type": "string" },
-        "brideFatherName": { "type": "string" },
         "groomAddress": { "type": "string" },
         "groomNumber": { "type": "string" },
         "groomName": { "type": "string" },
-        "groomBengaliName": { "type": "string" },
-        "groomFatherName": { "type": "string" },
         "childName": { "type": "string" },
-        "childBengaliName": { "type": "string" },
         "modelName": { "type": "string" },
         "modelIdLink": { "type": "string" },
         "makeupArtist": { "type": "string" },
@@ -229,38 +224,6 @@
         "finalAmount": { "type": "number" },
         "clientId": { "type": "string" },
         "googleDriveFolderId": { "type": "string" },
-        "photographerPaid": { "type": "boolean" },
-        "editorPaid": { "type": "boolean" },
-        "otherPaid": { "type": "boolean" },
-        "staffDetails": {
-          "type": "object",
-          "additionalProperties": {
-            "type": "object",
-            "properties": {
-              "paymentAmount": { "type": "number" },
-              "workQuality": { "type": "string" },
-              "review": { "type": "string" },
-              "isPaid": { "type": "boolean" }
-            }
-          }
-        },
-        "travelCost": { "type": "number" },
-        "accommodationCost": { "type": "number" },
-        "albumCost": { "type": "number" },
-        "katmaniCost": { "type": "number" },
-        "pendriveCost": { "type": "number" },
-        "boxCost": { "type": "number" },
-        "otherCost": { "type": "number" },
-        "extraCosts": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "label": { "type": "string" },
-              "amount": { "type": "number" }
-            }
-          }
-        },
         "faceRecognitionPhotos": {
           "type": "array",
           "items": { "type": "string" }
@@ -457,6 +420,8 @@
         "userRole": { "type": "string", "enum": ["admin", "photographer", "editor", "other"] },
         "type": { "type": "string", "enum": ["image", "video", "link"] },
         "category": { "type": "string", "enum": ["Wedding", "Music", "Kids", "Event", "Other"] },
+        "folderId": { "type": "string" },
+        "folderName": { "type": "string" },
         "url": { "type": "string" },
         "driveFileId": { "type": "string" },
         "title": { "type": "string" },
@@ -464,6 +429,18 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["userId", "userRole", "type", "url", "createdAt"]
+    },
+    "PortfolioFolder": {
+      "title": "Portfolio Folder",
+      "description": "Folder categorization for sample works",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "createdBy": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "createdBy", "createdAt"]
     },
     "GalleryItem": {
       "title": "Gallery Item",
@@ -582,6 +559,10 @@
     "/sampleWorks/{sampleId}": {
       "schema": "SampleWork",
       "description": "Sample work from team members"
+    },
+    "/portfolioFolders/{folderId}": {
+      "schema": "PortfolioFolder",
+      "description": "Folders for organizing sample works"
     },
     "/galleryItems/{itemId}": {
       "schema": "GalleryItem",

@@ -85,8 +85,15 @@ const WIPAssetLibrary = ({ onClose }: { onClose: () => void }) => {
         toast.success('Asset uploaded successfully');
         fetchFiles();
       } else {
-        const error = await response.json();
-        throw new Error(error.error || 'Upload failed');
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Upload failed');
+        } else {
+          const text = await response.text();
+          console.error('[WIP Upload] Server error:', text.substring(0, 200));
+          throw new Error(`Server error (${response.status}): Failed to upload`);
+        }
       }
     } catch (error: any) {
       toast.error(`Upload error: ${error.message}`);

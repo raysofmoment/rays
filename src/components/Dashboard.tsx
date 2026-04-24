@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User } from 'firebase/auth';
-import { collection, query, where, getDocs, limit, orderBy } from 'firebase/firestore';
+import { collection, query, where, getDocs, limit, orderBy, or } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Calendar, Clock, CheckCircle, AlertCircle, TrendingUp, Users, Camera, Image as ImageIcon, MessageSquare, User as UserIcon } from 'lucide-react';
 import Logo from './Logo';
@@ -17,10 +17,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, role }) => {
     pending: 0,
     confirmed: 0,
     completed: 0,
-    totalOrders: 0,
-    totalEarnings: 0,
-    receivedAmount: 0,
-    dueAmount: 0
+    totalOrders: 0
   });
   const [recentOrders, setRecentOrders] = useState<any[]>([]);
   const [assignedBookings, setAssignedBookings] = useState<any[]>([]);
@@ -86,48 +83,25 @@ const Dashboard: React.FC<DashboardProps> = ({ user, role }) => {
             completed: counts.completed,
             totalOrders: counts.total
           }));
-        } else if (role === 'photographer' || role === 'editor' || role === 'other') {
-          // Fetch assigned bookings
+        } else {
+          // Fetch assigned bookings for anyone (staff or admin assigned to projects)
+          // Note: Standardising on checking both singular and plural fields if they exist
           const bookingsRef = collection(db, 'bookings');
-          const qPhotographer = query(bookingsRef, where('photographerIds', 'array-contains', user.uid));
-          const qEditor = query(bookingsRef, where('editorIds', 'array-contains', user.uid));
-          const qOther = query(bookingsRef, where('otherIds', 'array-contains', user.uid));
+          const q = query(
+            bookingsRef,
+            or(
+              where('photographerId', '==', user.uid),
+              where('editorId', '==', user.uid),
+              where('otherId', '==', user.uid),
+              where('photographerIds', 'array-contains', user.uid),
+              where('editorIds', 'array-contains', user.uid),
+              where('otherIds', 'array-contains', user.uid)
+            )
+          );
 
-          const [snapP, snapE, snapO] = await Promise.all([
-            getDocs(qPhotographer),
-            getDocs(qEditor),
-            getDocs(qOther)
-          ]);
-
-          const allBookings = [...snapP.docs, ...snapE.docs, ...snapO.docs].map(doc => ({ id: doc.id, ...doc.data() }));
-          // Unique bookings
-          const uniqueBookings = Array.from(new Map(allBookings.map(item => [item.id, item])).values());
-          setAssignedBookings(uniqueBookings);
-
-          let totalEarnings = 0;
-          let receivedAmount = 0;
-
-          uniqueBookings.forEach((booking: any) => {
-            if ((booking.photographerIds || []).includes(user.uid)) {
-              totalEarnings += Number(booking.photographerPrice || 0);
-              if (booking.photographerPaid) receivedAmount += Number(booking.photographerPrice || 0);
-            }
-            if ((booking.editorIds || []).includes(user.uid)) {
-              totalEarnings += Number(booking.videographerPrice || 0); // Using videographerPrice as editor price per current schema
-              if (booking.editorPaid) receivedAmount += Number(booking.videographerPrice || 0);
-            }
-            if ((booking.otherIds || []).includes(user.uid)) {
-              totalEarnings += Number(booking.otherServicePrice || 0);
-              if (booking.otherPaid) receivedAmount += Number(booking.otherServicePrice || 0);
-            }
-          });
-
-          setStats(prev => ({
-            ...prev,
-            totalEarnings,
-            receivedAmount,
-            dueAmount: totalEarnings - receivedAmount
-          }));
+          const snap = await getDocs(q);
+          const bookings = snap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+          setAssignedBookings(bookings);
         }
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
@@ -184,10 +158,9 @@ const Dashboard: React.FC<DashboardProps> = ({ user, role }) => {
       )}
 
       {(role === 'photographer' || role === 'editor' || role === 'other') && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <StatCard title="Total Earnings" value={`₹${stats.totalEarnings}`} icon={<TrendingUp className="w-6 h-6 text-blue-600" />} color="bg-blue-50" />
-          <StatCard title="Received" value={`₹${stats.receivedAmount}`} icon={<CheckCircle className="w-6 h-6 text-green-600" />} color="bg-green-50" />
-          <StatCard title="Due Amount" value={`₹${stats.dueAmount}`} icon={<AlertCircle className="w-6 h-6 text-red-600" />} color="bg-red-50" />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          <StatCard title="My Orders" value={assignedBookings.length} icon={<TrendingUp className="w-6 h-6 text-blue-600" />} color="bg-blue-50" />
+          <StatCard title="Recent Activity" value="Active" icon={<Clock className="w-6 h-6 text-yellow-600" />} color="bg-yellow-50" />
         </div>
       )}
 
@@ -234,7 +207,7 @@ const Dashboard: React.FC<DashboardProps> = ({ user, role }) => {
           ) : (
             <section className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
-                <h2 className="text-lg font-bold text-gray-900">Assigned Projects</h2>
+                <h2 className="text-lg font-bold text-gray-900">My Orders</h2>
                 <Link to="/bookings" className="text-sm font-medium text-black hover:underline">View all</Link>
               </div>
               <div className="divide-y divide-gray-200">
@@ -254,31 +227,16 @@ const Dashboard: React.FC<DashboardProps> = ({ user, role }) => {
                           </div>
                         </div>
                         <div className="flex items-center space-x-4 text-right">
-                          <div>
-                            <p className="text-sm font-bold text-gray-900">
-                              ₹{(booking.photographerIds || []).includes(user.uid) ? booking.photographerPrice : 
-                                (booking.editorIds || []).includes(user.uid) ? booking.videographerPrice : 
-                                booking.otherServicePrice}
-                            </p>
-                            <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${
-                              ((booking.photographerIds || []).includes(user.uid) && booking.photographerPaid) ||
-                              ((booking.editorIds || []).includes(user.uid) && booking.editorPaid) ||
-                              ((booking.otherIds || []).includes(user.uid) && booking.otherPaid)
-                              ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                            }`}>
-                              {((booking.photographerIds || []).includes(user.uid) && booking.photographerPaid) ||
-                              ((booking.editorIds || []).includes(user.uid) && booking.editorPaid) ||
-                              ((booking.otherIds || []).includes(user.uid) && booking.otherPaid)
-                              ? 'Paid' : 'Due'}
-                            </span>
-                          </div>
+                          <span className={`px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-700 uppercase tracking-wider`}>
+                            {booking.status || 'Active'}
+                          </span>
                         </div>
                       </div>
                     </div>
                   ))
                 ) : (
                   <div className="px-6 py-12 text-center">
-                    <p className="text-gray-500">No assigned projects found.</p>
+                    <p className="text-gray-500">No projects found.</p>
                   </div>
                 )}
               </div>

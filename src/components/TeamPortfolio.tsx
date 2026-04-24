@@ -27,7 +27,16 @@ import {
   Edit2,
   Download,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Facebook,
+  Instagram,
+  Youtube,
+  DollarSign,
+  PlayCircle,
+  Hash,
+  FolderPlus,
+  FolderOpen,
+  ChevronDown
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { format, isValid } from 'date-fns';
@@ -40,10 +49,12 @@ interface TeamPortfolioProps {
 
 const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
   const [samples, setSamples] = useState<any[]>([]);
+  const [folders, setFolders] = useState<any[]>([]);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTab, setActiveTab] = useState<'all' | 'image' | 'video' | 'link' | 'about'>('all');
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [playingVideoId, setPlayingVideoId] = useState<string | null>(null);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [selectedImage, setSelectedImage] = useState<any | null>(null);
@@ -54,12 +65,24 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [uploadMethod, setUploadMethod] = useState<'file' | 'link'>('file');
+  const [lastPostedId, setLastPostedId] = useState<string | null>(null);
+  const [platform, setPlatform] = useState<'facebook' | 'instagram' | 'youtube' | 'other'>('other');
+  
+  // Folder Creation State
+  const [showNewFolderInput, setShowNewFolderInput] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  
+  const [previewType, setPreviewType] = useState<'image' | 'video' | null>(null);
+  
   const [uploadFormData, setUploadFormData] = useState({
     title: '',
     description: '',
     url: '',
     driveFileId: '',
-    type: 'image' as 'image' | 'video' | 'link'
+    folderId: '',
+    folderName: '',
+    type: 'image' as 'image' | 'video' | 'link',
+    platform: 'other' as 'facebook' | 'instagram' | 'youtube' | 'other'
   });
 
   const coverPhoto = "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?q=80&w=2071&auto=format&fit=crop";
@@ -85,11 +108,268 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
       setTeamMembers(members);
     });
 
+    // Fetch folders
+    const foldersQ = query(collection(db, 'portfolioFolders'), orderBy('createdAt', 'desc'));
+    const unsubscribeFolders = onSnapshot(foldersQ, (snapshot) => {
+      const foldersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setFolders(foldersData);
+    });
+
     return () => {
       unsubscribe();
       unsubscribeMembers();
+      unsubscribeFolders();
     };
   }, []);
+
+  const handleCreateFolder = async () => {
+    if (!newFolderName.trim() || !user) return;
+    
+    try {
+      const docRef = await addDoc(collection(db, 'portfolioFolders'), {
+        name: newFolderName.trim(),
+        createdBy: user.uid,
+        createdAt: new Date().toISOString(),
+        serverTimestamp: serverTimestamp()
+      });
+      
+      setUploadFormData(prev => ({
+        ...prev,
+        folderId: docRef.id,
+        folderName: newFolderName.trim()
+      }));
+      setNewFolderName('');
+      setShowNewFolderInput(false);
+      toast.success('Folder created!');
+    } catch (error) {
+      console.error('Folder creation error:', error);
+      toast.error('Failed to create folder');
+    }
+  };
+
+  const renderSamplePost = (sample: any) => (
+    <motion.div
+      key={sample.id}
+      layout
+      initial={{ opacity: 0, scale: 0.98 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.98 }}
+      className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"
+    >
+      {/* Post Header */}
+      <div className="p-4 flex items-center justify-between">
+        <div className="flex items-center space-x-3">
+          <div className="w-10 h-10 bg-[#f0f2f5] rounded-full flex items-center justify-center font-bold text-gray-500 overflow-hidden">
+            {sample.userName?.charAt(0)}
+          </div>
+          <div>
+            <div className="flex items-center space-x-1">
+               <p className="text-sm font-bold text-gray-900 leading-none">{sample.userName}</p>
+               <span className="text-xs text-gray-500">•</span>
+               <p className="text-[10px] font-bold text-[#1877f2] uppercase tracking-wide">{sample.userRole}</p>
+            </div>
+            <p className="text-[11px] text-gray-500 flex items-center mt-0.5">
+              {sample.createdAt && isValid(new Date(sample.createdAt)) ? format(new Date(sample.createdAt), 'MMM d, yyyy') : 'No Date'}
+              <span className="mx-1">•</span>
+              <Globe className="w-3 h-3" />
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center space-x-1 relative">
+          {(role === 'admin' || user?.uid === sample.userId) && (
+            <button
+              onClick={() => handleDelete(sample.id, sample.userId, sample.driveFileId)}
+              className="p-2 text-gray-400 hover:bg-red-50 hover:text-red-500 rounded-full transition-all"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
+          <div className="relative">
+            <button 
+              onClick={() => setOpenMenuId(openMenuId === sample.id ? null : sample.id)}
+              className="p-2 text-gray-400 hover:bg-gray-100 rounded-full transition-all"
+            >
+              <MoreHorizontal className="w-5 h-5" />
+            </button>
+
+            <AnimatePresence>
+              {openMenuId === sample.id && (
+                <>
+                  <div 
+                    className="fixed inset-0 z-40" 
+                    onClick={() => setOpenMenuId(null)}
+                  />
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                    className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 overflow-hidden"
+                  >
+                    <button
+                      onClick={() => handleCopyLink(sample.url)}
+                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
+                    >
+                      <Share2 className="w-4 h-4" />
+                      <span>Copy Link</span>
+                    </button>
+                    
+                    {(role === 'admin' || user?.uid === sample.userId) && (
+                      <button
+                        onClick={() => {
+                          handleDelete(sample.id, sample.userId, sample.driveFileId);
+                          setOpenMenuId(null);
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        <span>Delete Post</span>
+                      </button>
+                    )}
+                    
+                    <button
+                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
+                      onClick={() => setOpenMenuId(null)}
+                    >
+                      <X className="w-4 h-4" />
+                      <span>Cancel</span>
+                    </button>
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+      </div>
+
+      {/* Post Content */}
+      <div className="px-4 pb-3">
+        <h3 className="font-bold text-gray-900 mb-1">{sample.title}</h3>
+        <p className="text-sm text-gray-800 leading-relaxed">{sample.description}</p>
+      </div>
+
+      {/* Post Media */}
+      <div className="bg-black/5 relative aspect-video flex items-center justify-center overflow-hidden border-y border-gray-100">
+        {sample.type === 'image' ? (
+          <img 
+            src={sample.driveFileId ? `${window.location.origin}/api/drive/image/${sample.driveFileId}` : (sample.url || null)} 
+            alt={sample.title} 
+            className="w-full h-full object-contain cursor-pointer hover:opacity-95 transition-opacity"
+            onClick={() => setSelectedImage(sample)}
+          />
+        ) : sample.type === 'video' ? (
+          <div className="w-full h-full flex flex-col items-center justify-center bg-black relative">
+            {playingVideoId === sample.id && sample.driveFileId ? (
+              <iframe 
+                src={`https://drive.google.com/file/d/${sample.driveFileId}/preview`} 
+                className="w-full h-full border-none"
+                allow="autoplay"
+                title={sample.title}
+              />
+            ) : (
+              <>
+                <Video className="w-16 h-16 text-white opacity-40" />
+                <button 
+                  onClick={() => setPlayingVideoId(sample.id)}
+                  className="absolute inset-0 flex items-center justify-center group"
+                >
+                  <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center group-hover:scale-110 transition-all">
+                    <Video className="w-8 h-8 text-white fill-white" />
+                  </div>
+                </button>
+                {sample.url && !sample.driveFileId && (
+                  <a 
+                    href={sample.url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="absolute bottom-4 right-4 p-2 bg-black/40 hover:bg-black/60 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-all flex items-center space-x-1 text-xs font-bold"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    <span>Watch Externally</span>
+                  </a>
+                )}
+              </>
+            )}
+          </div>
+        ) : sample.type === 'link' && sample.platform === 'youtube' && sample.url.includes('v=') ? (
+          <div className="w-full h-full bg-black">
+            <iframe 
+              src={`https://www.youtube.com/embed/${sample.url.split('v=')[1]?.split('&')[0]}`}
+              className="w-full h-full border-none"
+              title={sample.title}
+              allowFullScreen
+            />
+          </div>
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center bg-[#f0f2f5] p-12">
+            {sample.platform === 'facebook' ? <Facebook className="w-16 h-16 text-[#1877f2] mb-4" /> : 
+             sample.platform === 'instagram' ? <Instagram className="w-16 h-16 text-[#e4405f] mb-4" /> :
+             sample.platform === 'youtube' ? <Youtube className="w-16 h-16 text-[#ff0000] mb-4" /> :
+             <LinkIcon className="w-16 h-16 text-gray-300 mb-4" />}
+            
+            <h4 className="text-xl font-bold text-gray-900 text-center">{sample.title}</h4>
+            <p className="text-sm text-gray-500 truncate w-full text-center mt-1">{sample.url}</p>
+            <div className="mt-6 flex space-x-3">
+              <a 
+                href={sample.url} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="px-6 py-2 bg-[#1877f2] text-white rounded-lg font-bold text-sm hover:bg-[#166fe5] flex items-center transition-all"
+              >
+                View on {sample.platform?.charAt(0).toUpperCase() + sample.platform?.slice(1) || 'Project'}
+                <ExternalLink className="w-3 h-3 ml-2" />
+              </a>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Post Interactivity */}
+      <div className="p-1 px-4">
+        <div className="py-3 flex items-center justify-between border-b border-gray-100">
+           <div className="flex items-center -space-x-1">
+              <div className="h-4 w-4 bg-[#1877f2] rounded-full flex items-center justify-center ring-1 ring-white">
+                 <ThumbsUp className="w-2 h-2 text-white fill-white" />
+              </div>
+              <span className="pl-3 text-[13px] text-[#65676b]">
+                 {sample.likes?.length ? `${sample.likes.length} liked this` : 'Be the first to like this'}
+              </span>
+           </div>
+        </div>
+        <div className="flex items-center py-1">
+          <button 
+            onClick={() => handleLike(sample.id, sample.likes)}
+            className={`flex-grow flex items-center justify-center space-x-2 py-2 hover:bg-gray-100 rounded-lg transition-all font-bold text-sm ${sample.likes?.includes(user?.uid) ? 'text-[#1877f2]' : 'text-[#65676b]'}`}
+          >
+             <ThumbsUp className={`w-5 h-5 ${sample.likes?.includes(user?.uid) ? 'fill-[#1877f2]' : ''}`} />
+             <span>Like</span>
+          </button>
+          <button 
+            onClick={() => setSelectedImage(sample)}
+            className="flex-grow flex items-center justify-center space-x-2 py-2 hover:bg-gray-100 rounded-lg transition-all text-[#65676b] font-bold text-sm"
+          >
+             <MessageCircle className="w-5 h-5" />
+             <span>Comment</span>
+          </button>
+          <button 
+            onClick={() => handleCopyLink(sample.url)}
+            className="flex-grow flex items-center justify-center space-x-2 py-2 hover:bg-gray-100 rounded-lg transition-all text-[#65676b] font-bold text-sm"
+          >
+             <Share2 className="w-5 h-5" />
+             <span>Share</span>
+          </button>
+          {user?.uid === sample.userId && (
+            <button 
+              onClick={() => toast.info('Initiating payment settlement process...')}
+              className="flex-grow flex items-center justify-center space-x-2 py-2 bg-green-50 hover:bg-green-100 rounded-lg transition-all text-green-600 font-bold text-sm"
+            >
+               <DollarSign className="w-5 h-5" />
+               <span>Settle</span>
+            </button>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  );
 
   const filteredSamples = samples.filter(sample => {
     const matchesSearch = 
@@ -98,8 +378,10 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
       sample.description?.toLowerCase().includes(searchQuery.toLowerCase());
     
     const matchesType = activeTab === 'all' || sample.type === activeTab;
+    
+    const matchesFolder = !selectedFolderId || sample.folderId === selectedFolderId;
 
-    return matchesSearch && matchesType;
+    return matchesSearch && matchesType && matchesFolder;
   });
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -107,10 +389,18 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
     if (!file) return;
 
     setIsUploading(true);
+    const detectedType = file.type.startsWith('video/') ? 'video' : 'image';
+    setPreviewType(detectedType);
     
     // Create local preview
     const localPreview = URL.createObjectURL(file);
     setPreviewUrl(localPreview);
+
+    // Update type immediately for preview
+    setUploadFormData(prev => ({
+      ...prev,
+      type: detectedType
+    }));
 
     const formData = new FormData();
     formData.append('file', file);
@@ -154,10 +444,23 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
     e.preventDefault();
     if (!user) return;
     
+    const url = uploadFormData.url.toLowerCase();
+    let detectedPlatform: 'facebook' | 'instagram' | 'youtube' | 'other' = 'other';
+    
+    if (url.includes('facebook.com')) detectedPlatform = 'facebook';
+    else if (url.includes('instagram.com')) detectedPlatform = 'instagram';
+    else if (url.includes('youtube.com') || url.includes('youtu.be')) detectedPlatform = 'youtube';
+
+    if (uploadMethod === 'link' && detectedPlatform === 'other') {
+      toast.error('Only Facebook, Instagram, and YouTube links are allowed in the portfolio links section.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      await addDoc(collection(db, 'sampleWorks'), {
+      const docRef = await addDoc(collection(db, 'sampleWorks'), {
         ...uploadFormData,
+        platform: uploadMethod === 'link' ? detectedPlatform : 'other',
         userId: user.uid,
         userName: user.displayName || 'Team Member',
         userRole: role,
@@ -166,10 +469,11 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
         serverTimestamp: serverTimestamp()
       });
       
+      setLastPostedId(docRef.id);
       toast.success('Work uploaded successfully!');
       setIsUploadModalOpen(false);
       setPreviewUrl(null);
-      setUploadFormData({ title: '', description: '', url: '', driveFileId: '', type: 'image' });
+      setUploadFormData({ title: '', description: '', url: '', driveFileId: '', folderId: '', folderName: '', type: 'image', platform: 'other' });
     } catch (error) {
       console.error('Upload error:', error);
       handleFirestoreError(error, OperationType.CREATE, 'sampleWorks');
@@ -178,7 +482,7 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
     }
   };
 
-  const handleDelete = async (id: string, userId: string) => {
+  const handleDelete = async (id: string, userId: string, driveFileId?: string) => {
     if (role !== 'admin' && user?.uid !== userId) {
       toast.error('You do not have permission to delete this item');
       return;
@@ -187,7 +491,23 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
     if (!window.confirm('Are you sure you want to delete this work?')) return;
 
     try {
+      // 1. Delete from Firestore first
       await deleteDoc(doc(db, 'sampleWorks', id));
+      
+      // 2. Try to delete from Google Drive if file ID exists
+      if (driveFileId) {
+        try {
+          const response = await fetch(`/api/drive/file/${driveFileId}`, {
+            method: 'DELETE',
+          });
+          if (!response.ok) {
+            console.warn('Drive file deletion returned non-OK status:', response.status);
+          }
+        } catch (driveErr) {
+          console.warn('Failed to delete associated Drive file:', driveErr);
+        }
+      }
+      
       toast.success('Item deleted successfully');
     } catch (error) {
       console.error('Delete error:', error);
@@ -221,33 +541,31 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
     setOpenMenuId(null);
   };
 
-  const handleNextImage = () => {
-    const images = samples.filter(s => s.type === 'image');
-    const currentIndex = images.findIndex(s => s.id === selectedImage?.id);
+  const handleNextMedia = () => {
+    const currentIndex = filteredSamples.findIndex(s => s.id === selectedImage?.id);
     if (currentIndex === -1) return;
-    const nextIndex = (currentIndex + 1) % images.length;
-    setSelectedImage(images[nextIndex]);
+    const nextIndex = (currentIndex + 1) % filteredSamples.length;
+    setSelectedImage(filteredSamples[nextIndex]);
   };
 
-  const handlePrevImage = () => {
-    const images = samples.filter(s => s.type === 'image');
-    const currentIndex = images.findIndex(s => s.id === selectedImage?.id);
+  const handlePrevMedia = () => {
+    const currentIndex = filteredSamples.findIndex(s => s.id === selectedImage?.id);
     if (currentIndex === -1) return;
-    const prevIndex = (currentIndex - 1 + images.length) % images.length;
-    setSelectedImage(images[prevIndex]);
+    const prevIndex = (currentIndex - 1 + filteredSamples.length) % filteredSamples.length;
+    setSelectedImage(filteredSamples[prevIndex]);
   };
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!selectedImage) return;
-      if (e.key === 'ArrowRight') handleNextImage();
-      if (e.key === 'ArrowLeft') handlePrevImage();
+      if (e.key === 'ArrowRight') handleNextMedia();
+      if (e.key === 'ArrowLeft') handlePrevMedia();
       if (e.key === 'Escape') setSelectedImage(null);
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedImage, samples]);
+  }, [selectedImage, filteredSamples]);
 
   return (
     <div className="bg-[#f0f2f5] min-h-screen pb-12">
@@ -443,6 +761,49 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
                 ))}
               </div>
             </div>
+
+            {/* Folders Widget */}
+            <div className="bg-white rounded-xl shadow-sm p-4">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-gray-900">Folders</h2>
+                <button 
+                  onClick={() => setIsUploadModalOpen(true)}
+                  className="p-2 hover:bg-gray-100 rounded-full transition-all"
+                >
+                  <Plus className="w-4 h-4 text-gray-400" />
+                </button>
+              </div>
+              <div className="space-y-1">
+                <button
+                  onClick={() => {
+                    setSelectedFolderId(null);
+                    setActiveTab('all');
+                  }}
+                  className={`w-full flex items-center space-x-3 p-3 rounded-xl transition-all ${!selectedFolderId ? 'bg-blue-50 text-[#1877f2]' : 'hover:bg-gray-50 text-[#65676b]'}`}
+                >
+                  <Globe className={`w-5 h-5 ${!selectedFolderId ? 'text-[#1877f2]' : 'text-gray-400'}`} />
+                  <span className="text-sm font-bold">All Projects</span>
+                </button>
+                {folders.map((folder) => (
+                  <button
+                    key={folder.id}
+                    onClick={() => {
+                      setSelectedFolderId(folder.id);
+                      setActiveTab('all');
+                    }}
+                    className={`w-full flex items-center justify-between p-3 rounded-xl transition-all ${selectedFolderId === folder.id ? 'bg-blue-50 text-[#1877f2]' : 'hover:bg-gray-50 text-[#65676b]'}`}
+                  >
+                    <div className="flex items-center space-x-3">
+                      <FolderOpen className={`w-5 h-5 ${selectedFolderId === folder.id ? 'text-[#1877f2]' : 'text-gray-400'}`} />
+                      <span className="text-sm font-bold truncate max-w-[120px]">{folder.name}</span>
+                    </div>
+                    <span className="text-[10px] bg-gray-100 px-2 py-0.5 rounded-full font-bold">
+                      {samples.filter(s => s.folderId === folder.id).length}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
           {/* Right Main Content */}
@@ -525,14 +886,19 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
                  <div className="flex justify-between items-center mb-6">
                     <h2 className="text-2xl font-bold text-gray-900 capitalize">{activeTab}s</h2>
                     <div className="flex items-center space-x-2">
-                       <button className="bg-[#e4e6eb] hover:bg-[#d8dadf] text-black px-4 py-2 rounded-lg font-bold text-sm">Add {activeTab}</button>
+                       <button 
+                         onClick={() => setIsUploadModalOpen(true)}
+                         className="bg-[#e4e6eb] hover:bg-[#d8dadf] text-black px-4 py-2 rounded-lg font-bold text-sm"
+                       >
+                        Add {activeTab}
+                       </button>
                     </div>
                  </div>
                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
                     {filteredSamples.map((sample) => (
                       <div key={sample.id} className="aspect-square bg-gray-100 rounded-lg overflow-hidden relative group cursor-pointer shadow-sm">
                         <img 
-                          src={sample.url || null} 
+                          src={sample.driveFileId ? `${window.location.origin}/api/drive/image/${sample.driveFileId}` : (sample.url || null)} 
                           alt={sample.title} 
                           className="w-full h-full object-cover transition-transform group-hover:scale-105" 
                         />
@@ -549,7 +915,7 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleDelete(sample.id, sample.userId);
+                              handleDelete(sample.id, sample.userId, sample.driveFileId);
                             }}
                             className="absolute top-2 right-2 p-1.5 bg-black/40 hover:bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-md"
                           >
@@ -566,203 +932,62 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
                    </div>
                  )}
               </div>
+            ) : activeTab === 'all' && !selectedFolderId ? (
+              <div className="space-y-10">
+                {/* Categorized by Folders */}
+                {folders.map(folder => {
+                  const folderItems = filteredSamples.filter(s => s.folderId === folder.id);
+                  if (folderItems.length === 0) return null;
+                  
+                  return (
+                    <div key={folder.id} className="space-y-6">
+                      <div className="flex items-center space-x-2 px-1">
+                        <div className="p-2 bg-blue-50 rounded-lg">
+                          <FolderOpen className="w-5 h-5 text-[#1877f2]" />
+                        </div>
+                        <h3 className="text-xl font-black text-gray-900">{folder.name}</h3>
+                        <div className="h-[2px] flex-grow bg-gray-100 ml-4 rounded-full" />
+                        <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">{folderItems.length} items</span>
+                      </div>
+                      
+                      <div className="space-y-4">
+                        {folderItems.map((sample) => renderSamplePost(sample))}
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Uncategorized Section */}
+                {filteredSamples.filter(s => !s.folderId).length > 0 && (
+                  <div className="space-y-6">
+                    <div className="flex items-center space-x-2 px-1">
+                      <div className="p-2 bg-gray-50 rounded-lg">
+                        <Globe className="w-5 h-5 text-gray-400" />
+                      </div>
+                      <h3 className="text-xl font-black text-gray-900">General Posts</h3>
+                      <div className="h-[2px] flex-grow bg-gray-100 ml-4 rounded-full" />
+                    </div>
+                    
+                    <div className="space-y-4">
+                      {filteredSamples.filter(s => !s.folderId).map((sample) => renderSamplePost(sample))}
+                    </div>
+                  </div>
+                )}
+                
+                {filteredSamples.length === 0 && (
+                  <div className="text-center py-24 bg-white rounded-xl shadow-sm">
+                    <Camera className="w-16 h-16 text-gray-200 mx-auto mb-4" />
+                    <h2 className="text-2xl font-bold text-gray-900">No projects yet</h2>
+                    <p className="text-gray-500 mt-2 max-w-sm mx-auto">
+                      Start by adding your first project to the portfolio feed.
+                    </p>
+                  </div>
+                )}
+              </div>
             ) : filteredSamples.length > 0 ? (
               <div className="space-y-4">
                 <AnimatePresence mode="popLayout">
-                  {filteredSamples.map((sample) => (
-                    <motion.div
-                      key={sample.id}
-                      layout
-                      initial={{ opacity: 0, scale: 0.98 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.98 }}
-                      className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden"
-                    >
-                      {/* Post Header */}
-                      <div className="p-4 flex items-center justify-between">
-                        <div className="flex items-center space-x-3">
-                          <div className="w-10 h-10 bg-[#f0f2f5] rounded-full flex items-center justify-center font-bold text-gray-500 overflow-hidden">
-                            {sample.userName?.charAt(0)}
-                          </div>
-                          <div>
-                            <div className="flex items-center space-x-1">
-                               <p className="text-sm font-bold text-gray-900 leading-none">{sample.userName}</p>
-                               <span className="text-xs text-gray-500">•</span>
-                               <p className="text-[10px] font-bold text-[#1877f2] uppercase tracking-wide">{sample.userRole}</p>
-                            </div>
-                            <p className="text-[11px] text-gray-500 flex items-center mt-0.5">
-                              {sample.createdAt && isValid(new Date(sample.createdAt)) ? format(new Date(sample.createdAt), 'MMM d, yyyy') : 'No Date'}
-                              <span className="mx-1">•</span>
-                              <Globe className="w-3 h-3" />
-                            </p>
-                          </div>
-                        </div>
-                        <div className="flex items-center space-x-1 relative">
-                          {(role === 'admin' || user?.uid === sample.userId) && (
-                            <button
-                              onClick={() => handleDelete(sample.id, sample.userId)}
-                              className="p-2 text-gray-400 hover:bg-red-50 hover:text-red-500 rounded-full transition-all"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          )}
-                          <div className="relative">
-                            <button 
-                              onClick={() => setOpenMenuId(openMenuId === sample.id ? null : sample.id)}
-                              className="p-2 text-gray-400 hover:bg-gray-100 rounded-full transition-all"
-                            >
-                              <MoreHorizontal className="w-5 h-5" />
-                            </button>
-
-                            <AnimatePresence>
-                              {openMenuId === sample.id && (
-                                <>
-                                  <div 
-                                    className="fixed inset-0 z-40" 
-                                    onClick={() => setOpenMenuId(null)}
-                                  />
-                                  <motion.div
-                                    initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                                    exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                                    className="absolute right-0 mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 py-2 z-50 overflow-hidden"
-                                  >
-                                    <button
-                                      onClick={() => handleCopyLink(sample.url)}
-                                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
-                                    >
-                                      <Share2 className="w-4 h-4" />
-                                      <span>Copy Link</span>
-                                    </button>
-                                    
-                                    {(role === 'admin' || user?.uid === sample.userId) && (
-                                      <button
-                                        onClick={() => {
-                                          handleDelete(sample.id, sample.userId);
-                                          setOpenMenuId(null);
-                                        }}
-                                        className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
-                                      >
-                                        <Trash2 className="w-4 h-4" />
-                                        <span>Delete Post</span>
-                                      </button>
-                                    )}
-                                    
-                                    <button
-                                      className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center space-x-2"
-                                      onClick={() => setOpenMenuId(null)}
-                                    >
-                                      <X className="w-4 h-4" />
-                                      <span>Cancel</span>
-                                    </button>
-                                  </motion.div>
-                                </>
-                              )}
-                            </AnimatePresence>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Post Content */}
-                      <div className="px-4 pb-3">
-                        <h3 className="font-bold text-gray-900 mb-1">{sample.title}</h3>
-                        <p className="text-sm text-gray-800 leading-relaxed">{sample.description}</p>
-                      </div>
-
-                      {/* Post Media */}
-                      <div className="bg-black/5 relative aspect-video flex items-center justify-center overflow-hidden border-y border-gray-100">
-                        {sample.type === 'image' ? (
-                          <img 
-                            src={sample.driveFileId ? `${window.location.origin}/api/drive/image/${sample.driveFileId}` : (sample.url || null)} 
-                            alt={sample.title} 
-                            className="w-full h-full object-contain cursor-pointer hover:opacity-95 transition-opacity"
-                            onClick={() => setSelectedImage(sample)}
-                          />
-                        ) : sample.type === 'video' ? (
-                          <div className="w-full h-full flex flex-col items-center justify-center bg-black relative">
-                            {playingVideoId === sample.id && sample.driveFileId ? (
-                              <iframe 
-                                src={`https://drive.google.com/file/d/${sample.driveFileId}/preview`} 
-                                className="w-full h-full border-none"
-                                allow="autoplay"
-                                title={sample.title}
-                              />
-                            ) : (
-                              <>
-                                <Video className="w-16 h-16 text-white opacity-40" />
-                                <button 
-                                  onClick={() => setPlayingVideoId(sample.id)}
-                                  className="absolute inset-0 flex items-center justify-center group"
-                                >
-                                  <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center group-hover:scale-110 transition-all">
-                                    <Video className="w-8 h-8 text-white fill-white" />
-                                  </div>
-                                </button>
-                                {sample.url && !sample.driveFileId && (
-                                  <a 
-                                    href={sample.url} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="absolute bottom-4 right-4 p-2 bg-black/40 hover:bg-black/60 text-white rounded-lg opacity-0 group-hover:opacity-100 transition-all flex items-center space-x-1 text-xs font-bold"
-                                  >
-                                    <ExternalLink className="w-3 h-3" />
-                                    <span>Watch Externally</span>
-                                  </a>
-                                )}
-                              </>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="w-full h-full flex flex-col items-center justify-center bg-[#f0f2f5] p-12">
-                            <LinkIcon className="w-16 h-16 text-gray-300 mb-4" />
-                            <h4 className="text-xl font-bold text-gray-900 text-center">{sample.title}</h4>
-                            <p className="text-sm text-gray-500 truncate w-full text-center mt-1">{sample.url}</p>
-                            <a 
-                              href={sample.url} 
-                              target="_blank" 
-                              rel="noopener noreferrer"
-                              className="mt-6 px-8 py-2 bg-white border border-gray-200 rounded-lg font-bold text-sm hover:bg-gray-50 flex items-center"
-                            >
-                              Open Project
-                              <ExternalLink className="w-3 h-3 ml-2" />
-                            </a>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Post Interactivity (FB Style) */}
-                      <div className="p-1 px-4">
-                         <div className="py-3 flex items-center justify-between border-b border-gray-100">
-                            <div className="flex items-center -space-x-1">
-                               <div className="h-4 w-4 bg-[#1877f2] rounded-full flex items-center justify-center ring-1 ring-white">
-                                  <ThumbsUp className="w-2 h-2 text-white fill-white" />
-                               </div>
-                               <span className="pl-3 text-[13px] text-[#65676b]">
-                                  {sample.likes?.length ? `${sample.likes.length} ${sample.likes.length === 1 ? 'person' : 'people'} liked this` : 'Be the first to like this'}
-                               </span>
-                            </div>
-                            <span className="text-[13px] text-[#65676b] hover:underline cursor-pointer">0 shares</span>
-                         </div>
-                         <div className="flex items-center py-1">
-                            <button 
-                              onClick={() => handleLike(sample.id, sample.likes)}
-                              className={`flex-grow flex items-center justify-center space-x-2 py-2 hover:bg-gray-100 rounded-lg transition-all font-bold text-sm ${sample.likes?.includes(user?.uid) ? 'text-[#1877f2]' : 'text-[#65676b]'}`}
-                            >
-                               <ThumbsUp className={`w-5 h-5 ${sample.likes?.includes(user?.uid) ? 'fill-[#1877f2]' : ''}`} />
-                               <span>Like</span>
-                            </button>
-                            <button className="flex-grow flex items-center justify-center space-x-2 py-2 hover:bg-gray-100 rounded-lg transition-all text-[#65676b] font-bold text-sm">
-                               <MessageCircle className="w-5 h-5" />
-                               <span>Comment</span>
-                            </button>
-                            <button className="flex-grow flex items-center justify-center space-x-2 py-2 hover:bg-gray-100 rounded-lg transition-all text-[#65676b] font-bold text-sm">
-                               <Share2 className="w-5 h-5" />
-                               <span>Share</span>
-                            </button>
-                         </div>
-                      </div>
-                    </motion.div>
-                  ))}
+                  {filteredSamples.map((sample) => renderSamplePost(sample))}
                 </AnimatePresence>
               </div>
             ) : (
@@ -806,6 +1031,7 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
                   onClick={() => {
                     setIsUploadModalOpen(false);
                     setPreviewUrl(null);
+                    setPreviewType(null);
                   }} 
                   className="p-2 hover:bg-gray-100 rounded-full transition-all"
                 >
@@ -824,6 +1050,65 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
                       <p className="text-sm font-bold text-gray-900 leading-none">{user?.displayName}</p>
                       <p className="text-[10px] font-bold text-[#1877f2] uppercase tracking-wide mt-1">{role}</p>
                     </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-black uppercase tracking-widest text-[#65676b] flex items-center space-x-2">
+                        <FolderOpen className="w-4 h-4" />
+                        <span>Select Folder</span>
+                      </label>
+                      <button 
+                        type="button"
+                        onClick={() => setShowNewFolderInput(!showNewFolderInput)}
+                        className="text-xs font-bold text-[#1877f2] hover:underline flex items-center space-x-1"
+                      >
+                        <FolderPlus className="w-3 h-3" />
+                        <span>{showNewFolderInput ? 'Select Existing' : 'New Folder'}</span>
+                      </button>
+                    </div>
+
+                    {showNewFolderInput ? (
+                      <div className="flex space-x-2">
+                        <input
+                          type="text"
+                          value={newFolderName}
+                          onChange={(e) => setNewFolderName(e.target.value)}
+                          className="flex-grow bg-[#f0f2f5] border border-gray-100 rounded-xl px-4 py-3 text-sm focus:bg-white focus:border-[#1877f2] outline-none transition-all font-bold"
+                          placeholder="New folder name..."
+                        />
+                        <button
+                          type="button"
+                          onClick={handleCreateFolder}
+                          disabled={!newFolderName.trim()}
+                          className="bg-black text-white px-4 py-3 rounded-xl font-bold text-sm disabled:opacity-50"
+                        >
+                          Create
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="relative group">
+                        <FolderOpen className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-300" />
+                        <select
+                          value={uploadFormData.folderId}
+                          onChange={(e) => {
+                            const folder = folders.find(f => f.id === e.target.value);
+                            setUploadFormData({ 
+                              ...uploadFormData, 
+                              folderId: e.target.value,
+                              folderName: folder ? folder.name : ''
+                            });
+                          }}
+                          className="w-full pl-12 pr-10 py-4 bg-[#f0f2f5] border border-gray-100 rounded-2xl focus:bg-white focus:border-[#1877f2] outline-none transition-all font-bold text-sm appearance-none"
+                        >
+                          <option value="">No Folder (General)</option>
+                          {folders.map((folder) => (
+                            <option key={folder.id} value={folder.id}>{folder.name}</option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                      </div>
+                    )}
                   </div>
 
                   <div className="space-y-1">
@@ -873,8 +1158,8 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
                           >
                             {previewUrl ? (
                               <>
-                                {uploadFormData.type === 'video' ? (
-                                  <video src={previewUrl} className="w-full h-full object-cover" muted autoPlay loop />
+                                {previewType === 'video' ? (
+                                  <video src={previewUrl} className="w-full h-full object-cover" muted autoPlay loop playsInline />
                                 ) : (
                                   <img src={previewUrl} className="w-full h-full object-cover" alt="Preview" />
                                 )}
@@ -910,30 +1195,43 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
                         </div>
                       ) : (
                         <div className="space-y-4">
-                          <div className="grid grid-cols-3 gap-3">
-                            {(['image', 'video', 'link'] as const).map((type) => (
-                              <button
-                                key={type}
-                                type="button"
-                                onClick={() => setUploadFormData({ ...uploadFormData, type })}
-                                className={`py-4 rounded-2xl border flex flex-col items-center justify-center transition-all ${uploadFormData.type === type ? 'bg-[#1877f2]/5 border-[#1877f2] font-bold text-[#1877f2]' : 'bg-gray-50 border-gray-100 text-gray-400 hover:bg-gray-100'}`}
-                              >
-                                {type === 'image' ? <Camera className="w-6 h-6 mb-2" /> : type === 'video' ? <Video className="w-6 h-6 mb-2" /> : <LinkIcon className="w-6 h-6 mb-2" />}
-                                <span className="text-[10px] font-black uppercase tracking-widest">{type}</span>
-                              </button>
-                            ))}
-                          </div>
-                          <div className="relative">
-                            <LinkIcon className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-300" />
-                            <input
-                              required
-                              type="url"
-                              value={uploadFormData.url}
-                              onChange={(e) => setUploadFormData({ ...uploadFormData, url: e.target.value })}
-                              className="w-full pl-16 pr-6 py-5 rounded-2xl border border-gray-100 bg-gray-50 focus:bg-white focus:border-[#1877f2] outline-none transition-all placeholder:text-gray-300 font-bold"
-                              placeholder="Paste your project URL here..."
-                            />
-                          </div>
+                        <div className="grid grid-cols-3 gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setUploadFormData({ ...uploadFormData, type: 'link', platform: 'facebook' })}
+                            className={`py-4 rounded-2xl border flex flex-col items-center justify-center transition-all ${uploadFormData.platform === 'facebook' ? 'bg-[#1877f2]/10 border-[#1877f2] font-bold text-[#1877f2]' : 'bg-gray-50 border-gray-100 text-gray-400 hover:bg-gray-100'}`}
+                          >
+                            <Facebook className="w-6 h-6 mb-2" />
+                            <span className="text-[10px] font-black uppercase tracking-widest text-[#1877f2]">Facebook</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setUploadFormData({ ...uploadFormData, type: 'link', platform: 'instagram' })}
+                            className={`py-4 rounded-2xl border flex flex-col items-center justify-center transition-all ${uploadFormData.platform === 'instagram' ? 'bg-[#e4405f]/10 border-[#e4405f] font-bold text-[#e4405f]' : 'bg-gray-50 border-gray-100 text-gray-400 hover:bg-gray-100'}`}
+                          >
+                            <Instagram className="w-6 h-6 mb-2" />
+                            <span className="text-[10px] font-black uppercase tracking-widest text-[#e4405f]">Instagram</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setUploadFormData({ ...uploadFormData, type: 'link', platform: 'youtube' })}
+                            className={`py-4 rounded-2xl border flex flex-col items-center justify-center transition-all ${uploadFormData.platform === 'youtube' ? 'bg-[#ff0000]/10 border-[#ff0000] font-bold text-[#ff0000]' : 'bg-gray-50 border-gray-100 text-gray-400 hover:bg-gray-100'}`}
+                          >
+                            <Youtube className="w-6 h-6 mb-2" />
+                            <span className="text-[10px] font-black uppercase tracking-widest text-[#ff0000]">YouTube</span>
+                          </button>
+                        </div>
+                        <div className="relative">
+                          <LinkIcon className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-300" />
+                          <input
+                            required
+                            type="url"
+                            value={uploadFormData.url}
+                            onChange={(e) => setUploadFormData({ ...uploadFormData, url: e.target.value })}
+                            className="w-full pl-16 pr-6 py-5 rounded-2xl border border-gray-100 bg-gray-50 focus:bg-white focus:border-[#1877f2] outline-none transition-all placeholder:text-gray-300 font-bold"
+                            placeholder={`Paste your ${uploadFormData.platform !== 'other' ? uploadFormData.platform : 'social media'} link here...`}
+                          />
+                        </div>
                         </div>
                       )}
                     </div>
@@ -971,7 +1269,6 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
         )}
       </AnimatePresence>
 
-      {/* Image Lightbox Modal */}
       <AnimatePresence>
         {selectedImage && (
           <motion.div 
@@ -994,7 +1291,7 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
                 {(role === 'admin' || user?.uid === selectedImage.userId) && (
                   <button 
                     onClick={() => {
-                      handleDelete(selectedImage.id, selectedImage.userId);
+                      handleDelete(selectedImage.id, selectedImage.userId, selectedImage.driveFileId);
                       setSelectedImage(null);
                     }}
                     className="p-3 bg-red-500/10 hover:bg-red-500/20 rounded-full text-red-500 transition-all"
@@ -1030,36 +1327,72 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
             >
               {/* Navigation Buttons */}
               <button 
-                onClick={handlePrevImage}
+                onClick={(e) => { e.stopPropagation(); handlePrevMedia(); }}
                 className="absolute -left-20 p-4 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all hidden md:block"
               >
                 <ChevronLeft className="w-8 h-8" />
               </button>
 
-              <div className="relative group">
-                <img 
-                  src={selectedImage.driveFileId ? `${window.location.origin}/api/drive/image/${selectedImage.driveFileId}` : (selectedImage.url || null)} 
-                  alt={selectedImage.title}
-                  className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
-                />
+              <div className="relative group w-full flex flex-col items-center">
+                <div className="relative rounded-lg overflow-hidden shadow-2xl bg-black/20 backdrop-blur-sm min-h-[300px] flex items-center justify-center">
+                  {selectedImage.type === 'image' ? (
+                    <img 
+                      src={selectedImage.driveFileId ? `${window.location.origin}/api/drive/image/${selectedImage.driveFileId}` : (selectedImage.url || null)} 
+                      alt={selectedImage.title}
+                      className="max-w-full max-h-[70vh] object-contain"
+                    />
+                  ) : selectedImage.type === 'video' ? (
+                    <div className="aspect-video w-full max-w-4xl bg-black flex items-center justify-center">
+                      {selectedImage.driveFileId ? (
+                        <iframe 
+                          src={`https://drive.google.com/file/d/${selectedImage.driveFileId}/preview`} 
+                          className="w-full h-full border-none"
+                          allow="autoplay"
+                          title={selectedImage.title}
+                        />
+                      ) : (
+                        <video src={selectedImage.url} controls className="w-full h-full" autoPlay />
+                      )}
+                    </div>
+                  ) : (
+                    <div className="w-full max-w-xl aspect-video bg-[#f0f2f5] p-12 flex flex-col items-center justify-center text-center">
+                       {selectedImage.platform === 'facebook' ? <Facebook className="w-20 h-20 text-[#1877f2] mb-6" /> : 
+                        selectedImage.platform === 'instagram' ? <Instagram className="w-20 h-20 text-[#e4405f] mb-6" /> :
+                        selectedImage.platform === 'youtube' ? <Youtube className="w-20 h-20 text-[#ff0000] mb-6" /> :
+                        <LinkIcon className="w-20 h-20 text-gray-300 mb-6" />}
+                       
+                       <h4 className="text-2xl font-black text-gray-900 mb-2">{selectedImage.title}</h4>
+                       <p className="text-gray-500 mb-8 font-medium">{selectedImage.url}</p>
+                       <a 
+                        href={selectedImage.url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="px-10 py-4 bg-[#1877f2] text-white rounded-2xl font-black flex items-center space-x-3 shadow-xl shadow-blue-500/20"
+                       >
+                         <span>Open in {selectedImage.platform?.charAt(0).toUpperCase() + selectedImage.platform?.slice(1)}</span>
+                         <ExternalLink className="w-5 h-5" />
+                       </a>
+                    </div>
+                  )}
+                </div>
                 
                 {/* Mobile/Overlay Navigation */}
                 <div className="absolute inset-y-0 left-0 w-1/4 flex items-center justify-start pl-4 opacity-0 group-hover:opacity-100 transition-opacity md:hidden">
-                   <button onClick={handlePrevImage} className="p-2 bg-black/50 rounded-full text-white"><ChevronLeft /></button>
+                   <button onClick={(e) => { e.stopPropagation(); handlePrevMedia(); }} className="p-2 bg-black/50 rounded-full text-white"><ChevronLeft /></button>
                 </div>
                 <div className="absolute inset-y-0 right-0 w-1/4 flex items-center justify-end pr-4 opacity-0 group-hover:opacity-100 transition-opacity md:hidden">
-                   <button onClick={handleNextImage} className="p-2 bg-black/50 rounded-full text-white"><ChevronRight /></button>
+                   <button onClick={(e) => { e.stopPropagation(); handleNextMedia(); }} className="p-2 bg-black/50 rounded-full text-white"><ChevronRight /></button>
                 </div>
 
                 {selectedImage.description && (
-                  <div className="mt-4 p-4 bg-white/5 backdrop-blur-md rounded-xl text-white text-center">
-                    <p className="text-sm leading-relaxed">{selectedImage.description}</p>
+                  <div className="mt-6 p-6 bg-white/10 backdrop-blur-md rounded-3xl text-white text-center max-w-2xl border border-white/10">
+                    <p className="text-lg font-medium leading-relaxed">{selectedImage.description}</p>
                   </div>
                 )}
               </div>
 
               <button 
-                onClick={handleNextImage}
+                onClick={(e) => { e.stopPropagation(); handleNextMedia(); }}
                 className="absolute -right-20 p-4 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all hidden md:block"
               >
                 <ChevronRight className="w-8 h-8" />

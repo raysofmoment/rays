@@ -251,6 +251,7 @@ const BookingManagement: React.FC<BookingManagementProps> = ({ user, role }) => 
       )}
 
       {/* Analytics Overview */}
+      {role === 'admin' && (
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div className="bg-white p-6 rounded-2xl border border-gray-100 shadow-sm">
           <div className="flex items-center justify-between mb-2">
@@ -283,6 +284,7 @@ const BookingManagement: React.FC<BookingManagementProps> = ({ user, role }) => 
           </p>
         </div>
       </div>
+      )}
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-200 bg-gray-50 flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -316,8 +318,8 @@ const BookingManagement: React.FC<BookingManagementProps> = ({ user, role }) => 
             <thead>
               <tr className="bg-gray-50 border-b border-gray-200">
                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Client & Event</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Package & Cost</th>
-                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">{role === 'admin' ? 'Client Payment' : 'My Payment'}</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Package {role === 'admin' && '& Cost'}</th>
+                <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">{role === 'admin' ? 'Client Payment' : 'Payment Status'}</th>
                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Work Progress</th>
                 <th className="px-6 py-4 text-xs font-bold text-gray-500 uppercase tracking-wider text-right">Actions</th>
               </tr>
@@ -331,11 +333,13 @@ const BookingManagement: React.FC<BookingManagementProps> = ({ user, role }) => 
                       <span className="text-xs text-gray-500">
                         {booking.eventType} • {booking.eventDate && isValid(new Date(booking.eventDate)) ? format(new Date(booking.eventDate), 'MMM d, yyyy') : 'No Date'}
                       </span>
-                      <span className="text-xs text-gray-400 mt-1">{booking.eventPlace}</span>
+                      {role !== 'editor' && (
+                        <span className="text-xs text-gray-400 mt-1">{booking.eventPlace}</span>
+                      )}
                       {booking.invoiceNumber && (
                         <span className="text-[10px] text-blue-600 font-bold mt-1">INV: {booking.invoiceNumber}</span>
                       )}
-                      {booking.discountRequest && (
+                      {booking.discountRequest && role === 'admin' && (
                         <div className="mt-2 p-2 bg-blue-50 rounded text-[10px] text-blue-700 border border-blue-100">
                           <span className="font-bold">Discount Request:</span> {booking.discountRequest}
                         </div>
@@ -343,33 +347,39 @@ const BookingManagement: React.FC<BookingManagementProps> = ({ user, role }) => 
                     </div>
                   </td>
                   <td className="px-6 py-4">
-                    <div className="flex flex-col">
+                    {role === 'admin' ? (
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-gray-900">{booking.package}</span>
+                        <span className="text-xs text-gray-500">Total: ₹{booking.totalPackageAmount}</span>
+                        {booking.discount > 0 && (
+                          <span className="text-xs text-blue-600 font-bold">Discount: -₹{booking.discount}</span>
+                        )}
+                        {booking.finalAmount && booking.finalAmount !== booking.totalPackageAmount && (
+                          <span className="text-xs text-green-600 font-bold">Final: ₹{booking.finalAmount}</span>
+                        )}
+                        <span className={`text-xs font-bold ${booking.dueAmount > 0 ? 'text-red-500' : 'text-green-500'}`}>
+                          Due: ₹{booking.dueAmount}
+                        </span>
+                      </div>
+                    ) : (
                       <span className="text-sm font-bold text-gray-900">{booking.package}</span>
-                      <span className="text-xs text-gray-500">Total: ₹{booking.totalPackageAmount}</span>
-                      {booking.discount > 0 && (
-                        <span className="text-xs text-blue-600 font-bold">Discount: -₹{booking.discount}</span>
-                      )}
-                      {booking.finalAmount && booking.finalAmount !== booking.totalPackageAmount && (
-                        <span className="text-xs text-green-600 font-bold">Final: ₹{booking.finalAmount}</span>
-                      )}
-                      <span className={`text-xs font-bold ${booking.dueAmount > 0 ? 'text-red-500' : 'text-green-500'}`}>
-                        Due: ₹{booking.dueAmount}
-                      </span>
-                    </div>
+                    )}
                   </td>
                   <td className="px-6 py-4">
                     {activeTab === 'requests' ? (
                       <div className="flex flex-col gap-2">
-                        <div className="flex flex-col">
-                          <label className="text-[9px] font-bold text-gray-400 uppercase">Final Amount</label>
-                          <input
-                            type="number"
-                            placeholder="Final Amount"
-                            value={requestFinalAmounts[booking.id] ?? (booking.finalAmount || booking.totalPackageAmount)}
-                            onChange={(e) => setRequestFinalAmounts(prev => ({ ...prev, [booking.id]: Number(e.target.value) }))}
-                            className="text-xs border border-gray-200 rounded px-2 py-1 w-24 font-bold text-green-600"
-                          />
-                        </div>
+                        {role === 'admin' && (
+                          <div className="flex flex-col">
+                            <label className="text-[9px] font-bold text-gray-400 uppercase">Final Amount</label>
+                            <input
+                              type="number"
+                              placeholder="Final Amount"
+                              value={requestFinalAmounts[booking.id] ?? (booking.finalAmount || booking.totalPackageAmount)}
+                              onChange={(e) => setRequestFinalAmounts(prev => ({ ...prev, [booking.id]: Number(e.target.value) }))}
+                              className="text-xs border border-gray-200 rounded px-2 py-1 w-24 font-bold text-green-600"
+                            />
+                          </div>
+                        )}
                         <div className="flex gap-2">
                           <button
                             onClick={() => handleAcceptRequest(booking)}
@@ -394,17 +404,7 @@ const BookingManagement: React.FC<BookingManagementProps> = ({ user, role }) => 
                           {booking.dueAmount <= 0 ? 'Fully Paid' : (booking.paidAmount > 0 ? 'Partially Paid' : 'Unpaid')}
                         </span>
                       ) : (
-                        <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
-                          (booking.photographerId === user.uid && booking.photographerPaid) ||
-                          (booking.editorId === user.uid && booking.editorPaid) ||
-                          (booking.otherId === user.uid && booking.otherPaid)
-                          ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                        }`}>
-                          {(booking.photographerId === user.uid && booking.photographerPaid) ||
-                          (booking.editorId === user.uid && booking.editorPaid) ||
-                          (booking.otherId === user.uid && booking.otherPaid)
-                          ? 'Received' : 'Due'}
-                        </span>
+                        <span className="text-xs text-gray-400">Restricted</span>
                       )
                     )}
                   </td>

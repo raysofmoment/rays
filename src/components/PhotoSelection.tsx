@@ -166,9 +166,16 @@ const PhotoSelection: React.FC<PhotoSelectionProps> = ({ user, role }) => {
       toast.error('Please enter a mobile number');
       return;
     }
+    if (!user) {
+      toast.error('Please log in securely to access your photo selection.');
+      return;
+    }
     setLoading(true);
     try {
-      const q = query(collection(db, 'bookings'), where('clientMobile', '==', mobile));
+      const conditions: any[] = [where('clientMobile', '==', mobile)];
+      const isPrivileged = role === 'admin' || role === 'photographer' || role === 'editor' || role === 'other';
+      if (user && !isPrivileged) conditions.push(where('clientId', '==', user.uid));
+      const q = query(collection(db, 'bookings'), ...conditions);
       const snap = await getDocs(q);
       if (snap.empty) {
         toast.error('No booking found for this mobile number');

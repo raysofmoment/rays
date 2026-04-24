@@ -4,7 +4,7 @@ import { collection, addDoc, updateDoc, doc, query, where, getDocs, writeBatch }
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { notifyAdmins } from '../services/notificationService';
 import { toast } from 'sonner';
-import { X, Save, Plus, Trash2, Music, Users, CreditCard, Truck, Home, Book, Gift, HardDrive, Package, Info, CheckCircle2, Clock, AlertCircle, Heart, Star } from 'lucide-react';
+import { X, Save, Plus, Trash2, Music, Users, CreditCard, Truck, Home, Book, Gift, HardDrive, Package, Info, CheckCircle2, Clock, AlertCircle, Heart, Star, Camera, Edit2 } from 'lucide-react';
 
 interface BookingFormProps {
   user: User;
@@ -34,15 +34,10 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
     brideAddress: '',
     brideNumber: '',
     brideName: '',
-    brideBengaliName: '',
-    brideFatherName: '',
-    groomAddress: '',
-    groomNumber: '',
     groomName: '',
-    groomBengaliName: '',
-    groomFatherName: '',
+    groomNumber: '',
+    groomAddress: '',
     childName: '',
-    childBengaliName: '',
     modelName: '',
     modelIdLink: '',
     makeupArtist: '',
@@ -55,6 +50,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
     totalPackageAmount: 0,
     discount: 0,
     paidAmount: 0,
+    partialPayments: [] as { amount: number; date: string; method: string }[],
     dueAmount: 0,
     emiCount: 0,
     emiAmounts: {} as Record<string, number>,
@@ -64,18 +60,13 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
     emi4Date: '',
     emi5Date: '',
     paymentMode: '',
-    staffDetails: {} as Record<string, { paymentAmount: number; workQuality: string; review: string; isPaid: boolean }>,
-    travelCost: 0,
-    accommodationCost: 0,
-    albumCost: 0,
-    katmaniCost: 0,
-    pendriveCost: 0,
-    boxCost: 0,
-    otherCost: 0,
-    extraCosts: [] as { label: string; amount: number }[],
+    photographerId: '',
     photographerIds: [] as string[],
+    editorId: '',
     editorIds: [] as string[],
+    otherId: '',
     otherIds: [] as string[],
+    staffPayments: {} as Record<string, { totalFee: number; paidAmount: number; lastPaymentDate?: string; payments: { amount: number; date: string; method: string }[] }>,
     teaserStatus: 'pending',
     teaserLink: '',
     fullVideoStatus: 'pending',
@@ -104,7 +95,11 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
   useEffect(() => {
     const fetchExistingBooking = async () => {
       if (invoiceNumber) {
-        const q = query(collection(db, 'bookings'), where('invoiceNumber', '==', invoiceNumber));
+        let conditions: any[] = [where('invoiceNumber', '==', invoiceNumber)];
+        const isPrivileged = role === 'admin' || role === 'photographer' || role === 'editor' || role === 'other';
+        if (!isPrivileged) conditions.push(where('clientId', '==', user.uid));
+        
+        const q = query(collection(db, 'bookings'), ...conditions);
         const snapshot = await getDocs(q);
         if (!snapshot.empty) {
           const data = snapshot.docs[0].data();
@@ -118,13 +113,30 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
 
   useEffect(() => {
     const fetchTeamMembers = async () => {
-      const q = query(collection(db, 'users'), where('role', 'in', ['photographer', 'editor', 'other', 'admin']));
-      const snapshot = await getDocs(q);
-      const members = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
-      setTeamMembers(members);
+      try {
+        const isPrivileged = role === 'admin' || role === 'photographer' || role === 'editor' || role === 'other';
+        if (!isPrivileged) return;
+        
+        const q = query(collection(db, 'users'), where('role', 'in', ['photographer', 'editor', 'other', 'admin']));
+        const snapshot = await getDocs(q);
+        const members = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() }));
+        setTeamMembers(members);
+      } catch (error) {
+        console.error('Error fetching team members:', error);
+      }
     };
     fetchTeamMembers();
-  }, []);
+  }, [role]);
+
+  useEffect(() => {
+    const total = Number(formData.totalPackageAmount) || 0;
+    const disc = Number(formData.discount) || 0;
+    const paid = Number(formData.paidAmount) || 0;
+    const calculatedDue = total - disc - paid;
+    if (formData.dueAmount !== calculatedDue) {
+      setFormData(prev => ({ ...prev, dueAmount: calculatedDue }));
+    }
+  }, [formData.totalPackageAmount, formData.discount, formData.paidAmount]);
 
   const verifyDriveLink = async () => {
     if (!formData.googleDriveFolderId) {
@@ -157,6 +169,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
     e.preventDefault();
     try {
       const batch = writeBatch(db);
+      const isPrivileged = role === 'admin' || role === 'photographer' || role === 'editor' || role === 'other';
       
       if (bookingId) {
         const bookingRef = doc(db, 'bookings', bookingId);
@@ -167,7 +180,9 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
         });
         
         // Also update the order if it exists
-        const q = query(collection(db, 'orders'), where('invoiceNumber', '==', invoiceNumber));
+        let orderConditions: any[] = [where('invoiceNumber', '==', invoiceNumber)];
+        if (!isPrivileged) orderConditions.push(where('clientId', '==', user.uid));
+        const q = query(collection(db, 'orders'), ...orderConditions);
         const snap = await getDocs(q);
         if (!snap.empty) {
           const orderRef = doc(db, 'orders', snap.docs[0].id);
@@ -183,6 +198,10 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
             paidAmount: formData.paidAmount || 0,
             dueAmount: formData.dueAmount || (formData.totalPackageAmount - (formData.discount || 0) - (formData.paidAmount || 0)),
             eventType: formData.eventType,
+            photographerIds: formData.photographerIds || [],
+            editorIds: formData.editorIds || [],
+            otherIds: formData.otherIds || [],
+            staffPayments: formData.staffPayments || {},
             updatedAt: new Date().toISOString(),
             updatedBy: user.uid
           });
@@ -212,8 +231,10 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
         });
 
         // Also create or update the order
-        const q = query(collection(db, 'orders'), where('invoiceNumber', '==', newInvoiceNumber));
-        const snap = await getDocs(q);
+        let newOrderConditions: any[] = [where('invoiceNumber', '==', newInvoiceNumber)];
+        if (!isPrivileged) newOrderConditions.push(where('clientId', '==', user.uid));
+        const q2 = query(collection(db, 'orders'), ...newOrderConditions);
+        const snap2 = await getDocs(q2);
         
         const orderData = {
           clientId: clientId || null,
@@ -230,12 +251,16 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
           paidAmount: formData.paidAmount || 0,
           dueAmount: formData.dueAmount || (formData.totalPackageAmount - (formData.discount || 0) - (formData.paidAmount || 0)),
           eventType: formData.eventType,
+          photographerIds: formData.photographerIds || [],
+          editorIds: formData.editorIds || [],
+          otherIds: formData.otherIds || [],
+          staffPayments: formData.staffPayments || {},
           createdAt: new Date().toISOString(),
           bookingId: newBookingRef.id
         };
 
-        if (!snap.empty) {
-          const orderRef = doc(db, 'orders', snap.docs[0].id);
+        if (!snap2.empty) {
+          const orderRef = doc(db, 'orders', snap2.docs[0].id);
           batch.update(orderRef, {
             ...orderData,
             updatedAt: new Date().toISOString(),
@@ -316,28 +341,6 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
     });
   };
 
-  const addExtraCost = () => {
-    setFormData(prev => ({
-      ...prev,
-      extraCosts: [...(prev.extraCosts || []), { label: '', amount: 0 }]
-    }));
-  };
-
-  const removeExtraCost = (index: number) => {
-    setFormData(prev => ({
-      ...prev,
-      extraCosts: (prev.extraCosts || []).filter((_, i) => i !== index)
-    }));
-  };
-
-  const updateExtraCost = (index: number, field: 'label' | 'amount', value: any) => {
-    setFormData(prev => {
-      const newCosts = [...(prev.extraCosts || [])];
-      newCosts[index] = { ...newCosts[index], [field]: field === 'amount' ? Number(value) : value };
-      return { ...prev, extraCosts: newCosts };
-    });
-  };
-
   const updateEmiAmount = (index: number, value: number) => {
     setFormData(prev => ({
       ...prev,
@@ -348,17 +351,90 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
     }));
   };
 
-  const updateStaffDetail = (userId: string, field: string, value: any) => {
+  const addPartialPayment = () => {
     setFormData(prev => ({
       ...prev,
-      staffDetails: {
-        ...(prev.staffDetails || {}),
-        [userId]: {
-          ...((prev.staffDetails && prev.staffDetails[userId]) || { paymentAmount: 0, workQuality: 'good', review: '', isPaid: false }),
-          [field]: value
+      partialPayments: [...(prev.partialPayments || []), { amount: 0, date: new Date().toISOString().split('T')[0], method: 'Cash' }]
+    }));
+  };
+
+  const removePartialPayment = (index: number) => {
+    setFormData(prev => {
+      const newPayments = (prev.partialPayments || []).filter((_, i) => i !== index);
+      const newPaidAmount = newPayments.reduce((sum, p) => sum + p.amount, 0);
+      return { 
+        ...prev, 
+        partialPayments: newPayments,
+        paidAmount: newPaidAmount
+      };
+    });
+  };
+
+  const updatePartialPayment = (index: number, field: string, value: any) => {
+    setFormData(prev => {
+      const newPayments = [...(prev.partialPayments || [])];
+      newPayments[index] = { ...newPayments[index], [field]: value };
+      const newPaidAmount = newPayments.reduce((sum, p) => sum + p.amount, 0);
+      return { 
+        ...prev, 
+        partialPayments: newPayments,
+        paidAmount: newPaidAmount
+      };
+    });
+  };
+
+  const toggleStaffMember = (uid: string, type: 'photographer' | 'editor' | 'other') => {
+    const field = `${type}Ids` as 'photographerIds' | 'editorIds' | 'otherIds';
+    setFormData(prev => {
+      const currentIds = prev[field] || [];
+      const isAlreadyAssigned = currentIds.includes(uid);
+      const newIds = isAlreadyAssigned 
+        ? currentIds.filter(id => id !== uid)
+        : [...currentIds, uid];
+      
+      return {
+        ...prev,
+        [field]: newIds,
+        [`${type}Id`]: newIds.length > 0 ? newIds[0] : '' // Keep singular for compat
+      };
+    });
+  };
+
+  const updateStaffFee = (uid: string, fee: number) => {
+    setFormData(prev => ({
+      ...prev,
+      staffPayments: {
+        ...prev.staffPayments,
+        [uid]: {
+          ...(prev.staffPayments?.[uid] || { totalFee: 0, paidAmount: 0, payments: [] }),
+          totalFee: fee
         }
       }
     }));
+  };
+
+  const recordStaffPayment = (uid: string, amount: number, method: string) => {
+    if (amount <= 0) return;
+    const date = new Date().toISOString();
+    setFormData(prev => {
+      const currentStaffData = prev.staffPayments?.[uid] || { totalFee: 0, paidAmount: 0, payments: [] };
+      const newPayments = [...(currentStaffData.payments || []), { amount, date, method }];
+      const newPaidAmount = newPayments.reduce((sum, p) => sum + p.amount, 0);
+      
+      return {
+        ...prev,
+        staffPayments: {
+          ...prev.staffPayments,
+          [uid]: {
+            ...currentStaffData,
+            paidAmount: newPaidAmount,
+            lastPaymentDate: date,
+            payments: newPayments
+          }
+        }
+      };
+    });
+    toast.success('Staff payment recorded locally. Save the form to persist.');
   };
 
   const getDeliverablesByPackage = (pkg: string) => {
@@ -400,19 +476,19 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="space-y-1">
                   <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Client Name</label>
-                  <input type="text" name="clientName" value={formData.clientName} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all" required />
+                  <input type="text" name="clientName" value={formData.clientName || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all" required />
                 </div>
                 <div className="space-y-1">
                   <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Mobile Number</label>
-                  <input type="text" name="clientMobile" value={formData.clientMobile} onChange={handleChange} maxLength={10} placeholder="10-digit mobile number" className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all" />
+                  <input type="text" name="clientMobile" value={formData.clientMobile || ''} onChange={handleChange} maxLength={10} placeholder="10-digit mobile number" className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all" />
                 </div>
                 <div className="space-y-1">
                   <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Email Address</label>
-                  <input type="email" name="clientEmail" value={formData.clientEmail} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all" />
+                  <input type="email" name="clientEmail" value={formData.clientEmail || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all" />
                 </div>
                 <div className="space-y-1">
                   <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Event Date</label>
-                  <input type="date" name="eventDate" value={formData.eventDate} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all" required />
+                  <input type="date" name="eventDate" value={formData.eventDate || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all" required />
                 </div>
                 <div className="space-y-1">
                   <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Package</label>
@@ -440,34 +516,36 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
                     <option value="OUTDOOR">Outdoor Shoot</option>
                   </select>
                 </div>
+                {role !== 'client' && (
                 <div className="space-y-1">
                   <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Priority Level</label>
-                  <select name="priority" value={formData.priority} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all font-bold">
+                  <select disabled={role !== 'admin'} name="priority" value={formData.priority} onChange={handleChange} className={`w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all font-bold ${role !== 'admin' ? 'bg-gray-100 cursor-not-allowed opacity-70' : ''}`}>
                     <option value="low">Low Priority</option>
                     <option value="medium">Medium Priority</option>
                     <option value="high">High Priority</option>
                     <option value="urgent">Urgent Priority</option>
                   </select>
                 </div>
+                )}
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                 <div className="space-y-1">
                   <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Event Venue/Place</label>
-                  <input type="text" name="eventPlace" value={formData.eventPlace} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all" />
+                  <input type="text" name="eventPlace" value={formData.eventPlace || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all" />
                 </div>
                 <div className="space-y-1">
                   <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Full Address</label>
-                  <input type="text" name="address" value={formData.address} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all" />
+                  <input type="text" name="address" value={formData.address || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all" />
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
                 <div className="space-y-1">
                   <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">General Requirements</label>
-                  <textarea name="requirement" value={formData.requirement} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all" rows={3} />
+                  <textarea name="requirement" value={formData.requirement || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all" rows={3} />
                 </div>
                 <div className="space-y-1">
                   <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Special Requirements</label>
-                  <textarea name="specialRequirement" value={formData.specialRequirement} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all" rows={3} placeholder="Any specific requests or notes..." />
+                  <textarea name="specialRequirement" value={formData.specialRequirement || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all" rows={3} placeholder="Any specific requests or notes..." />
                 </div>
               </div>
             </section>
@@ -489,11 +567,9 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
                     <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Bride Information</h4>
                   </div>
                   <div className="grid grid-cols-1 gap-4">
-                    <input type="text" name="brideName" placeholder="Full Name" value={formData.brideName} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
-                    <input type="text" name="brideBengaliName" placeholder="Bengali Name (Optional)" value={formData.brideBengaliName} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
-                    <input type="text" name="brideFatherName" placeholder="Father's Name" value={formData.brideFatherName} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
-                    <input type="text" name="brideNumber" placeholder="10-digit mobile number" value={formData.brideNumber} onChange={handleChange} maxLength={10} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
-                    <textarea name="brideAddress" placeholder="Current Address" value={formData.brideAddress} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" rows={2} />
+                    <input type="text" name="brideName" placeholder="Full Name" value={formData.brideName || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
+                    <input type="text" name="brideNumber" placeholder="10-digit mobile number" value={formData.brideNumber || ''} onChange={handleChange} maxLength={10} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
+                    <textarea name="brideAddress" placeholder="Current Address" value={formData.brideAddress || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" rows={2} />
                   </div>
                 </div>
                 <div className="space-y-6">
@@ -502,11 +578,9 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
                     <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Groom Information</h4>
                   </div>
                   <div className="grid grid-cols-1 gap-4">
-                    <input type="text" name="groomName" placeholder="Full Name" value={formData.groomName} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
-                    <input type="text" name="groomBengaliName" placeholder="Bengali Name (Optional)" value={formData.groomBengaliName} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
-                    <input type="text" name="groomFatherName" placeholder="Father's Name" value={formData.groomFatherName} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
-                    <input type="text" name="groomNumber" placeholder="10-digit mobile number" value={formData.groomNumber} onChange={handleChange} maxLength={10} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
-                    <textarea name="groomAddress" placeholder="Current Address" value={formData.groomAddress} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" rows={2} />
+                    <input type="text" name="groomName" placeholder="Full Name" value={formData.groomName || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
+                    <input type="text" name="groomNumber" placeholder="10-digit mobile number" value={formData.groomNumber || ''} onChange={handleChange} maxLength={10} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
+                    <textarea name="groomAddress" placeholder="Current Address" value={formData.groomAddress || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" rows={2} />
                   </div>
                 </div>
               </div>
@@ -535,15 +609,12 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
                   </div>
                   <div className="grid grid-cols-1 gap-4">
                     {['BIRTHDAY', 'ANNOPRASAN', 'UPANAYAN'].includes(formData.eventType) && (
-                      <>
-                        <input type="text" name="childName" placeholder="Full Name" value={formData.childName} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
-                        <input type="text" name="childBengaliName" placeholder="Bengali Name (Optional)" value={formData.childBengaliName} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
-                      </>
+                      <input type="text" name="childName" placeholder="Full Name" value={formData.childName || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
                     )}
                     {formData.eventType === 'MODEL SHOOT' && (
                       <>
-                        <input type="text" name="modelName" placeholder="Model Name" value={formData.modelName} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
-                        <input type="text" name="modelIdLink" placeholder="Portfolio/ID Link" value={formData.modelIdLink} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
+                        <input type="text" name="modelName" placeholder="Model Name" value={formData.modelName || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
+                        <input type="text" name="modelIdLink" placeholder="Portfolio/ID Link" value={formData.modelIdLink || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
                       </>
                     )}
                   </div>
@@ -556,11 +627,11 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
                   <div className="grid grid-cols-1 gap-4">
                     {formData.eventType === 'MODEL SHOOT' && (
                       <>
-                        <input type="text" name="makeupArtist" placeholder="Makeup Artist Name" value={formData.makeupArtist} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
-                        <input type="text" name="makeupArtistIdLink" placeholder="Makeup Artist Portfolio Link" value={formData.makeupArtistIdLink} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
+                        <input type="text" name="makeupArtist" placeholder="Makeup Artist Name" value={formData.makeupArtist || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
+                        <input type="text" name="makeupArtistIdLink" placeholder="Makeup Artist Portfolio Link" value={formData.makeupArtistIdLink || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
                       </>
                     )}
-                    <input type="text" name="channel" placeholder="Social Media/Channel Handle" value={formData.channel} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
+                    <input type="text" name="channel" placeholder="Social Media/Channel Handle" value={formData.channel || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
                   </div>
                 </div>
               </div>
@@ -582,15 +653,15 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
               <div className="space-y-1">
                 <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Pre Wedding Song</label>
-                <input type="text" name="ourWeddingSong" value={formData.ourWeddingSong} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none transition-all" placeholder="Song name or link" />
+                <input type="text" name="ourWeddingSong" value={formData.ourWeddingSong || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none transition-all" placeholder="Song name or link" />
               </div>
               <div className="space-y-1">
                 <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Event Song</label>
-                <input type="text" name="eventSong" value={formData.eventSong} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none transition-all" placeholder="Song name or link" />
+                <input type="text" name="eventSong" value={formData.eventSong || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none transition-all" placeholder="Song name or link" />
               </div>
               <div className="space-y-1">
                 <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Reels Song</label>
-                <input type="text" name="reelsSong" value={formData.reelsSong} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none transition-all" placeholder="Song name or link" />
+                <input type="text" name="reelsSong" value={formData.reelsSong || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none transition-all" placeholder="Song name or link" />
               </div>
             </div>
             {formData.songLinks && formData.songLinks.length > 0 && (
@@ -610,29 +681,113 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
           </section>
 
           {/* Payment Information */}
-          <section>
-            <div className="flex items-center space-x-2 mb-6">
-              <CreditCard className="w-5 h-5 text-green-600" />
-              <h3 className="text-lg font-bold text-gray-900">Payment & EMI Details</h3>
+          {role === 'admin' && (
+            <section>
+              <div className="flex items-center space-x-2 mb-6">
+                <CreditCard className="w-5 h-5 text-green-600" />
+                <h3 className="text-lg font-bold text-gray-900">Payment & EMI Details</h3>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <div className="space-y-1">
                 <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Total Package (₹)</label>
-                <input type="number" name="totalPackageAmount" value={formData.totalPackageAmount} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none font-bold text-lg" required />
+                <input type="number" name="totalPackageAmount" value={formData.totalPackageAmount || 0} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none font-bold text-lg" required />
               </div>
               <div className="space-y-1">
                 <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Discount (₹)</label>
-                <input type="number" name="discount" value={formData.discount} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none font-bold text-lg text-red-600" />
+                <input type="number" name="discount" value={formData.discount || 0} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none font-bold text-lg text-red-600" />
               </div>
               <div className="space-y-1">
                 <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Paid Amount (₹)</label>
-                <input type="number" name="paidAmount" value={formData.paidAmount} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none font-bold text-lg text-green-600" />
+                <input 
+                  type="number" 
+                  name="paidAmount" 
+                  value={formData.paidAmount || 0} 
+                  onChange={handleChange} 
+                  className={`w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none font-bold text-lg text-green-600 ${formData.partialPayments?.length > 0 ? 'bg-gray-50' : ''}`} 
+                  readOnly={formData.partialPayments?.length > 0}
+                />
+                {formData.partialPayments?.length > 0 && (
+                  <p className="text-[8px] text-gray-400 mt-1 italic">* Total of partial payments below</p>
+                )}
               </div>
               <div className="space-y-1">
                 <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Due Amount (₹)</label>
                 <div className="px-4 py-3 rounded-xl border border-gray-200 bg-gray-50 font-bold text-lg text-orange-600">
-                  ₹{formData.totalPackageAmount - (formData.discount || 0) - (formData.paidAmount || 0)}
+                  ₹{formData.dueAmount?.toLocaleString() || 0}
                 </div>
+              </div>
+            </div>
+
+            {/* Partial Payments History */}
+            <div className="mt-8 p-6 bg-gray-50/50 rounded-2xl border border-gray-100">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-2">
+                  <CreditCard className="w-4 h-4 text-green-600" />
+                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Partial Payments Record</h4>
+                </div>
+                <button 
+                  type="button" 
+                  onClick={addPartialPayment}
+                  className="flex items-center space-x-2 px-4 py-2 bg-green-50 text-green-700 rounded-xl hover:bg-green-100 transition-colors text-[10px] font-bold shadow-sm"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Record Payment</span>
+                </button>
+              </div>
+              
+              <div className="grid grid-cols-1 gap-4">
+                {formData.partialPayments?.map((payment, idx) => (
+                  <div key={idx} className="grid grid-cols-1 md:grid-cols-4 gap-4 p-4 bg-white rounded-xl border border-gray-100 shadow-sm items-end">
+                    <div className="space-y-1">
+                      <label className="block text-[8px] font-bold text-gray-400 uppercase">Payment Date</label>
+                      <input 
+                        type="date" 
+                        value={payment.date} 
+                        onChange={(e) => updatePartialPayment(idx, 'date', e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-200 text-xs outline-none focus:border-black"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[8px] font-bold text-gray-400 uppercase">Amount (₹)</label>
+                      <input 
+                        type="number" 
+                        value={payment.amount} 
+                        onChange={(e) => updatePartialPayment(idx, 'amount', Number(e.target.value))}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-200 text-xs font-bold outline-none focus:border-black"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[8px] font-bold text-gray-400 uppercase">Method</label>
+                      <select 
+                        value={payment.method} 
+                        onChange={(e) => updatePartialPayment(idx, 'method', e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-gray-200 text-xs outline-none focus:border-black font-semibold"
+                      >
+                        <option value="Cash">Cash</option>
+                        <option value="Online">Online Transfer</option>
+                        <option value="UPI">UPI</option>
+                        <option value="Card">Card</option>
+                        <option value="Mobile Banking">Mobile Banking</option>
+                      </select>
+                    </div>
+                    <div className="flex justify-end">
+                      <button 
+                        type="button" 
+                        onClick={() => removePartialPayment(idx)}
+                        className="p-2.5 text-red-500 hover:bg-red-50 rounded-xl transition-colors border border-transparent hover:border-red-100"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {(!formData.partialPayments || formData.partialPayments.length === 0) && (
+                  <div className="text-center py-8 bg-white/50 rounded-xl border border-dashed border-gray-200">
+                    <CreditCard className="w-8 h-8 text-gray-200 mx-auto mb-2" />
+                    <p className="text-[10px] text-gray-400 font-medium">No partial payments recorded yet.</p>
+                    <p className="text-[9px] text-gray-300">Click "Record Payment" to add transaction details.</p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -714,226 +869,148 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
                 })}
               </div>
             )}
+          </section>
+          )}
 
-            <div className="mt-8 p-6 bg-gray-50 rounded-3xl border border-gray-100">
-              <div className="flex items-center justify-between mb-4">
-                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest flex items-center">
-                  <Truck className="w-4 h-4 mr-2" />
-                  Additional Costs & Logistics
-                </h4>
-                <button type="button" onClick={addExtraCost} className="flex items-center space-x-2 px-3 py-1.5 bg-white border border-gray-200 text-gray-600 rounded-xl hover:bg-gray-50 transition-colors text-[10px] font-bold shadow-sm">
-                  <Plus className="w-3 h-3" />
-                  <span>Add Other Cost</span>
-                </button>
-              </div>
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
-                <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-tighter">Travel</label>
-                  <input type="number" name="travelCost" value={formData.travelCost} onChange={handleChange} className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-black outline-none text-sm" />
-                </div>
-                <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-tighter">Stay</label>
-                  <input type="number" name="accommodationCost" value={formData.accommodationCost} onChange={handleChange} className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-black outline-none text-sm" />
-                </div>
-                <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-tighter">Album</label>
-                  <input type="number" name="albumCost" value={formData.albumCost} onChange={handleChange} className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-black outline-none text-sm" />
-                </div>
-                <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-tighter">Katmani</label>
-                  <input type="number" name="katmaniCost" value={formData.katmaniCost} onChange={handleChange} className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-black outline-none text-sm" />
-                </div>
-                <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-tighter">Pendrive</label>
-                  <input type="number" name="pendriveCost" value={formData.pendriveCost} onChange={handleChange} className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-black outline-none text-sm" />
-                </div>
-                <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-tighter">Box</label>
-                  <input type="number" name="boxCost" value={formData.boxCost} onChange={handleChange} className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-black outline-none text-sm" />
-                </div>
-                <div className="space-y-1">
-                  <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-tighter">Other</label>
-                  <div className="flex items-center space-x-2">
-                    <input type="number" name="otherCost" value={formData.otherCost} onChange={handleChange} className="w-full px-3 py-2 rounded-lg border border-gray-200 focus:border-black outline-none text-sm" />
-                    <button type="button" onClick={addExtraCost} className="p-2 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors shadow-sm active:scale-95" title="Add Extra Cost Item">
-                      <Plus className="w-4 h-4" />
-                    </button>
+          {/* Staffing & Staff Payments */}
+          {role === 'admin' && (
+            <section className="p-8 bg-gray-50 rounded-3xl border border-gray-100 shadow-sm">
+              <div className="flex items-center justify-between mb-8">
+                <div className="flex items-center space-x-3">
+                  <div className="p-2.5 bg-indigo-100 text-indigo-600 rounded-xl">
+                    <Users className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-gray-900 leading-none">Staff Assignments & Payments</h3>
+                    <p className="text-[10px] text-gray-500 font-medium uppercase tracking-wider mt-1.5">Manage team assignments and project fees</p>
                   </div>
                 </div>
               </div>
 
-              {formData.extraCosts && formData.extraCosts.length > 0 && (
-                <div className="mt-6 space-y-3 pt-6 border-t border-gray-200">
-                  {formData.extraCosts.map((cost, idx) => (
-                    <div key={idx} className="flex items-center space-x-4 animate-in fade-in slide-in-from-top-2 duration-200">
-                      <div className="flex-1">
-                        <input type="text" placeholder="Cost Description (e.g. Food, Parking)" value={cost.label} onChange={(e) => updateExtraCost(idx, 'label', e.target.value)} className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-black outline-none bg-white text-sm" />
+              <div className="space-y-10">
+                {(['photographer', 'editor', 'other'] as const).map((type) => (
+                  <div key={type} className="space-y-6">
+                    <div className="flex items-center justify-between border-b border-gray-200 pb-3">
+                      <div className="flex items-center space-x-3">
+                        <div className={`p-1.5 rounded-lg ${
+                          type === 'photographer' ? 'bg-amber-100 text-amber-600' : 
+                          type === 'editor' ? 'bg-blue-100 text-blue-600' : 'bg-purple-100 text-purple-600'
+                        }`}>
+                          {type === 'photographer' ? <Camera className="w-4 h-4" /> : 
+                           type === 'editor' ? <Edit2 className="w-4 h-4" /> : <Users className="w-4 h-4" />}
+                        </div>
+                        <h4 className="text-sm font-bold text-gray-800 uppercase tracking-widest">{type}s</h4>
                       </div>
-                      <div className="w-32">
-                        <input type="number" placeholder="Amount" value={cost.amount} onChange={(e) => updateExtraCost(idx, 'amount', e.target.value)} className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-black outline-none bg-white text-sm font-bold" />
-                      </div>
-                      <button type="button" onClick={() => removeExtraCost(idx)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      
+                      <select 
+                        className="text-xs font-bold px-3 py-1.5 rounded-lg border border-gray-200 focus:border-black outline-none bg-white shadow-sm"
+                        onChange={(e) => e.target.value && toggleStaffMember(e.target.value, type)}
+                        value=""
+                      >
+                        <option value="">+ Add {type}</option>
+                        {teamMembers
+                          .filter(m => m.role === type || m.role === 'admin')
+                          .filter(m => !((formData[`${type}Ids`] as string[]) || []).includes(m.uid))
+                          .map(m => (
+                            <option key={m.uid} value={m.uid}>{m.displayName || m.email}</option>
+                          ))
+                        }
+                      </select>
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </section>
 
-          {/* Staffing */}
-          <section>
-            <div className="flex items-center space-x-2 mb-6">
-              <Users className="w-5 h-5 text-indigo-600" />
-              <h3 className="text-lg font-bold text-gray-900">Staffing & Assignments</h3>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {/* Photographers */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Photographers</h4>
-                  <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 text-[10px] font-bold rounded-full">{formData.photographerIds?.length || 0} Assigned</span>
-                </div>
-                <div className="space-y-3 max-h-64 overflow-y-auto p-4 bg-gray-50 rounded-2xl border border-gray-100 shadow-inner">
-                  {teamMembers.filter(m => m.role === 'photographer' || m.role === 'admin').map(m => (
-                    <div key={m.uid} className="space-y-2 p-3 bg-white rounded-xl border border-gray-100 shadow-sm">
-                      <label className="flex items-center space-x-3 cursor-pointer">
-                        <input 
-                          type="checkbox" 
-                          checked={formData.photographerIds?.includes(m.uid)}
-                          onChange={(e) => {
-                            const ids = formData.photographerIds || [];
-                            if (e.target.checked) {
-                              setFormData(prev => ({ ...prev, photographerIds: [...ids, m.uid] }));
-                            } else {
-                              setFormData(prev => ({ ...prev, photographerIds: ids.filter(id => id !== m.uid) }));
-                            }
-                          }}
-                          className="w-5 h-5 rounded-lg border-gray-300 text-black focus:ring-black"
-                        />
-                        <span className="text-sm font-bold text-gray-700">{m.displayName || m.email}</span>
-                      </label>
-                      {formData.photographerIds?.includes(m.uid) && (
-                        <div className="pl-8 space-y-2 pt-2 border-t border-gray-50">
-                          <div className="flex items-center space-x-2">
-                            <input type="number" placeholder="Pay (₹)" value={formData.staffDetails?.[m.uid]?.paymentAmount || ''} onChange={(e) => updateStaffDetail(m.uid, 'paymentAmount', Number(e.target.value))} className="w-full px-3 py-1.5 rounded-lg border border-gray-100 text-xs outline-none focus:border-black" />
-                            <select value={formData.staffDetails?.[m.uid]?.workQuality || 'good'} onChange={(e) => updateStaffDetail(m.uid, 'workQuality', e.target.value)} className="w-full px-3 py-1.5 rounded-lg border border-gray-100 text-xs outline-none focus:border-black font-bold">
-                              <option value="excellent">Excellent</option>
-                              <option value="good">Good</option>
-                              <option value="average">Average</option>
-                              <option value="poor">Poor</option>
-                            </select>
+                    <div className="grid grid-cols-1 gap-4">
+                      {((formData[`${type}Ids`] as string[]) || []).map((uid) => {
+                        const member = teamMembers.find(m => m.uid === uid);
+                        const paymentInfo = formData.staffPayments?.[uid] || { totalFee: 0, paidAmount: 0, payments: [] };
+                        const dueAmount = paymentInfo.totalFee - paymentInfo.paidAmount;
+
+                        return (
+                          <div key={uid} className="bg-white p-5 rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-all flex flex-col md:flex-row md:items-center gap-6">
+                            {/* Member Info */}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center space-x-3">
+                                <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center font-bold text-gray-500 border border-gray-200">
+                                  {(member?.displayName || member?.email || '?').charAt(0).toUpperCase()}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-sm font-bold text-gray-900 truncate">{member?.displayName || member?.email}</p>
+                                  <p className="text-[10px] text-gray-400 font-medium uppercase tracking-tighter">{member?.role || type}</p>
+                                </div>
+                                <button 
+                                  type="button" 
+                                  onClick={() => toggleStaffMember(uid, type)}
+                                  className="ml-auto md:ml-2 p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Payment Logic */}
+                            <div className="flex flex-wrap items-end gap-x-6 gap-y-4 pt-4 md:pt-0 border-t md:border-t-0 border-gray-50">
+                              <div className="space-y-1">
+                                <label className="block text-[8px] font-bold text-gray-400 uppercase tracking-widest leading-none mb-1">Agreed Fee (₹)</label>
+                                <input 
+                                  type="number" 
+                                  value={paymentInfo.totalFee} 
+                                  onChange={(e) => updateStaffFee(uid, Number(e.target.value))}
+                                  className="w-28 px-3 py-2 rounded-xl border border-gray-100 bg-gray-50 focus:bg-white focus:border-black outline-none font-bold text-xs"
+                                  placeholder="Fee"
+                                />
+                              </div>
+
+                              <div className="space-y-1">
+                                <label className="block text-[8px] font-bold text-gray-400 uppercase tracking-widest leading-none mb-1 text-green-600">Paid (₹)</label>
+                                <div className="w-28 px-3 py-2 rounded-xl border border-transparent bg-green-50/50 font-bold text-xs text-green-600">
+                                  ₹{paymentInfo.paidAmount || 0}
+                                </div>
+                              </div>
+
+                              <div className="space-y-1">
+                                <label className="block text-[8px] font-bold text-gray-400 uppercase tracking-widest leading-none mb-1 text-orange-600">Due (₹)</label>
+                                <div className={`w-28 px-3 py-2 rounded-xl border border-transparent font-bold text-xs ${dueAmount > 0 ? 'bg-orange-50/50 text-orange-600' : 'bg-gray-50 text-gray-400'}`}>
+                                  ₹{dueAmount}
+                                </div>
+                              </div>
+
+                              <div className="flex items-center self-end">
+                                <div className="flex items-center space-x-2">
+                                  <input 
+                                    type="number" 
+                                    id={`pay-${uid}`}
+                                    placeholder="Amount"
+                                    className="w-24 px-3 py-2 rounded-xl border border-gray-100 text-xs font-medium outline-none focus:border-green-500"
+                                  />
+                                  <button 
+                                    type="button"
+                                    onClick={() => {
+                                      const input = document.getElementById(`pay-${uid}`) as HTMLInputElement;
+                                      if (input) {
+                                        recordStaffPayment(uid, Number(input.value), 'Cash');
+                                        input.value = '';
+                                      }
+                                    }}
+                                    className="px-4 py-2 bg-green-600 text-white rounded-xl text-[10px] font-bold hover:bg-green-700 transition-all shadow-sm shadow-green-100 active:scale-95"
+                                  >
+                                    PAY
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                          <textarea placeholder="Staff Review..." value={formData.staffDetails?.[m.uid]?.review || ''} onChange={(e) => updateStaffDetail(m.uid, 'review', e.target.value)} className="w-full px-3 py-1.5 rounded-lg border border-gray-100 text-xs outline-none focus:border-black" rows={1} />
-                          <label className="flex items-center space-x-2">
-                            <input type="checkbox" checked={formData.staffDetails?.[m.uid]?.isPaid || false} onChange={(e) => updateStaffDetail(m.uid, 'isPaid', e.target.checked)} className="w-3 h-3 rounded border-gray-300 text-green-600 focus:ring-green-600" />
-                            <span className="text-[10px] font-bold text-gray-500 uppercase">Mark as Paid</span>
-                          </label>
+                        );
+                      })}
+                      {((formData[`${type}Ids`] as string[]) || []).length === 0 && (
+                        <div className="py-6 px-4 border-2 border-dashed border-gray-100 rounded-2xl text-center">
+                          <p className="text-[10px] text-gray-400 font-medium">No {type}s assigned yet.</p>
                         </div>
                       )}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))}
               </div>
-
-              {/* Editors */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Editors</h4>
-                  <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 text-[10px] font-bold rounded-full">{formData.editorIds?.length || 0} Assigned</span>
-                </div>
-                <div className="space-y-3 max-h-64 overflow-y-auto p-4 bg-gray-50 rounded-2xl border border-gray-100 shadow-inner">
-                  {teamMembers.filter(m => m.role === 'editor' || m.role === 'admin').map(m => (
-                    <div key={m.uid} className="space-y-2 p-3 bg-white rounded-xl border border-gray-100 shadow-sm">
-                      <label className="flex items-center space-x-3 cursor-pointer">
-                        <input 
-                          type="checkbox" 
-                          checked={formData.editorIds?.includes(m.uid)}
-                          onChange={(e) => {
-                            const ids = formData.editorIds || [];
-                            if (e.target.checked) {
-                              setFormData(prev => ({ ...prev, editorIds: [...ids, m.uid] }));
-                            } else {
-                              setFormData(prev => ({ ...prev, editorIds: ids.filter(id => id !== m.uid) }));
-                            }
-                          }}
-                          className="w-5 h-5 rounded-lg border-gray-300 text-black focus:ring-black"
-                        />
-                        <span className="text-sm font-bold text-gray-700">{m.displayName || m.email}</span>
-                      </label>
-                      {formData.editorIds?.includes(m.uid) && (
-                        <div className="pl-8 space-y-2 pt-2 border-t border-gray-50">
-                          <div className="flex items-center space-x-2">
-                            <input type="number" placeholder="Pay (₹)" value={formData.staffDetails?.[m.uid]?.paymentAmount || ''} onChange={(e) => updateStaffDetail(m.uid, 'paymentAmount', Number(e.target.value))} className="w-full px-3 py-1.5 rounded-lg border border-gray-100 text-xs outline-none focus:border-black" />
-                            <select value={formData.staffDetails?.[m.uid]?.workQuality || 'good'} onChange={(e) => updateStaffDetail(m.uid, 'workQuality', e.target.value)} className="w-full px-3 py-1.5 rounded-lg border border-gray-100 text-xs outline-none focus:border-black font-bold">
-                              <option value="excellent">Excellent</option>
-                              <option value="good">Good</option>
-                              <option value="average">Average</option>
-                              <option value="poor">Poor</option>
-                            </select>
-                          </div>
-                          <textarea placeholder="Staff Review..." value={formData.staffDetails?.[m.uid]?.review || ''} onChange={(e) => updateStaffDetail(m.uid, 'review', e.target.value)} className="w-full px-3 py-1.5 rounded-lg border border-gray-100 text-xs outline-none focus:border-black" rows={1} />
-                          <label className="flex items-center space-x-2">
-                            <input type="checkbox" checked={formData.staffDetails?.[m.uid]?.isPaid || false} onChange={(e) => updateStaffDetail(m.uid, 'isPaid', e.target.checked)} className="w-3 h-3 rounded border-gray-300 text-green-600 focus:ring-green-600" />
-                            <span className="text-[10px] font-bold text-gray-500 uppercase">Mark as Paid</span>
-                          </label>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Others */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Other Staff</h4>
-                  <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 text-[10px] font-bold rounded-full">{formData.otherIds?.length || 0} Assigned</span>
-                </div>
-                <div className="space-y-3 max-h-64 overflow-y-auto p-4 bg-gray-50 rounded-2xl border border-gray-100 shadow-inner">
-                  {teamMembers.filter(m => m.role === 'other' || m.role === 'admin').map(m => (
-                    <div key={m.uid} className="space-y-2 p-3 bg-white rounded-xl border border-gray-100 shadow-sm">
-                      <label className="flex items-center space-x-3 cursor-pointer">
-                        <input 
-                          type="checkbox" 
-                          checked={formData.otherIds?.includes(m.uid)}
-                          onChange={(e) => {
-                            const ids = formData.otherIds || [];
-                            if (e.target.checked) {
-                              setFormData(prev => ({ ...prev, otherIds: [...ids, m.uid] }));
-                            } else {
-                              setFormData(prev => ({ ...prev, otherIds: ids.filter(id => id !== m.uid) }));
-                            }
-                          }}
-                          className="w-5 h-5 rounded-lg border-gray-300 text-black focus:ring-black"
-                        />
-                        <span className="text-sm font-bold text-gray-700">{m.displayName || m.email}</span>
-                      </label>
-                      {formData.otherIds?.includes(m.uid) && (
-                        <div className="pl-8 space-y-2 pt-2 border-t border-gray-50">
-                          <div className="flex items-center space-x-2">
-                            <input type="number" placeholder="Pay (₹)" value={formData.staffDetails?.[m.uid]?.paymentAmount || ''} onChange={(e) => updateStaffDetail(m.uid, 'paymentAmount', Number(e.target.value))} className="w-full px-3 py-1.5 rounded-lg border border-gray-100 text-xs outline-none focus:border-black" />
-                            <select value={formData.staffDetails?.[m.uid]?.workQuality || 'good'} onChange={(e) => updateStaffDetail(m.uid, 'workQuality', e.target.value)} className="w-full px-3 py-1.5 rounded-lg border border-gray-100 text-xs outline-none focus:border-black font-bold">
-                              <option value="excellent">Excellent</option>
-                              <option value="good">Good</option>
-                              <option value="average">Average</option>
-                              <option value="poor">Poor</option>
-                            </select>
-                          </div>
-                          <textarea placeholder="Staff Review..." value={formData.staffDetails?.[m.uid]?.review || ''} onChange={(e) => updateStaffDetail(m.uid, 'review', e.target.value)} className="w-full px-3 py-1.5 rounded-lg border border-gray-100 text-xs outline-none focus:border-black" rows={1} />
-                          <label className="flex items-center space-x-2">
-                            <input type="checkbox" checked={formData.staffDetails?.[m.uid]?.isPaid || false} onChange={(e) => updateStaffDetail(m.uid, 'isPaid', e.target.checked)} className="w-3 h-3 rounded border-gray-300 text-green-600 focus:ring-green-600" />
-                            <span className="text-[10px] font-bold text-gray-500 uppercase">Mark as Paid</span>
-                          </label>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </section>
+            </section>
+          )}
 
           {/* Work Progress & Links (Admin/Editor only) */}
           {(role === 'admin' || role === 'editor') && (
@@ -954,7 +1031,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
                   {deliverables.includes('rawFileLink') && (
                     <div className="space-y-1">
                       <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Raw File Link</label>
-                      <input type="text" name="rawFileLink" value={formData.rawFileLink} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" placeholder="Google Drive/Dropbox link" />
+                      <input type="text" name="rawFileLink" value={formData.rawFileLink || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" placeholder="Google Drive/Dropbox link" />
                     </div>
                   )}
                   
@@ -970,7 +1047,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
                       </div>
                       <div className="space-y-1">
                         <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Teaser Link</label>
-                        <input type="text" name="teaserLink" value={formData.teaserLink} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
+                        <input type="text" name="teaserLink" value={formData.teaserLink || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
                       </div>
                     </div>
                   )}
@@ -987,7 +1064,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
                       </div>
                       <div className="space-y-1">
                         <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Full Video Link</label>
-                        <input type="text" name="fullVideoLink" value={formData.fullVideoLink} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
+                        <input type="text" name="fullVideoLink" value={formData.fullVideoLink || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
                       </div>
                     </div>
                   )}
@@ -1004,7 +1081,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
                       </div>
                       <div className="space-y-1">
                         <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Reels Link</label>
-                        <input type="text" name="reelsLink" value={formData.reelsLink} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
+                        <input type="text" name="reelsLink" value={formData.reelsLink || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
                       </div>
                     </div>
                   )}
@@ -1023,7 +1100,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
                       </div>
                       <div className="space-y-1">
                         <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Photo Edit Link</label>
-                        <input type="text" name="photoEditLink" value={formData.photoEditLink} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
+                        <input type="text" name="photoEditLink" value={formData.photoEditLink || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
                       </div>
                     </div>
                   )}
@@ -1040,7 +1117,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
                       </div>
                       <div className="space-y-1">
                         <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Album Link</label>
-                        <input type="text" name="albumLink" value={formData.albumLink} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
+                        <input type="text" name="albumLink" value={formData.albumLink || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
                       </div>
                     </div>
                   )}
@@ -1057,7 +1134,7 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
                       </div>
                       <div className="space-y-1">
                         <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">E-Invite Link</label>
-                        <input type="text" name="eInviteLink" value={formData.eInviteLink} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
+                        <input type="text" name="eInviteLink" value={formData.eInviteLink || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
                       </div>
                     </div>
                   )}
@@ -1074,14 +1151,14 @@ const BookingForm: React.FC<BookingFormProps> = ({ user, role, invoiceNumber, cl
                       </div>
                       <div className="space-y-1">
                         <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Photo Link</label>
-                        <input type="text" name="preWeddingPhotoLink" value={formData.preWeddingPhotoLink} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
+                        <input type="text" name="preWeddingPhotoLink" value={formData.preWeddingPhotoLink || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" />
                       </div>
                     </div>
                   )}
 
                   <div className="space-y-1">
                     <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest">Main Output Link</label>
-                    <input type="text" name="outputLink" value={formData.outputLink} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" placeholder="Link to all final files" />
+                    <input type="text" name="outputLink" value={formData.outputLink || ''} onChange={handleChange} className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:border-black outline-none bg-white" placeholder="Link to all final files" />
                   </div>
                 </div>
               </div>

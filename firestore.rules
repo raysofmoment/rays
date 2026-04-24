@@ -62,8 +62,12 @@ service cloud.firestore {
       return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'other';
     }
 
+    function isStaff() {
+      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'photographer', 'editor', 'other']);
+    }
+
     function isTeam() {
-      return isAuthenticated() && exists(/databases/$(database)/documents/users/$(request.auth.uid)) && (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in ['admin', 'photographer', 'editor']);
+      return isStaff();
     }
 
     function hasRequiredFields(fields) {
@@ -161,9 +165,17 @@ service cloud.firestore {
              data.userRole in ['admin', 'photographer', 'editor', 'other', 'client'] &&
              data.type in ['image', 'video', 'link'] && data.url is string &&
              (!('driveFileId' in data) || data.driveFileId is string) &&
+             (!('folderId' in data) || data.folderId is string) &&
+             (!('folderName' in data) || data.folderName is string) &&
              (!('category' in data) || data.category in ['Videos', 'Wedding', 'Music', 'Kids', 'Event', 'Other']) &&
              (!('userEmail' in data) || data.userEmail is string) &&
              (!('serverTimestamp' in data) || data.serverTimestamp is timestamp);
+    }
+
+    function isValidPortfolioFolder(data) {
+      return data.keys().hasAll(['name', 'createdBy', 'createdAt']) &&
+             data.name is string && data.name.size() > 0 &&
+             data.createdBy is string && data.createdAt is string;
     }
 
     function isValidGalleryItem(data) {
@@ -185,7 +197,7 @@ service cloud.firestore {
     // ===============================================================
 
     match /payments/{paymentId} {
-      allow read: if isAuthenticated() && (isAdmin() || isTeam() || resource.data.clientId == request.auth.uid);
+      allow read: if isAuthenticated() && (isAdmin() || (resource != null && resource.data.clientId == request.auth.uid));
       allow create: if isAuthenticated() && isValidPayment(request.resource.data) && (request.auth.uid == request.resource.data.clientId || isAdmin());
       allow update: if isAuthenticated() && (
         (isAdmin() && isValidPayment(request.resource.data)) ||
@@ -195,7 +207,12 @@ service cloud.firestore {
     }
 
     match /users/{uid} {
-      allow read: if (isAuthenticated() && (isOwner(uid) || isAdmin() || isTeam())) || (exists(/databases/$(database)/documents/users/$(uid)) && get(/databases/$(database)/documents/users/$(uid)).data.role == 'admin');
+      allow read: if isAuthenticated() && (
+        isOwner(uid) || 
+        isAdmin() || 
+        isStaff() || 
+        (resource != null && resource.data.role == 'admin')
+      );
       allow create: if isAuthenticated() && (isOwner(uid) || isAdmin());
       allow update: if isAuthenticated() && (isOwner(uid) || isAdmin());
     }
@@ -236,9 +253,9 @@ service cloud.firestore {
     }
 
     match /eventCosts/{costId} {
-      allow read: if isAuthenticated() && (isAdmin() || isTeam());
-      allow create: if isAuthenticated() && (isAdmin() || isTeam());
-      allow update: if isAuthenticated() && (isAdmin() || isTeam());
+      allow read: if isAuthenticated() && isAdmin();
+      allow create: if isAuthenticated() && isAdmin();
+      allow update: if isAuthenticated() && isAdmin();
       allow delete: if isAdmin();
     }
 
@@ -351,6 +368,13 @@ service cloud.firestore {
                     request.resource.data.userId == request.auth.uid && isValidSampleWork(request.resource.data);
       allow update: if isAuthenticated() && (isAdmin() || isOwner(resource.data.userId)) && isValidSampleWork(request.resource.data);
       allow delete: if isAuthenticated() && (isAdmin() || isOwner(resource.data.userId));
+    }
+
+    match /portfolioFolders/{folderId} {
+      allow read: if true;
+      allow create: if isAuthenticated() && (isAdmin() || isStaff()) && isValidPortfolioFolder(request.resource.data);
+      allow update: if isAuthenticated() && (isAdmin() || isOwner(resource.data.createdBy)) && isValidPortfolioFolder(request.resource.data);
+      allow delete: if isAdmin() || (isAuthenticated() && isOwner(resource.data.createdBy));
     }
     
     match /galleryItems/{itemId} {

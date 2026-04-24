@@ -1,10 +1,16 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, setPersistence, browserLocalPersistence } from 'firebase/auth';
-import { getFirestore, getDocFromServer, doc, enableIndexedDbPersistence } from 'firebase/firestore';
+import { initializeFirestore, getFirestore, getDocFromServer, doc, enableIndexedDbPersistence } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+// Initialize Firestore with long polling to bypass potential WebSocket blockages
+export const db = initializeFirestore(app, {
+  experimentalForceLongPolling: true,
+  // Ensure the specific database ID is used if provided
+}, firebaseConfig.firestoreDatabaseId as any);
+
 export const auth = getAuth(app);
 
 // Enable offline persistence

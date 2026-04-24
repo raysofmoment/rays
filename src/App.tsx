@@ -25,6 +25,7 @@ import PaymentSuccess from './components/PaymentSuccess';
 import PaymentManagement from './components/PaymentManagement';
 import FinancialOverview from './components/FinancialOverview';
 import InquiryManagement from './components/InquiryManagement';
+import AssignmentsAndPayments from './components/AssignmentsAndPayments';
 import Profile from './components/Profile';
 import TeamPortfolio from './components/TeamPortfolio';
 import PhotoSelection from './components/PhotoSelection';
@@ -154,6 +155,7 @@ export default function App() {
               <Route path="/dashboard" element={user ? (role === 'admin' || role === 'photographer' || role === 'editor' || role === 'other' ? <StudioHub user={user} role={role} /> : <Dashboard user={user} role={role} />) : <Navigate to="/auth" />} />
               <Route path="/studio" element={user && (role === 'admin' || role === 'photographer' || role === 'editor' || role === 'other') ? <StudioHub user={user} role={role} /> : <Navigate to="/auth" />} />
               <Route path="/orders" element={user ? <OrderManagement user={user} role={role} /> : <Navigate to="/auth" />} />
+              <Route path="/assignments" element={user && (role === 'admin' || role === 'photographer' || role === 'editor' || role === 'other') ? <AssignmentsAndPayments user={user} role={role} /> : <Navigate to="/auth" />} />
               <Route path="/bookings" element={user && (role === 'admin' || role === 'photographer' || role === 'editor') ? <BookingManagement user={user} role={role} /> : <Navigate to="/auth" />} />
               <Route path="/wip" element={user && (role === 'admin' || role === 'photographer' || role === 'editor') ? <WorkInProgress user={user} role={role} /> : <Navigate to="/auth" />} />
               <Route path="/find-my-photos" element={<FindMyPhotos user={user} role={role} />} />
@@ -170,6 +172,7 @@ export default function App() {
               <Route path="/team" element={user && (role === 'admin' || role === 'photographer' || role === 'editor') ? <TeamManagement user={user} role={role} /> : <Navigate to="/auth" />} />
               <Route path="/team-portfolio" element={user && (role === 'admin' || role === 'photographer' || role === 'editor' || role === 'other') ? <TeamPortfolio user={user} role={role} /> : <Navigate to="/auth" />} />
               <Route path="/profile" element={user ? <Profile user={user} role={role} /> : <Navigate to="/auth" />} />
+              <Route path="/profile/:uid" element={user ? <Profile user={user} role={role} /> : <Navigate to="/auth" />} />
               <Route path="/gallery/:galleryId" element={<Gallery user={user} role={role} />} />
               <Route path="/blog" element={<Blog user={user} role={role} />} />
               <Route path="/blog/:postId" element={<BlogPostDetail user={user} role={role} />} />

@@ -157,11 +157,12 @@ const Navbar: React.FC<NavbarProps> = ({ user, role }) => {
                     <div className="pt-4 pb-2 px-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Account</div>
                     <SidebarLink to="/profile" icon={<UserIcon className="w-5 h-5" />} label="My Profile" onClick={closeMenu} />
                     <SidebarLink to="/dashboard" icon={<LayoutDashboard className="w-5 h-5" />} label={role === 'client' ? 'Dashboard' : 'Studio Hub'} onClick={closeMenu} />
-                    {role === 'client' && <SidebarLink to="/orders" icon={<ClipboardList className="w-5 h-5" />} label="Orders" onClick={closeMenu} />}
+                    {role === 'client' && <SidebarLink to="/orders" icon={<ClipboardList className="w-5 h-5" />} label="My Orders" onClick={closeMenu} />}
                     
                     {(role === 'admin' || role === 'photographer' || role === 'editor' || role === 'other') && (
                       <>
                         <div className="pt-4 pb-2 px-4 text-xs font-bold text-gray-400 uppercase tracking-wider">Management</div>
+                        <SidebarLink to="/assignments" icon={<ClipboardList className="w-5 h-5" />} label="Assignments & Payments" onClick={closeMenu} />
                         <SidebarLink to="/studio" icon={<LayoutDashboard className="w-5 h-5" />} label="Studio Command Center" onClick={closeMenu} />
                         <SidebarLink to="/team-portfolio" icon={<Camera className="w-5 h-5" />} label="Team Portfolio" onClick={closeMenu} />
                         <SidebarLink to="/orders" icon={<ClipboardList className="w-5 h-5" />} label="Order List" onClick={closeMenu} />

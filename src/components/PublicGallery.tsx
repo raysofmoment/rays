@@ -141,8 +141,13 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
             credentials: 'include',
           });
           if (!response.ok) {
-            const data = await response.json();
-            throw new Error(data.error || 'Failed to delete file from Drive');
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+              const data = await response.json();
+              throw new Error(data.error || 'Failed to delete file from Drive');
+            } else {
+              throw new Error(`Server error (${response.status}): Failed to delete from Drive`);
+            }
           }
           toast.success('File deleted from Drive successfully');
           setDriveFiles(prev => prev.filter(f => f.id !== item.id));
@@ -175,7 +180,17 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
         body: formData,
       });
 
-      if (!response.ok) throw new Error('Upload failed');
+      if (!response.ok) {
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Upload failed');
+        } else {
+          const text = await response.text();
+          console.error('[PublicGallery Upload] Server error:', text.substring(0, 200));
+          throw new Error(`Server error (${response.status}): Failed to upload to Drive`);
+        }
+      }
 
       toast.success('File uploaded to Drive successfully');
       // The gallery will refresh automatically because it fetches from Drive on mount or we can trigger a refresh
@@ -489,7 +504,7 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
                     </div>
                   ) : (
                     <img
-                      src={item.isDrive ? `${window.location.origin}/api/drive/image/${item.id}` : (item.thumbnailLink?.replace('=s220', '=s800') || item.webViewLink)}
+                      src={item.isDrive ? `/api/drive/image/${item.id}` : (item.thumbnailLink?.replace('=s220', '=s800') || item.webViewLink)}
                       alt={item.name}
                       className="w-full h-full object-cover"
                       referrerPolicy="no-referrer"
@@ -721,7 +736,7 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
                   />
                 ) : (
                   <img 
-                    src={selectedFile.isDrive ? `${window.location.origin}/api/drive/image/${selectedFile.id}` : (selectedFile.type === 'image' ? (selectedFile.url || undefined) : (selectedFile.thumbnailLink?.replace('=s220', '=s1600') || selectedFile.webViewLink))} 
+                    src={selectedFile.isDrive ? `/api/drive/image/${selectedFile.id}` : (selectedFile.type === 'image' ? (selectedFile.url || undefined) : (selectedFile.thumbnailLink?.replace('=s220', '=s1600') || selectedFile.webViewLink))} 
                     alt={selectedFile.name || selectedFile.title}
                     className="max-w-full max-h-full object-contain"
                     referrerPolicy="no-referrer"

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { doc, getDoc, collection, query, where, getDocs, onSnapshot, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs, onSnapshot, deleteDoc, updateDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { X, ExternalLink, Download, FileText, CheckCircle2, Clock, Eye, IndianRupee, Plus, Receipt, Trash2 } from 'lucide-react';
+import { X, ExternalLink, Download, FileText, CheckCircle2, Clock, Eye, IndianRupee, Plus, Receipt, Trash2, Edit2, Save, Heart, Music, Camera } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { User } from 'firebase/auth';
@@ -27,23 +27,64 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
   const [showAddCost, setShowAddCost] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+  
+  const [isEditingInfo, setIsEditingInfo] = useState(false);
+  const [editFormData, setEditFormData] = useState({
+    brideName: '',
+    brideBengaliName: '',
+    brideFatherName: '',
+    brideNumber: '',
+    brideAddress: '',
+    groomName: '',
+    groomBengaliName: '',
+    groomFatherName: '',
+    groomNumber: '',
+    groomAddress: '',
+    childName: '',
+    modelName: '',
+    makeupArtist: '',
+    songSelection: ''
+  });
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         // Fetch booking
         if (order.invoiceNumber) {
-          const q = query(collection(db, 'bookings'), where('invoiceNumber', '==', order.invoiceNumber));
+          let conditions: any[] = [where('invoiceNumber', '==', order.invoiceNumber)];
+          if (user && role === 'client') conditions.push(where('clientId', '==', user.uid));
+          
+          const q = query(collection(db, 'bookings'), ...conditions);
           const snapshot = await getDocs(q);
           if (!snapshot.empty) {
-            setBooking({ id: snapshot.docs[0].id, ...snapshot.docs[0].data() });
+            const bookingData = { id: snapshot.docs[0].id, ...snapshot.docs[0].data() } as any;
+            setBooking(bookingData);
+            setEditFormData({
+              brideName: bookingData.brideName || '',
+              brideBengaliName: bookingData.brideBengaliName || '',
+              brideFatherName: bookingData.brideFatherName || '',
+              brideNumber: bookingData.brideNumber || '',
+              brideAddress: bookingData.brideAddress || '',
+              groomName: bookingData.groomName || '',
+              groomBengaliName: bookingData.groomBengaliName || '',
+              groomFatherName: bookingData.groomFatherName || '',
+              groomNumber: bookingData.groomNumber || '',
+              groomAddress: bookingData.groomAddress || '',
+              childName: bookingData.childName || '',
+              modelName: bookingData.modelName || '',
+              makeupArtist: bookingData.makeupArtist || '',
+              songSelection: bookingData.songSelection || ''
+            });
           }
         }
 
-        // Fetch team members for names
-        const teamQ = query(collection(db, 'users'), where('role', 'in', ['photographer', 'editor', 'other', 'admin']));
-        const teamSnap = await getDocs(teamQ);
-        setTeamMembers(teamSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        // Fetch team members for names (Admins and Staff only)
+        const isPrivileged = role === 'admin' || role === 'photographer' || role === 'editor' || role === 'other';
+        if (isPrivileged) {
+          const teamQ = query(collection(db, 'users'), where('role', 'in', ['photographer', 'editor', 'other', 'admin']));
+          const teamSnap = await getDocs(teamQ);
+          setTeamMembers(teamSnap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        }
       } catch (error) {
         console.error('Error fetching details:', error);
       } finally {
@@ -96,6 +137,23 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
     }
   };
 
+  const handleSaveInfo = async () => {
+    if (!booking?.id) return;
+    try {
+      await updateDoc(doc(db, 'bookings', booking.id), {
+        ...editFormData,
+        updatedAt: new Date().toISOString(),
+        updatedBy: user.uid
+      });
+      setBooking({ ...booking, ...editFormData });
+      setIsEditingInfo(false);
+      toast.success('Event details saved successfully!');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `bookings/${booking.id}`);
+      toast.error('Failed to save event details');
+    }
+  };
+
   const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
   const totalCost = costs.reduce((sum, c) => {
     return sum + (
@@ -131,176 +189,314 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
   };
 
   const renderPhotographerOtherView = () => (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Client Name</h4>
-          <p className="text-sm font-medium text-gray-900">{order.clientName}</p>
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {/* Header Info Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 flex items-center gap-4">
+          <div className="p-2 bg-white rounded-xl shadow-sm text-blue-600">
+            <CheckCircle2 className="w-5 h-5" />
+          </div>
+          <div>
+            <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Client Name</h4>
+            <p className="text-sm font-bold text-gray-900">{order.clientName}</p>
+          </div>
         </div>
-        <div>
-          <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Mobile Number</h4>
-          <p className="text-sm font-medium text-gray-900">{order.mobileNumber}</p>
+        <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 flex items-center gap-4">
+          <div className="p-2 bg-white rounded-xl shadow-sm text-green-600">
+            <CheckCircle2 className="w-5 h-5" />
+          </div>
+          <div>
+            <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Phone</h4>
+            <p className="text-sm font-bold text-gray-900">{order.mobileNumber}</p>
+          </div>
         </div>
-      </div>
-      <div>
-        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Address</h4>
-        <p className="text-sm font-medium text-gray-900">{booking?.address || 'Not provided'}</p>
+        <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 flex items-center gap-4">
+          <div className="p-2 bg-white rounded-xl shadow-sm text-purple-600">
+            <Clock className="w-5 h-5" />
+          </div>
+          <div>
+            <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Event</h4>
+            <p className="text-sm font-bold text-gray-900">{order.eventType}</p>
+          </div>
+        </div>
       </div>
 
-      {booking?.eventType?.includes('WEDD') && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 p-4 bg-gray-50 rounded-xl border border-gray-100">
-          <div className="space-y-3">
-            <h5 className="text-[10px] font-bold text-gray-500 uppercase">Bride Side</h5>
-            <div>
-              <p className="text-[10px] text-gray-400 uppercase">Name</p>
-              <p className="text-xs font-bold text-gray-900">{booking.brideName} {booking.brideBengaliName && `(${booking.brideBengaliName})`}</p>
-            </div>
-            <div>
-              <p className="text-[10px] text-gray-400 uppercase">Father's Name</p>
-              <p className="text-xs font-medium text-gray-900">{booking.brideFatherName || 'N/A'}</p>
-            </div>
-            <div>
-              <p className="text-[10px] text-gray-400 uppercase">Mobile</p>
-              <p className="text-xs font-medium text-gray-900">{booking.brideNumber || 'N/A'}</p>
-            </div>
-            <div>
-              <p className="text-[10px] text-gray-400 uppercase">Address</p>
-              <p className="text-xs font-medium text-gray-900">{booking.brideAddress || 'N/A'}</p>
+      {/* Assignment Summary (Admins and Staff only) */}
+      {(role === 'admin' || role === 'photographer' || role === 'editor' || role === 'other') && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="p-5 bg-white rounded-2xl border border-gray-100 shadow-sm space-y-4">
+            <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+              <Camera className="w-3 h-3" /> Photographers
+            </h4>
+            <div className="flex flex-wrap gap-2 text-sm font-bold text-gray-900">
+              {getMemberNames(order.photographerIds) || 'None Assigned'}
             </div>
           </div>
-          <div className="space-y-3">
-            <h5 className="text-[10px] font-bold text-gray-500 uppercase">Groom Side</h5>
-            <div>
-              <p className="text-[10px] text-gray-400 uppercase">Name</p>
-              <p className="text-xs font-bold text-gray-900">{booking.groomName} {booking.groomBengaliName && `(${booking.groomBengaliName})`}</p>
-            </div>
-            <div>
-              <p className="text-[10px] text-gray-400 uppercase">Father's Name</p>
-              <p className="text-xs font-medium text-gray-900">{booking.groomFatherName || 'N/A'}</p>
-            </div>
-            <div>
-              <p className="text-[10px] text-gray-400 uppercase">Mobile</p>
-              <p className="text-xs font-medium text-gray-900">{booking.groomNumber || 'N/A'}</p>
-            </div>
-            <div>
-              <p className="text-[10px] text-gray-400 uppercase">Address</p>
-              <p className="text-xs font-medium text-gray-900">{booking.groomAddress || 'N/A'}</p>
+          <div className="p-5 bg-white rounded-2xl border border-gray-100 shadow-sm space-y-4">
+            <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+              <Edit2 className="w-3 h-3" /> Editors
+            </h4>
+            <div className="flex flex-wrap gap-2 text-sm font-bold text-gray-900">
+              {getMemberNames(order.editorIds) || 'None Assigned'}
             </div>
           </div>
         </div>
       )}
 
-      <div>
-        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Package</h4>
-        <p className="text-sm font-medium text-gray-900">{order.packageName}</p>
-      </div>
-      <div>
-        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Special Requirements</h4>
-        <p className="text-sm font-medium text-gray-900">{booking?.requirement || 'None'}</p>
-      </div>
-      {renderPackageDetails()}
-      <div className="pt-4 border-t border-gray-100">
-        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Assigned Team</h4>
-        <div className="space-y-2">
-          <div>
-            <span className="text-[10px] font-bold text-gray-500 uppercase">Photographers:</span>
-            <p className="text-sm font-medium text-gray-900">{getMemberNames(order.photographerIds) || 'None assigned'}</p>
+      {booking?.eventType?.includes('WEDD') && (
+        <div className="relative overflow-hidden p-6 bg-gradient-to-br from-pink-50 to-white rounded-2xl border border-pink-100 shadow-sm">
+          <div className="absolute top-0 right-0 p-4 opacity-5">
+            <Heart className="w-32 h-32" />
           </div>
-          <div>
-            <span className="text-[10px] font-bold text-gray-500 uppercase">Editors:</span>
-            <p className="text-sm font-medium text-gray-900">{getMemberNames(order.editorIds) || 'None assigned'}</p>
+          <h4 className="text-[10px] font-bold text-pink-600 uppercase tracking-widest mb-4 flex items-center gap-2">
+            <Heart className="w-3 h-3 fill-pink-600" /> Couple Identity
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-pink-100 flex items-center justify-center text-pink-600 font-bold">B</div>
+                <div>
+                  <p className="text-[10px] text-gray-400 uppercase font-bold">Bride</p>
+                  <p className="text-base font-bold text-gray-900">{booking.brideName || 'N/A'}</p>
+                  {booking.brideBengaliName && <p className="text-sm text-pink-700 font-medium">{booking.brideBengaliName}</p>}
+                </div>
+              </div>
+              <div className="pl-13 space-y-2">
+                <p className="text-[10px] text-gray-500 uppercase"><span className="font-bold">Father:</span> {booking.brideFatherName || 'N/A'}</p>
+                <p className="text-[10px] text-gray-500 uppercase"><span className="font-bold">Contact:</span> {booking.brideNumber || 'N/A'}</p>
+                <p className="text-[10px] text-gray-500 uppercase leading-relaxed"><span className="font-bold">Address:</span> {booking.brideAddress || 'N/A'}</p>
+              </div>
+            </div>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold">G</div>
+                <div>
+                  <p className="text-[10px] text-gray-400 uppercase font-bold">Groom</p>
+                  <p className="text-base font-bold text-gray-900">{booking.groomName || 'N/A'}</p>
+                  {booking.groomBengaliName && <p className="text-sm text-blue-700 font-medium">{booking.groomBengaliName}</p>}
+                </div>
+              </div>
+              <div className="pl-13 space-y-2">
+                <p className="text-[10px] text-gray-500 uppercase"><span className="font-bold">Father:</span> {booking.groomFatherName || 'N/A'}</p>
+                <p className="text-[10px] text-gray-500 uppercase"><span className="font-bold">Contact:</span> {booking.groomNumber || 'N/A'}</p>
+                <p className="text-[10px] text-gray-500 uppercase leading-relaxed"><span className="font-bold">Address:</span> {booking.groomAddress || 'N/A'}</p>
+              </div>
+            </div>
           </div>
-          <div>
-            <span className="text-[10px] font-bold text-gray-500 uppercase">Others:</span>
-            <p className="text-sm font-medium text-gray-900">{getMemberNames(order.otherIds) || 'None assigned'}</p>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="p-5 bg-white rounded-2xl border border-gray-100 shadow-sm space-y-4">
+          <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+            <FileText className="w-3 h-3" /> Event Requirements
+          </h4>
+          <div className="space-y-3">
+            <div className="text-sm text-gray-700 leading-relaxed italic bg-yellow-50/50 p-4 rounded-xl border border-yellow-100">
+              <span className="block text-[10px] font-bold text-yellow-600 uppercase mb-1">General</span>
+              "{booking?.requirement || 'No general instructions'}"
+            </div>
+            {booking?.specialRequirement && (
+              <div className="text-sm text-gray-700 leading-relaxed italic bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+                <span className="block text-[10px] font-bold text-blue-600 uppercase mb-1">Special Requirement</span>
+                "{booking.specialRequirement}"
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="p-5 bg-white rounded-2xl border border-gray-100 shadow-sm space-y-4">
+          <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+            <Receipt className="w-3 h-3" /> Event Place / Venue
+          </h4>
+          <div className="text-sm font-bold text-gray-900 bg-gray-50 p-4 rounded-xl border border-gray-100 flex items-start gap-2">
+            <ExternalLink className="w-4 h-4 text-gray-400 mt-0.5" />
+            {booking?.address || 'Venue address not provided'}
           </div>
         </div>
       </div>
-      {booking?.discountRequest && (
-        <div className="p-3 bg-blue-50 rounded-xl border border-blue-100">
-          <h4 className="text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-1">Discount Request</h4>
-          <p className="text-xs text-blue-800 italic">"{booking.discountRequest}"</p>
+
+      {renderPackageDetails()}
+      
+      {(booking?.songSelection || (booking?.songLinks && booking.songLinks.length > 0)) && (
+        <div className="p-6 bg-black text-white rounded-3xl shadow-xl space-y-4">
+          <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
+            <Plus className="w-3 h-3 text-white" /> Additional Song Links / Names
+          </h4>
+          <div className="space-y-4">
+            {booking.songSelection && (
+              <div className="text-sm font-medium opacity-90 whitespace-pre-wrap leading-relaxed border-b border-white/10 pb-4 mb-4">
+                {booking.songSelection}
+              </div>
+            )}
+            {booking.songLinks && booking.songLinks.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {booking.songLinks.map((s: any, i: number) => (
+                  <div key={i} className="p-3 bg-white/10 rounded-xl border border-white/5 flex items-center justify-between group">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] text-gray-400 font-bold uppercase">{s.title || 'Untitled Track'}</span>
+                      <span className="text-xs font-medium truncate max-w-[200px]">{s.link || 'No link'}</span>
+                    </div>
+                    {s.link && (
+                      <a href={s.link} target="_blank" rel="noopener noreferrer" className="p-2 bg-white/20 rounded-lg opacity-0 group-hover:opacity-100 transition-all">
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
   );
 
   const renderEditorView = () => (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Client Name</h4>
-          <p className="text-sm font-medium text-gray-900">{order.clientName}</p>
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
+          <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Client Identifier</h4>
+          <p className="text-base font-bold text-gray-900">{order.clientName}</p>
         </div>
-        <div>
-          <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Bengali Name</h4>
-          <p className="text-sm font-medium text-gray-900">
-            {booking?.brideBengaliName && `Bride: ${booking.brideBengaliName}`}
-            {booking?.brideBengaliName && booking?.groomBengaliName && ' | '}
-            {booking?.groomBengaliName && `Groom: ${booking.groomBengaliName}`}
-            {!(booking?.brideBengaliName || booking?.groomBengaliName) && 'Not provided'}
-          </p>
+        <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
+          <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Event Reference</h4>
+          <p className="text-base font-bold text-gray-900">{order.eventType}</p>
         </div>
       </div>
 
       {booking?.eventType?.includes('WEDD') && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-3 bg-gray-50 rounded-xl border border-gray-100">
-          <div className="space-y-1">
-            <p className="text-[10px] font-bold text-gray-500 uppercase">Bride Father</p>
-            <p className="text-xs text-gray-900">{booking.brideFatherName || 'N/A'}</p>
-          </div>
-          <div className="space-y-1">
-            <p className="text-[10px] font-bold text-gray-500 uppercase">Groom Father</p>
-            <p className="text-xs text-gray-900">{booking.groomFatherName || 'N/A'}</p>
+        <div className="p-6 bg-pink-50/30 rounded-3xl border border-pink-100 space-y-4">
+          <h4 className="text-[10px] font-bold text-pink-600 uppercase tracking-widest flex items-center gap-2">
+            <Heart className="w-3 h-3 fill-pink-600" /> Identity for Titles (Copy-Ready)
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="p-4 bg-white rounded-2xl border border-pink-100 shadow-sm transition-all hover:border-pink-300 group">
+              <div className="flex justify-between items-start mb-2">
+                <span className="text-[10px] font-black text-pink-400 uppercase tracking-tighter">Bride Details</span>
+                <div className="w-2 h-2 rounded-full bg-pink-400 animate-pulse" />
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <p className="text-[9px] text-gray-400 font-bold uppercase">English Name</p>
+                  <p className="text-lg font-black text-gray-900 select-all">{booking.brideName || 'N/A'}</p>
+                </div>
+                <div className="pt-2 border-t border-pink-50">
+                  <p className="text-[9px] text-pink-400 font-bold uppercase">Bengali Name</p>
+                  <p className="text-2xl font-bold text-pink-700 select-all Bengali-font">{booking.brideBengaliName || 'N/A'}</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-4 bg-white rounded-2xl border border-blue-100 shadow-sm transition-all hover:border-blue-300 group">
+              <div className="flex justify-between items-start mb-2">
+                <span className="text-[10px] font-black text-blue-400 uppercase tracking-tighter">Groom Details</span>
+                <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <p className="text-[9px] text-gray-400 font-bold uppercase">English Name</p>
+                  <p className="text-lg font-black text-gray-900 select-all">{booking.groomName || 'N/A'}</p>
+                </div>
+                <div className="pt-2 border-t border-blue-50">
+                  <p className="text-[9px] text-blue-400 font-bold uppercase">Bengali Name</p>
+                  <p className="text-2xl font-bold text-blue-700 select-all Bengali-font">{booking.groomBengaliName || 'N/A'}</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      <div>
-        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Raw File Link</h4>
-        {booking?.rawFileLink ? (
-          <a href={booking.rawFileLink} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline flex items-center space-x-1">
-            <span>View Files</span>
-            <ExternalLink className="w-3 h-3" />
-          </a>
-        ) : (
-          <p className="text-sm text-gray-500 italic">No link provided</p>
-        )}
-      </div>
-      <div>
-        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Selected Songs</h4>
-        <div className="text-sm space-y-1">
-          <p><span className="font-bold">Wedding:</span> {booking?.ourWeddingSong || 'N/A'}</p>
-          <p><span className="font-bold">Event:</span> {booking?.eventSong || 'N/A'}</p>
-          <p><span className="font-bold">Reels:</span> {booking?.reelsSong || 'N/A'}</p>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="p-6 bg-white rounded-3xl border border-gray-100 shadow-sm space-y-4">
+          <h4 className="text-[10px] font-bold text-blue-600 uppercase tracking-widest flex items-center gap-2">
+            <ExternalLink className="w-3 h-3" /> Cloud Storage
+          </h4>
+          {booking?.rawFileLink ? (
+            <a href={booking.rawFileLink} target="_blank" rel="noopener noreferrer" className="flex items-center justify-between p-4 bg-blue-50 text-blue-700 rounded-2xl hover:bg-blue-100 transition-all border border-blue-100 group">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-white rounded-xl shadow-sm shadow-blue-200">
+                  <Download className="w-4 h-4" />
+                </div>
+                <span className="font-bold text-sm">Access RAW Project Files</span>
+              </div>
+              <ExternalLink className="w-4 h-4 group-hover:translate-x-1 duration-300" />
+            </a>
+          ) : (
+            <div className="p-4 bg-gray-50 rounded-2xl border border-dashed border-gray-200 text-center text-xs text-gray-400 italic">
+              Google Drive link not yet provisioned
+            </div>
+          )}
+        </div>
+        <div className="p-6 bg-white rounded-3xl border border-gray-100 shadow-sm space-y-4">
+          <h4 className="text-[10px] font-bold text-purple-600 uppercase tracking-widest flex items-center gap-2">
+            <FileText className="w-3 h-3" /> Main Tracks
+          </h4>
+          <div className="text-[11px] space-y-2">
+            {[
+              { label: 'Wedding', track: booking?.ourWeddingSong },
+              { label: 'Event', track: booking?.eventSong },
+              { label: 'Reels', track: booking?.reelsSong },
+            ].map((s) => (
+              <div key={s.label} className="flex justify-between items-center p-2 bg-gray-50 rounded-lg">
+                <span className="text-gray-500 font-bold">{s.label}</span>
+                <span className="font-bold text-gray-900 max-w-[120px] truncate">{s.track || '—'}</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
-      <div>
-        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">Special Requirements</h4>
-        <p className="text-sm font-medium text-gray-900">{booking?.requirement || 'None'}</p>
+
+      <div className="p-5 bg-white rounded-2xl border border-gray-100 space-y-4">
+        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Project Requirements</h4>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
+            <span className="block text-[10px] font-bold text-gray-400 uppercase mb-1">General Instructions</span>
+            <p className="text-sm font-medium text-gray-900 leading-relaxed italic">
+              "{booking?.requirement || 'None specified'}"
+            </p>
+          </div>
+          {booking?.specialRequirement && (
+            <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-100">
+              <span className="block text-[10px] font-bold text-blue-600 uppercase mb-1">Special Request</span>
+              <p className="text-sm font-medium text-gray-900 leading-relaxed italic">
+                "{booking.specialRequirement}"
+              </p>
+            </div>
+          )}
+        </div>
       </div>
+      
       {renderPackageDetails()}
-      <div className="pt-4 border-t border-gray-100">
-        <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Assigned Team</h4>
-        <div className="space-y-2">
-          <div>
-            <span className="text-[10px] font-bold text-gray-500 uppercase">Photographers:</span>
-            <p className="text-sm font-medium text-gray-900">{getMemberNames(order.photographerIds) || 'None assigned'}</p>
+      
+      {(booking?.songSelection || (booking?.songLinks && booking.songLinks.length > 0)) && (
+        <div className="p-6 bg-blue-900 text-white rounded-3xl shadow-xl shadow-blue-900/10 space-y-4">
+          <h4 className="text-[10px] font-bold text-blue-300 uppercase tracking-widest flex items-center gap-2">
+            <Plus className="w-3 h-3" /> Additional Song Links / Names
+          </h4>
+          <div className="space-y-4">
+            {booking.songSelection && (
+              <div className="text-sm font-medium opacity-90 whitespace-pre-wrap leading-relaxed font-mono border-b border-white/10 pb-4 mb-4">
+                {booking.songSelection}
+              </div>
+            )}
+            {booking.songLinks && booking.songLinks.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {booking.songLinks.map((s: any, i: number) => (
+                  <div key={i} className="p-3 bg-white/10 rounded-xl border border-white/5 flex items-center justify-between group">
+                    <div className="flex flex-col">
+                      <span className="text-[10px] text-blue-200 font-bold uppercase">{s.title || 'Untitled Track'}</span>
+                      <span className="text-xs font-medium truncate max-w-[200px]">{s.link || 'No link'}</span>
+                    </div>
+                    {s.link && (
+                      <a href={s.link} target="_blank" rel="noopener noreferrer" className="p-2 bg-white/20 rounded-lg opacity-0 group-hover:opacity-100 transition-all">
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
-          <div>
-            <span className="text-[10px] font-bold text-gray-500 uppercase">Editors:</span>
-            <p className="text-sm font-medium text-gray-900">{getMemberNames(order.editorIds) || 'None assigned'}</p>
-          </div>
-          <div>
-            <span className="text-[10px] font-bold text-gray-500 uppercase">Others:</span>
-            <p className="text-sm font-medium text-gray-900">{getMemberNames(order.otherIds) || 'None assigned'}</p>
-          </div>
-        </div>
-      </div>
-      {booking?.discountRequest && (
-        <div className="p-3 bg-blue-50 rounded-xl border border-blue-100">
-          <h4 className="text-[10px] font-bold text-blue-600 uppercase tracking-wider mb-1">Discount Request</h4>
-          <p className="text-xs text-blue-800 italic">"{booking.discountRequest}"</p>
         </div>
       )}
     </div>
@@ -382,68 +578,259 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
   );
 
   const renderClientView = () => (
-    <div className="space-y-8">
+    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {renderPackageDetails()}
-      <div className="bg-gray-50 p-4 rounded-xl">
-        <h3 className="text-sm font-bold text-gray-900 mb-4">Payment Summary</h3>
-        <div className="grid grid-cols-3 gap-4">
-          <div>
-            <p className="text-[10px] text-gray-500 uppercase">Total</p>
-            <p className="text-lg font-bold text-gray-900">₹{(order.totalAmount || 0).toLocaleString()}</p>
-          </div>
-          {order.discount > 0 && (
-            <div>
-              <p className="text-[10px] text-gray-500 uppercase">Discount</p>
-              <p className="text-lg font-bold text-blue-600">-₹{(order.discount || 0).toLocaleString()}</p>
+      
+      {/* Client Edit Info Section */}
+      <div className="bg-white border border-gray-100 p-8 rounded-[2rem] shadow-sm relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-gray-50 rounded-bl-[4rem] -mr-16 -mt-16 z-0" />
+        
+        <div className="relative z-10">
+          <div className="flex justify-between items-center mb-8">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-black rounded-xl text-white">
+                <FileText className="w-5 h-5" />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 tracking-tight">Event Specification</h3>
             </div>
-          )}
-          <div>
-            <p className="text-[10px] text-gray-500 uppercase">Final Bill</p>
-            <p className="text-lg font-bold text-gray-900">₹{(order.finalAmount || order.totalAmount).toLocaleString()}</p>
+            {!isEditingInfo && (
+              <button
+                onClick={() => setIsEditingInfo(true)}
+                className="flex items-center space-x-2 text-sm font-bold text-blue-600 hover:text-blue-800 transition-all hover:scale-105"
+              >
+                <Edit2 className="w-4 h-4" />
+                <span>Edit Information</span>
+              </button>
+            )}
           </div>
-          <div>
-            <p className="text-[10px] text-gray-500 uppercase">Paid</p>
-            <p className="text-lg font-bold text-green-600">₹{(order.paidAmount || 0).toLocaleString()}</p>
-          </div>
-          <div>
-            <p className="text-[10px] text-gray-500 uppercase">Due</p>
-            <p className="text-lg font-bold text-red-600">₹{((order.finalAmount || order.totalAmount) - (order.paidAmount || 0)).toLocaleString()}</p>
-          </div>
-        </div>
-        <button 
-          onClick={handleDownloadInvoice}
-          className="mt-4 w-full flex items-center justify-center space-x-2 py-2 bg-black text-white rounded-lg text-sm font-bold hover:bg-gray-800 transition-colors"
-        >
-          <Download className="w-4 h-4" />
-          <span>Download Invoice</span>
-        </button>
-      </div>
+          
+          {isEditingInfo ? (
+            <div className="space-y-8">
+              {order.eventType?.includes('WEDD') && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="space-y-4 p-6 bg-pink-50/30 rounded-3xl border border-pink-100">
+                    <h4 className="text-xs font-bold text-pink-600 uppercase tracking-widest flex items-center gap-2">
+                       <Heart className="w-4 h-4" /> Bride Details
+                    </h4>
+                  <input type="text" placeholder="Bride Name" value={editFormData.brideName || ''} onChange={(e) => setEditFormData({ ...editFormData, brideName: e.target.value })} className="w-full bg-white border border-pink-100 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-pink-500 outline-none shadow-sm" />
+                    <input type="text" placeholder="Bengali Name (Optional)" value={editFormData.brideBengaliName || ''} onChange={(e) => setEditFormData({ ...editFormData, brideBengaliName: e.target.value })} className="w-full bg-white border border-pink-100 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-pink-500 outline-none shadow-sm" />
+                    <input type="text" placeholder="Father's Name" value={editFormData.brideFatherName || ''} onChange={(e) => setEditFormData({ ...editFormData, brideFatherName: e.target.value })} className="w-full bg-white border border-pink-100 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-pink-500 outline-none shadow-sm" />
+                    <input type="tel" placeholder="Mobile Number" value={editFormData.brideNumber || ''} onChange={(e) => setEditFormData({ ...editFormData, brideNumber: e.target.value })} className="w-full bg-white border border-pink-100 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-pink-500 outline-none shadow-sm" />
+                    <textarea placeholder="Current Address" rows={2} value={editFormData.brideAddress || ''} onChange={(e) => setEditFormData({ ...editFormData, brideAddress: e.target.value })} className="w-full bg-white border border-pink-100 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-pink-500 outline-none resize-none shadow-sm" />
+                  </div>
+                  <div className="space-y-4 p-6 bg-blue-50/30 rounded-3xl border border-blue-100">
+                    <h4 className="text-xs font-bold text-blue-600 uppercase tracking-widest flex items-center gap-2">
+                       <Heart className="w-4 h-4" /> Groom Details
+                    </h4>
+                    <input type="text" placeholder="Groom Name" value={editFormData.groomName || ''} onChange={(e) => setEditFormData({ ...editFormData, groomName: e.target.value })} className="w-full bg-white border border-blue-100 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none shadow-sm" />
+                    <input type="text" placeholder="Bengali Name (Optional)" value={editFormData.groomBengaliName || ''} onChange={(e) => setEditFormData({ ...editFormData, groomBengaliName: e.target.value })} className="w-full bg-white border border-blue-100 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none shadow-sm" />
+                    <input type="text" placeholder="Father's Name" value={editFormData.groomFatherName || ''} onChange={(e) => setEditFormData({ ...editFormData, groomFatherName: e.target.value })} className="w-full bg-white border border-blue-100 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none shadow-sm" />
+                    <input type="tel" placeholder="Mobile Number" value={editFormData.groomNumber || ''} onChange={(e) => setEditFormData({ ...editFormData, groomNumber: e.target.value })} className="w-full bg-white border border-blue-100 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none shadow-sm" />
+                    <textarea placeholder="Current Address" rows={2} value={editFormData.groomAddress || ''} onChange={(e) => setEditFormData({ ...editFormData, groomAddress: e.target.value })} className="w-full bg-white border border-blue-100 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none shadow-sm" />
+                  </div>
+                </div>
+              )}
+              
+              {['BIRTHDAY', 'ANNOPRASAN', 'UPANAYAN'].includes(order.eventType) && (
+                <div className="space-y-4 p-6 bg-gray-50 rounded-3xl border border-gray-100">
+                  <h4 className="text-xs font-bold text-gray-500 uppercase tracking-widest">Event Subject</h4>
+                  <input type="text" placeholder="Name of Child / Subject" value={editFormData.childName || ''} onChange={(e) => setEditFormData({ ...editFormData, childName: e.target.value })} className="w-full bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-black shadow-sm" />
+                </div>
+              )}
+              
+              {order.eventType === 'MODEL SHOOT' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Model Identity</label>
+                    <input type="text" value={editFormData.modelName || ''} onChange={(e) => setEditFormData({ ...editFormData, modelName: e.target.value })} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-black" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Makeup Professional</label>
+                    <input type="text" value={editFormData.makeupArtist || ''} onChange={(e) => setEditFormData({ ...editFormData, makeupArtist: e.target.value })} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-black" />
+                  </div>
+                </div>
+              )}
+              
+              <div className="pt-8 border-t border-gray-100">
+                <div className="flex items-center gap-2 mb-4">
+                  <Plus className="w-4 h-4 text-blue-600" />
+                  <h4 className="text-sm font-bold text-gray-900 tracking-tight">Musical Preferences & Links</h4>
+                </div>
+                <textarea
+                  placeholder="Paste YouTube links, Spotify playlists, or name your favorite tracks here..."
+                  rows={4}
+                  value={editFormData.songSelection || ''}
+                  onChange={(e) => setEditFormData({ ...editFormData, songSelection: e.target.value })}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-3xl px-6 py-4 text-sm outline-none focus:ring-2 focus:ring-black resize-none shadow-inner"
+                />
+              </div>
 
-      <div>
-        <h3 className="text-sm font-bold text-gray-900 mb-4">Work in Progress</h3>
-        <div className="space-y-4">
-          {[
-            { label: 'Teaser', status: booking?.teaserStatus, link: booking?.teaserLink },
-            { label: 'Full Video', status: booking?.fullVideoStatus, link: booking?.fullVideoLink },
-            { label: 'Photo Edit', status: booking?.editPhotoStatus, link: booking?.photoEditLink },
-            { label: 'Album Design', status: booking?.albumDesignStatus, link: booking?.albumLink },
-          ].map((item) => (
-            <div key={item.label} className="flex items-center justify-between p-3 border border-gray-100 rounded-lg">
-              <div className="flex items-center space-x-3">
-                {item.status === 'done' ? (
-                  <CheckCircle2 className="w-5 h-5 text-green-500" />
-                ) : (
-                  <Clock className="w-5 h-5 text-yellow-500" />
-                )}
-                <div>
-                  <p className="text-sm font-bold text-gray-900">{item.label}</p>
-                  <p className="text-xs text-gray-500 capitalize">{item.status || 'Pending'}</p>
+              <div className="flex justify-end gap-3 pt-6 border-t border-gray-100">
+                <button onClick={() => setIsEditingInfo(false)} className="px-6 py-2.5 font-bold text-gray-500 hover:text-black transition-colors">Discard</button>
+                <button onClick={handleSaveInfo} className="px-8 py-2.5 bg-black text-white font-bold rounded-xl flex items-center gap-2 hover:bg-gray-800 transition-all shadow-lg shadow-black/20">
+                  <Save className="w-4 h-4" /> Update Information
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-8">
+              {booking?.brideName || booking?.groomName ? (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                  <div className="p-6 bg-pink-50/20 rounded-3xl border border-pink-50">
+                    <p className="text-[10px] uppercase font-bold text-pink-400 tracking-widest mb-2">Bride</p>
+                    <p className="text-lg font-bold text-gray-900">{booking?.brideName || '—'}</p>
+                    {booking?.brideBengaliName && <p className="text-sm text-pink-600 font-medium">{booking.brideBengaliName}</p>}
+                    <div className="mt-4 pt-4 border-t border-pink-50 text-[10px] space-y-1">
+                      <p><span className="font-bold text-gray-400">Father:</span> <span className="text-gray-700">{booking.brideFatherName || 'N/A'}</span></p>
+                    </div>
+                  </div>
+                  <div className="p-6 bg-blue-50/20 rounded-3xl border border-blue-50">
+                    <p className="text-[10px] uppercase font-bold text-blue-400 tracking-widest mb-2">Groom</p>
+                    <p className="text-lg font-bold text-gray-900">{booking?.groomName || '—'}</p>
+                    {booking?.groomBengaliName && <p className="text-sm text-blue-600 font-medium">{booking.groomBengaliName}</p>}
+                    <div className="mt-4 pt-4 border-t border-blue-50 text-[10px] space-y-1">
+                      <p><span className="font-bold text-gray-400">Father:</span> <span className="text-gray-700">{booking.groomFatherName || 'N/A'}</span></p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+              
+              {booking?.childName && (
+                <div className="p-6 bg-gray-50 rounded-3xl">
+                  <p className="text-[10px] uppercase font-bold text-gray-400 tracking-widest mb-1">Subject</p>
+                  <p className="text-lg font-bold text-gray-900">{booking.childName}</p>
+                </div>
+              )}
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="space-y-4">
+                  <p className="text-[10px] uppercase font-bold text-gray-400 tracking-widest ml-1 flex items-center gap-2">
+                    <FileText className="w-3 h-3" /> Event Requirements
+                  </p>
+                  <div className="space-y-3">
+                    <div className="p-5 bg-gray-50 rounded-2xl border border-gray-100 text-sm text-gray-700 leading-relaxed italic">
+                      <span className="block text-[10px] font-bold text-gray-400 uppercase mb-1">General</span>
+                      "{booking?.requirement || 'No common requirements.'}"
+                    </div>
+                    {booking?.specialRequirement && (
+                      <div className="p-5 bg-blue-50/50 rounded-2xl border border-blue-100 text-sm text-blue-900 leading-relaxed italic">
+                        <span className="block text-[10px] font-bold text-blue-400 uppercase mb-1">Special Request</span>
+                        "{booking.specialRequirement}"
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="space-y-4">
+                  <p className="text-[10px] uppercase font-bold text-gray-400 tracking-widest ml-1 flex items-center gap-2">
+                    <Music className="w-3 h-3" /> Music Preferences
+                  </p>
+                  <div className="space-y-3">
+                    {booking?.songSelection && (
+                      <div className="p-5 bg-indigo-50/50 rounded-2xl border border-indigo-100 text-sm text-indigo-900 leading-relaxed whitespace-pre-wrap italic">
+                        "{booking.songSelection}"
+                      </div>
+                    )}
+                    {booking?.songLinks && booking.songLinks.length > 0 && (
+                      <div className="grid grid-cols-1 gap-2">
+                        {booking.songLinks.map((s: any, i: number) => (
+                          <div key={i} className="p-3 bg-white border border-gray-100 rounded-xl flex items-center justify-between shadow-sm">
+                            <div className="flex flex-col">
+                              <span className="text-[10px] text-gray-400 font-bold uppercase">{s.title || 'Track'}</span>
+                              <span className="text-xs font-medium truncate max-w-[150px]">{s.link || '—'}</span>
+                            </div>
+                            {s.link && (
+                              <a href={s.link} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-gray-50 text-gray-400 hover:text-black rounded-lg transition-all">
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {!booking?.songSelection && (!booking?.songLinks || booking.songLinks.length === 0) && (
+                      <div className="p-5 bg-gray-50 rounded-2xl border border-gray-100 text-sm text-gray-400 italic">
+                        No music choices provided yet.
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-              {item.link && (
-                <a href={item.link} target="_blank" rel="noopener noreferrer" className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-                  <ExternalLink className="w-4 h-4" />
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-gray-900 text-white p-8 rounded-[2.5rem] shadow-2xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 p-8 opacity-10">
+          <IndianRupee className="w-24 h-24" />
+        </div>
+        <div className="relative z-10">
+          <h3 className="text-lg font-bold mb-8 flex items-center gap-2 opacity-80">
+            <Receipt className="w-5 h-5" /> Financial Overview
+          </h3>
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-8">
+            <div className="space-y-1">
+              <p className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">Contract</p>
+              <p className="text-xl font-bold">₹{(order.totalAmount || 0).toLocaleString()}</p>
+            </div>
+            {order.discount > 0 && (
+              <div className="space-y-1">
+                <p className="text-[10px] text-blue-400 uppercase font-bold tracking-widest">Adjustment</p>
+                <p className="text-xl font-bold text-blue-400">-₹{(order.discount || 0).toLocaleString()}</p>
+              </div>
+            )}
+            <div className="space-y-1">
+              <p className="text-[10px] text-gray-400 uppercase font-bold tracking-widest">Final Bill</p>
+              <p className="text-xl font-bold">₹{(order.finalAmount || order.totalAmount).toLocaleString()}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-[10px] text-green-400 uppercase font-bold tracking-widest">Payment</p>
+              <p className="text-xl font-bold text-green-400">₹{(order.paidAmount || 0).toLocaleString()}</p>
+            </div>
+            <div className="space-y-1">
+              <p className="text-[10px] text-red-400 uppercase font-bold tracking-widest">Balance</p>
+              <p className="text-xl font-bold text-red-500">₹{((order.finalAmount || order.totalAmount) - (order.paidAmount || 0)).toLocaleString()}</p>
+            </div>
+          </div>
+          <button 
+            onClick={handleDownloadInvoice}
+            className="mt-10 w-full flex items-center justify-center space-x-3 py-4 bg-white text-black rounded-2xl text-sm font-bold hover:bg-gray-100 transition-all hover:scale-[1.02] shadow-xl"
+          >
+            <Download className="w-5 h-5" />
+            <span>Generate & Download Official Invoice</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="space-y-6">
+        <h3 className="text-xl font-bold text-gray-900 tracking-tight ml-1">Production Milestones</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[
+            { label: 'Teaser Edit', status: booking?.teaserStatus, link: booking?.teaserLink, color: 'blue' },
+            { label: 'Full Length Film', status: booking?.fullVideoStatus, link: booking?.fullVideoLink, color: 'purple' },
+            { label: 'Color Grading (Photo)', status: booking?.editPhotoStatus, link: booking?.photoEditLink, color: 'indigo' },
+            { label: 'Digital Album', status: booking?.albumDesignStatus, link: booking?.albumLink, color: 'pink' },
+          ].map((item) => (
+            <div key={item.label} className="group p-5 bg-white border border-gray-100 rounded-3xl hover:shadow-xl hover:shadow-gray-200/50 transition-all flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <div className={`p-3 rounded-2xl ${item.status === 'done' ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
+                  {item.status === 'done' ? <CheckCircle2 className="w-6 h-6" /> : <Clock className="w-6 h-6 animate-pulse" />}
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-gray-900">{item.label}</p>
+                  <p className={`text-[10px] font-bold uppercase tracking-widest mt-0.5 ${item.status === 'done' ? 'text-green-600' : 'text-gray-400'}`}>
+                    {item.status || 'In Queue'}
+                  </p>
+                </div>
+              </div>
+              {item.link ? (
+                <a href={item.link} target="_blank" rel="noopener noreferrer" className="p-3 bg-gray-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-2xl transition-all">
+                  <ExternalLink className="w-5 h-5" />
                 </a>
+              ) : (
+                <div className="p-3 text-gray-200">
+                   <Clock className="w-5 h-5" />
+                </div>
               )}
             </div>
           ))}

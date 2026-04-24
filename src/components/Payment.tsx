@@ -8,7 +8,11 @@ import { loadStripe } from '@stripe/stripe-js';
 import { generateInvoicePDF } from '../services/invoiceService';
 import Captcha from './Captcha';
 
-const stripePromise = loadStripe((import.meta as any).env.VITE_STRIPE_PUBLISHABLE_KEY || '');
+const stripePublishableKey = ((import.meta as any).env.VITE_STRIPE_PUBLISHABLE_KEY || '').trim();
+if (stripePublishableKey && !stripePublishableKey.startsWith('pk_')) {
+  console.warn('[Stripe] Warning: VITE_STRIPE_PUBLISHABLE_KEY does not appear to be a valid Stripe publishable key.');
+}
+const stripePromise = loadStripe(stripePublishableKey);
 
 interface PaymentProps {
   user?: User | null;
@@ -99,6 +103,11 @@ const Payment: React.FC<PaymentProps> = ({ user, role }) => {
       return;
     }
 
+    if (!user) {
+      toast.error('Please log in securely to access your payment details.');
+      return;
+    }
+
     if (!isCaptchaVerified) {
       toast.error('Please complete the security verification');
       return;
@@ -106,25 +115,35 @@ const Payment: React.FC<PaymentProps> = ({ user, role }) => {
 
     setLoading(true);
     try {
+      const isPrivileged = role === 'admin';
       // Try searching by mobile number in bookings
-      let q = query(collection(db, 'bookings'), where('clientMobile', '==', searchQuery));
+      let conditions: any[] = [where('clientMobile', '==', searchQuery)];
+      if (user && !isPrivileged) conditions.push(where('clientId', '==', user.uid));
+      
+      let q = query(collection(db, 'bookings'), ...conditions);
       let querySnapshot = await getDocs(q);
       
       if (querySnapshot.empty) {
         // Try searching by invoice number in bookings
-        q = query(collection(db, 'bookings'), where('invoiceNumber', '==', searchQuery));
+        conditions = [where('invoiceNumber', '==', searchQuery)];
+        if (user && !isPrivileged) conditions.push(where('clientId', '==', user.uid));
+        q = query(collection(db, 'bookings'), ...conditions);
         querySnapshot = await getDocs(q);
       }
 
       if (querySnapshot.empty) {
         // Try searching by mobile number in orders
-        q = query(collection(db, 'orders'), where('mobileNumber', '==', searchQuery));
+        let orderConditions: any[] = [where('mobileNumber', '==', searchQuery)];
+        if (user && !isPrivileged) orderConditions.push(where('clientId', '==', user.uid));
+        q = query(collection(db, 'orders'), ...orderConditions);
         querySnapshot = await getDocs(q);
       }
 
       if (querySnapshot.empty) {
         // Try searching by invoice number in orders
-        q = query(collection(db, 'orders'), where('invoiceNumber', '==', searchQuery));
+        let orderConditions: any[] = [where('invoiceNumber', '==', searchQuery)];
+        if (user && !isPrivileged) orderConditions.push(where('clientId', '==', user.uid));
+        q = query(collection(db, 'orders'), ...orderConditions);
         querySnapshot = await getDocs(q);
       }
       
@@ -153,7 +172,10 @@ const Payment: React.FC<PaymentProps> = ({ user, role }) => {
         setManualAmount(normalizedData.dueAmount.toString());
         
         // Fetch existing payments for this booking
-        const paymentsQuery = query(collection(db, 'payments'), where('orderId', '==', querySnapshot.docs[0].id));
+        let paymentsConditions: any[] = [where('orderId', '==', querySnapshot.docs[0].id)];
+        if (user && !isPrivileged) paymentsConditions.push(where('clientId', '==', user.uid));
+        
+        const paymentsQuery = query(collection(db, 'payments'), ...paymentsConditions);
         const paymentsSnapshot = await getDocs(paymentsQuery);
         setPayments(paymentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
         

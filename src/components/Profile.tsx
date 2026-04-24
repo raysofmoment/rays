@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { User, updateProfile } from 'firebase/auth';
-import { doc, getDoc, updateDoc, collection, query, where, getDocs, onSnapshot, addDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, collection, query, where, getDocs, onSnapshot, addDoc, deleteDoc, orderBy, or } from 'firebase/firestore';
 import { db, auth, handleFirestoreError, OperationType } from '../firebase';
-import { User as UserIcon, Mail, Shield, Calendar, Camera, Save, Loader2, Camera as CameraIcon, ShoppingBag, Package, CheckCircle2, Clock, ExternalLink, ChevronRight, Info, Phone, Plus, Trash2, Link as LinkIcon, Video, Image as ImageIcon } from 'lucide-react';
+import { User as UserIcon, Mail, Shield, Calendar, Camera, Save, Loader2, Camera as CameraIcon, ShoppingBag, Package, CheckCircle2, Clock, ExternalLink, ChevronRight, Info, Phone, Plus, Trash2, Link as LinkIcon, Video, Image as ImageIcon, CreditCard } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { format, isValid } from 'date-fns';
 import ConfirmModal from './ConfirmModal';
@@ -15,14 +15,17 @@ interface ProfileProps {
 }
 
 const Profile: React.FC<ProfileProps> = ({ user, role }) => {
-  const [activeTab, setActiveTab] = useState<'profile' | 'orders' | 'assignments' | 'samples'>('profile');
-  const [displayName, setDisplayName] = useState(user.displayName || '');
+  const { uid } = useParams();
+  const targetUid = uid || user.uid;
+  const isViewingOther = !!uid && uid !== user.uid;
+  const isAdmin = role === 'admin';
+
+  const [activeTab, setActiveTab] = useState<'profile' | 'orders' | 'samples'>('profile');
+  const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(false);
   const [userData, setUserData] = useState<any>(null);
   const [orders, setOrders] = useState<any[]>([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
-  const [assignments, setAssignments] = useState<any[]>([]);
-  const [assignmentsLoading, setAssignmentsLoading] = useState(false);
   const [samples, setSamples] = useState<any[]>([]);
   const [samplesLoading, setSamplesLoading] = useState(false);
   const [showAddSample, setShowAddSample] = useState(false);
@@ -35,20 +38,48 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
 
+  const targetRole = userData?.role || 'client';
+
+  const staffSummary = React.useMemo(() => {
+    if (targetRole === 'client') return null;
+    return orders.reduce((acc, order) => {
+      const payment = order.staffPayments?.[targetUid];
+      if (payment) {
+        acc.totalFee += (Number(payment.totalFee) || 0);
+        acc.totalPaid += (Number(payment.paidAmount) || 0);
+        acc.totalDue += ((Number(payment.totalFee) || 0) - (Number(payment.paidAmount) || 0));
+      }
+      return acc;
+    }, { totalFee: 0, totalPaid: 0, totalDue: 0 });
+  }, [orders, targetUid, targetRole]);
+
   useEffect(() => {
     const fetchUserData = async () => {
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      const userDoc = await getDoc(doc(db, 'users', targetUid));
       if (userDoc.exists()) {
-        setUserData(userDoc.data());
+        const data = userDoc.data();
+        setUserData(data);
+        setDisplayName(data.displayName || '');
       }
     };
     fetchUserData();
-  }, [user.uid]);
+  }, [targetUid]);
 
   useEffect(() => {
     if (activeTab === 'orders') {
       setOrdersLoading(true);
-      const q = query(collection(db, 'bookings'), where('clientId', '==', user.uid));
+      const q = query(
+        collection(db, 'bookings'),
+        or(
+          where('clientId', '==', targetUid),
+          where('photographerId', '==', targetUid),
+          where('editorId', '==', targetUid),
+          where('otherId', '==', targetUid),
+          where('photographerIds', 'array-contains', targetUid),
+          where('editorIds', 'array-contains', targetUid),
+          where('otherIds', 'array-contains', targetUid)
+        )
+      );
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const ordersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         setOrders(ordersData);
@@ -59,49 +90,7 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
       });
       return () => unsubscribe();
     }
-  }, [activeTab, user.uid]);
-
-  useEffect(() => {
-    if (activeTab === 'assignments') {
-      setAssignmentsLoading(true);
-      let q;
-      if (role === 'photographer') {
-        q = query(collection(db, 'bookings'), where('photographerId', '==', user.uid));
-      } else if (role === 'editor') {
-        q = query(collection(db, 'bookings'), where('editorId', '==', user.uid));
-      } else if (role === 'other') {
-        q = query(collection(db, 'bookings'), where('otherId', '==', user.uid));
-      } else {
-        setAssignmentsLoading(false);
-        return;
-      }
-
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const assignmentsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setAssignments(assignmentsData);
-        setAssignmentsLoading(false);
-      }, (error) => {
-        handleFirestoreError(error, OperationType.LIST, 'bookings');
-        setAssignmentsLoading(false);
-      });
-      return () => unsubscribe();
-    }
-  }, [activeTab, user.uid, role]);
-
-  const calculateTotalDue = () => {
-    return assignments.reduce((acc, curr) => {
-      if (role === 'photographer' && !curr.photographerPaid) {
-        return acc + (Number(curr.photographerPrice) || 0);
-      }
-      if (role === 'editor' && !curr.editorPaid) {
-        return acc + (Number(curr.editorPrice) || 0);
-      }
-      if (role === 'other' && !curr.otherPaid) {
-        return acc + (Number(curr.otherServicePrice) || 0);
-      }
-      return acc;
-    }, 0);
-  };
+  }, [activeTab, targetUid]);
 
   useEffect(() => {
     if (activeTab === 'samples') {
@@ -118,6 +107,23 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
       return () => unsubscribe();
     }
   }, [activeTab, user.uid]);
+
+  const handleDeleteSample = async (id: string) => {
+    setItemToDelete(id);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
+    try {
+      await deleteDoc(doc(db, 'sampleWorks', itemToDelete));
+      toast.success('Sample deleted');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, 'sampleWorks');
+    } finally {
+      setItemToDelete(null);
+    }
+  };
 
   const handleAddSample = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -144,23 +150,6 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
     }
   };
 
-  const handleDeleteSample = async (id: string) => {
-    setItemToDelete(id);
-    setDeleteConfirmOpen(true);
-  };
-
-  const confirmDelete = async () => {
-    if (!itemToDelete) return;
-    try {
-      await deleteDoc(doc(db, 'sampleWorks', itemToDelete));
-      toast.success('Sample deleted');
-    } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, 'sampleWorks');
-    } finally {
-      setItemToDelete(null);
-    }
-  };
-
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -174,6 +163,49 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
     } catch (error) {
       console.error('Error updating profile:', error);
       toast.error('Failed to update profile');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handlePayStaff = async (orderId: string, amount: number, method: string) => {
+    if (amount <= 0) return;
+    try {
+      setLoading(true);
+      const orderRef = doc(db, 'bookings', orderId);
+      const orderSnap = await getDoc(orderRef);
+      if (orderSnap.exists()) {
+        const orderData = orderSnap.data();
+        const currentStaffData = orderData.staffPayments?.[targetUid] || { totalFee: 0, paidAmount: 0, payments: [] };
+        
+        const date = new Date().toISOString();
+        const newPayments = [...(currentStaffData.payments || []), { amount, date, method }];
+        const newPaidAmount = newPayments.reduce((sum: number, p: any) => sum + (Number(p.amount) || 0), 0);
+        
+        const updatedStaffPayments = {
+          ...orderData.staffPayments,
+          [targetUid]: {
+            ...currentStaffData,
+            paidAmount: newPaidAmount,
+            lastPaymentDate: date,
+            payments: newPayments
+          }
+        };
+
+        const updates = { staffPayments: updatedStaffPayments };
+        await updateDoc(orderRef, updates);
+        
+        // Sync with orders collection
+        const q = query(collection(db, 'orders'), where('bookingId', '==', orderId));
+        const orderDocs = await getDocs(q);
+        if (!orderDocs.empty) {
+          await updateDoc(doc(db, 'orders', orderDocs.docs[0].id), updates);
+        }
+
+        toast.success(`₹${amount} paid to staff and recorded successfully.`);
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `bookings/${orderId}`);
     } finally {
       setLoading(false);
     }
@@ -215,26 +247,28 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-12">
-      <div className="flex space-x-1 bg-gray-100 p-1 rounded-2xl mb-8 w-fit">
+      <div className="flex space-x-1 bg-gray-100 p-1 rounded-2xl mb-8 w-fit overflow-x-auto max-w-full">
         <button
           onClick={() => setActiveTab('profile')}
-          className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === 'profile' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-black'}`}
+          className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'profile' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-black'}`}
         >
-          My Profile
+          {isViewingOther ? 'Member Profile' : 'My Profile'}
         </button>
         <button
           onClick={() => setActiveTab('orders')}
-          className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === 'orders' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-black'}`}
+          className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'orders' ? 'bg-black text-white shadow-md scale-105' : 'text-gray-500 hover:text-black hover:bg-gray-200/50'}`}
         >
-          My Orders
+          {isViewingOther ? 'Client Orders' : 'My Orders'}
         </button>
-        {(role === 'photographer' || role === 'editor' || role === 'other' || role === 'admin') && (
-          <button
-            onClick={() => setActiveTab('samples')}
-            className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all ${activeTab === 'samples' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-black'}`}
-          >
-            Sample Work
-          </button>
+        {(targetRole === 'photographer' || targetRole === 'editor' || targetRole === 'other' || targetRole === 'admin') && (
+          <>
+            <button
+              onClick={() => setActiveTab('samples')}
+              className={`px-6 py-2.5 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${activeTab === 'samples' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-black'}`}
+            >
+              Sample Work
+            </button>
+          </>
         )}
       </div>
 
@@ -263,16 +297,16 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
             <div className="pt-16 pb-8 px-8">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                 <div>
-                  <h1 className="text-3xl font-bold text-gray-900">{user.displayName || 'User Profile'}</h1>
+                  <h1 className="text-3xl font-bold text-gray-900">{userData?.displayName || 'User Profile'}</h1>
                   <p className="text-gray-500 flex items-center mt-1">
                     <Mail className="w-4 h-4 mr-2" />
-                    {user.email}
+                    {userData?.email}
                   </p>
                 </div>
                 <div className="flex items-center space-x-2">
                   <span className="px-4 py-1.5 bg-gray-100 text-gray-700 rounded-full text-sm font-bold uppercase tracking-wider flex items-center">
                     <Shield className="w-4 h-4 mr-2" />
-                    {role || 'Client'}
+                    {targetRole}
                   </span>
                 </div>
               </div>
@@ -290,37 +324,35 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
                             type="text"
                             value={displayName}
                             onChange={(e) => setDisplayName(e.target.value)}
-                            className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-black outline-none transition-all"
-                            placeholder="Enter your name"
+                            disabled={isViewingOther && !isAdmin}
+                            className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-black outline-none transition-all disabled:bg-gray-100 disabled:text-gray-500"
+                            placeholder="Enter name"
                           />
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Email Address</label>
                           <input
                             type="email"
-                            value={user.email || ''}
+                            value={userData?.email || ''}
                             disabled
                             className="w-full px-4 py-2 rounded-xl border border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed outline-none"
                           />
-                          <p className="text-[10px] text-gray-400 mt-1 italic">Email cannot be changed for security reasons.</p>
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex justify-end">
-                      <button
-                        type="submit"
-                        disabled={loading}
-                        className="bg-black text-white px-8 py-3 rounded-xl font-bold flex items-center space-x-2 hover:bg-gray-800 transition-all disabled:opacity-50 shadow-lg shadow-black/20"
-                      >
-                        {loading ? (
-                          <Loader2 className="w-5 h-5 animate-spin" />
-                        ) : (
-                          <Save className="w-5 h-5" />
-                        )}
-                        <span>Save Changes</span>
-                      </button>
-                    </div>
+                    {!isViewingOther && (
+                      <div className="flex justify-end">
+                        <button
+                          type="submit"
+                          disabled={loading}
+                          className="bg-black text-white px-8 py-3 rounded-xl font-bold flex items-center space-x-2 hover:bg-gray-800 transition-all disabled:opacity-50 shadow-lg shadow-black/20"
+                        >
+                          {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Save className="w-5 h-5" />}
+                          <span>Save Changes</span>
+                        </button>
+                      </div>
+                    )}
                   </form>
                 </div>
 
@@ -328,43 +360,24 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
                 <div className="space-y-6">
                   <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100">
                     <h2 className="text-lg font-bold text-gray-900 mb-4">Account Details</h2>
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between text-sm">
+                    <div className="space-y-4 text-sm">
+                      <div className="flex items-center justify-between">
                         <span className="text-gray-500 flex items-center">
                           <Calendar className="w-4 h-4 mr-2" />
                           Joined
                         </span>
                         <span className="font-bold text-gray-900">
-                          {userData?.createdAt ? new Date(userData.createdAt).toLocaleDateString() : 'N/A'}
+                          {userData?.createdAt ? format(new Date(userData.createdAt), 'MMM d, yyyy') : 'N/A'}
                         </span>
                       </div>
-                      <div className="flex items-center justify-between text-sm">
+                      <div className="flex items-center justify-between">
                         <span className="text-gray-500 flex items-center">
-                          <Camera className="w-4 h-4 mr-2" />
+                          <Shield className="w-4 h-4 mr-2" />
                           Role
                         </span>
-                        <span className="font-bold text-gray-900 capitalize">{role || 'Client'}</span>
+                        <span className="font-bold text-gray-900 capitalize">{targetRole}</span>
                       </div>
-                      {(role === 'photographer' || role === 'editor' || role === 'other') && (
-                        <div className="flex items-center justify-between text-sm pt-4 border-t border-gray-200">
-                          <span className="text-gray-500 font-bold">Total Due</span>
-                          <span className="font-black text-red-500 text-lg">₹{calculateTotalDue().toLocaleString()}</span>
-                        </div>
-                      )}
                     </div>
-                  </div>
-
-                  <div className="bg-black text-white p-6 rounded-2xl shadow-lg relative overflow-hidden">
-                    <div className="relative z-10">
-                      <h3 className="font-bold mb-2">Need Help?</h3>
-                      <p className="text-xs text-gray-400 leading-relaxed">
-                        If you need to change your role or have issues with your account, please contact our support team.
-                      </p>
-                      <button className="mt-4 text-xs font-bold underline hover:text-gray-300 transition-colors">
-                        Contact Support
-                      </button>
-                    </div>
-                    <CameraIcon className="absolute -right-4 -bottom-4 w-20 h-20 opacity-10" />
                   </div>
                 </div>
               </div>
@@ -378,6 +391,39 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
             exit={{ opacity: 0, x: -20 }}
             className="space-y-8"
           >
+            {/* Staff Payment Summary */}
+            {staffSummary && (staffSummary.totalFee > 0) && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 flex items-center space-x-4">
+                  <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl">
+                    <CreditCard className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Total Earned</p>
+                    <p className="text-2xl font-black text-gray-900">₹{staffSummary.totalFee.toLocaleString()}</p>
+                  </div>
+                </div>
+                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 flex items-center space-x-4">
+                  <div className="p-3 bg-green-50 text-green-600 rounded-2xl">
+                    <CheckCircle2 className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Total Paid</p>
+                    <p className="text-2xl font-black text-green-600">₹{staffSummary.totalPaid.toLocaleString()}</p>
+                  </div>
+                </div>
+                <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 flex items-center space-x-4">
+                  <div className="p-3 bg-orange-50 text-orange-600 rounded-2xl">
+                    <Clock className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Pending Dues</p>
+                    <p className="text-2xl font-black text-orange-600">₹{staffSummary.totalDue.toLocaleString()}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {ordersLoading ? (
               <div className="flex justify-center py-24">
                 <Loader2 className="w-12 h-12 animate-spin text-black" />
@@ -430,6 +476,78 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
                                 <span className="text-gray-500 font-bold">Mobile</span>
                                 <span className="text-gray-900 font-black">{order.clientMobile}</span>
                               </div>
+                              
+                              {/* Staff Payment Info */}
+                              {targetUid !== order.clientId && order.staffPayments?.[targetUid] && (
+                                <div className="mt-6 pt-6 border-t border-gray-200">
+                                  <div className="flex items-center justify-between mb-4">
+                                    <p className="text-xs font-black text-indigo-600 uppercase tracking-widest leading-none">Your Project Fees</p>
+                                    {isAdmin && (
+                                      <div className="flex items-center space-x-2">
+                                        <input 
+                                          type="number" 
+                                          id={`pay-${order.id}`}
+                                          placeholder="Amt"
+                                          className="w-20 px-2 py-1.5 rounded-lg border border-gray-100 text-[10px] font-bold outline-none focus:border-green-500 bg-gray-50"
+                                        />
+                                        <button 
+                                          onClick={() => {
+                                            const input = document.getElementById(`pay-${order.id}`) as HTMLInputElement;
+                                            if (input && input.value) {
+                                              handlePayStaff(order.id, Number(input.value), 'Cash');
+                                              input.value = '';
+                                            }
+                                          }}
+                                          className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-[9px] font-black hover:bg-green-700 transition-all uppercase tracking-widest"
+                                        >
+                                          Pay
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                  
+                                  <div className="grid grid-cols-3 gap-3">
+                                    <div className="bg-indigo-50/50 p-3 rounded-2xl border border-indigo-100">
+                                      <p className="text-[8px] font-bold text-indigo-400 shadow-sm uppercase leading-none mb-1">Agreed Fee</p>
+                                      <p className="text-sm font-black text-indigo-700">₹{order.staffPayments[targetUid].totalFee?.toLocaleString()}</p>
+                                    </div>
+                                    <div className="bg-green-50/50 p-3 rounded-2xl border border-green-100">
+                                      <p className="text-[8px] font-bold text-green-400 uppercase leading-none mb-1">Paid</p>
+                                      <p className="text-sm font-black text-green-700">₹{order.staffPayments[targetUid].paidAmount?.toLocaleString() || 0}</p>
+                                    </div>
+                                    <div className={`p-3 rounded-2xl border ${
+                                      (order.staffPayments[targetUid].totalFee - (order.staffPayments[targetUid].paidAmount || 0)) > 0 
+                                      ? 'bg-orange-50/50 border-orange-100' : 'bg-gray-50/50 border-gray-100'
+                                    }`}>
+                                      <p className="text-[8px] font-bold text-gray-400 uppercase leading-none mb-1">Due</p>
+                                      <p className={`text-sm font-black ${(order.staffPayments[targetUid].totalFee - (order.staffPayments[targetUid].paidAmount || 0)) > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
+                                        ₹{(order.staffPayments[targetUid].totalFee - (order.staffPayments[targetUid].paidAmount || 0)).toLocaleString()}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  
+                                  {order.staffPayments[targetUid].payments?.length > 0 && (
+                                    <div className="mt-4 space-y-2">
+                                      <div className="flex border-b border-gray-100 pb-1 mb-2">
+                                        <p className="text-[8px] font-bold text-gray-400 uppercase tracking-tighter">Transaction History</p>
+                                      </div>
+                                      {order.staffPayments[targetUid].payments.slice(-3).map((p: any, i: number) => (
+                                        <div key={i} className="flex justify-between items-center text-[9px] bg-white p-2 rounded-xl border border-gray-100 border-dashed text-gray-500 font-medium">
+                                          <div className="flex items-center">
+                                            <div className="w-1.5 h-1.5 bg-green-400 rounded-full mr-2" />
+                                            <span>{format(new Date(p.date), 'MMM d, yyyy')}</span>
+                                          </div>
+                                          <div className="flex items-center space-x-2">
+                                            <span className="text-[8px] px-1.5 py-0.5 bg-gray-50 rounded italic">{p.method}</span>
+                                            <span className="font-bold text-gray-900">₹{p.amount?.toLocaleString()}</span>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
                               <div className="pt-4 border-t border-gray-200">
                                 <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-2">Requirements</p>
                                 <p className="text-sm text-gray-600 leading-relaxed">{order.requirement || 'No specific requirements listed.'}</p>
@@ -542,9 +660,9 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
             ) : (
               <div className="text-center py-24 bg-white rounded-[2.5rem] shadow-xl border border-gray-100">
                 <ShoppingBag className="w-20 h-20 text-gray-200 mx-auto mb-6" />
-                <h2 className="text-3xl font-black text-gray-900">No Orders Yet</h2>
+                <h2 className="text-3xl font-black text-gray-900">No Orders Found</h2>
                 <p className="text-gray-500 mt-2 max-w-md mx-auto">
-                  You haven't placed any photography orders yet. Once you book a session, you'll be able to track its progress here.
+                  You don't have any photography bookings or assigned projects yet. Once an order is created or assigned to you, it will appear here.
                 </p>
                 <Link 
                   to="/packages" 
@@ -728,134 +846,7 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
               )}
             </div>
           </motion.div>
-        ) : (
-          <motion.div
-            key="assignments"
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            className="space-y-8"
-          >
-            <div className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100">
-              <div className="flex items-center justify-between mb-8">
-                <div>
-                  <h2 className="text-3xl font-black text-gray-900">My Assignments</h2>
-                  <p className="text-gray-500 font-medium">Manage your assigned photography and editing tasks.</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Total Due Amount</p>
-                  <p className="text-4xl font-black text-red-500">₹{calculateTotalDue().toLocaleString()}</p>
-                </div>
-              </div>
-
-              {assignmentsLoading ? (
-                <div className="flex justify-center py-12">
-                  <Loader2 className="w-8 h-8 animate-spin text-black" />
-                </div>
-              ) : assignments.length > 0 ? (
-                <div className="grid grid-cols-1 gap-6">
-                  {assignments.map((assignment) => {
-                    const isPaid = role === 'photographer' ? assignment.photographerPaid : role === 'editor' ? assignment.editorPaid : assignment.otherPaid;
-                    const price = role === 'photographer' ? assignment.photographerPrice : role === 'editor' ? assignment.editorPrice : assignment.otherServicePrice;
-
-                    return (
-                      <div key={assignment.id} className="p-6 bg-gray-50 rounded-2xl border border-gray-100 hover:border-black transition-all group">
-                        <div className="flex flex-col md:flex-row justify-between gap-6">
-                          <div className="space-y-4">
-                            <div className="flex items-center space-x-3">
-                              <span className="px-3 py-1 bg-black text-white text-[10px] font-black uppercase tracking-widest rounded-lg">
-                                #{assignment.invoiceNumber || 'N/A'}
-                              </span>
-                              <span className="text-gray-400 text-sm font-bold">
-                                {assignment.eventDate && isValid(new Date(assignment.eventDate)) ? format(new Date(assignment.eventDate), 'MMM d, yyyy') : 'Date N/A'}
-                              </span>
-                            </div>
-                            <div>
-                              <h3 className="text-xl font-black text-gray-900">{assignment.eventType}</h3>
-                              <p className="text-gray-500 text-sm font-medium">{assignment.eventPlace}</p>
-                            </div>
-                            <div className="flex flex-wrap gap-4 pt-2">
-                              <div className="flex items-center text-xs font-bold text-gray-600">
-                                <UserIcon className="w-4 h-4 mr-2 text-gray-400" />
-                                {assignment.clientName}
-                              </div>
-                              <div className="flex items-center text-xs font-bold text-gray-600">
-                                <Phone className="w-4 h-4 mr-2 text-gray-400" />
-                                {assignment.clientMobile}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex flex-col justify-between items-end text-right">
-                            <div className="space-y-2">
-                              <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Your Fee</p>
-                              <p className="text-2xl font-black text-gray-900">₹{Number(price || 0).toLocaleString()}</p>
-                              <span className={`inline-block px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${isPaid ? 'text-green-600 bg-green-50 border-green-100' : 'text-red-600 bg-red-50 border-red-100'}`}>
-                                {isPaid ? 'Paid' : 'Unpaid'}
-                              </span>
-                            </div>
-                            <Link 
-                              to={`/work-in-progress`}
-                              className="mt-4 flex items-center text-xs font-black text-black hover:underline group-hover:translate-x-1 transition-transform"
-                            >
-                              Update Progress
-                              <ChevronRight className="w-4 h-4 ml-1" />
-                            </Link>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <Package className="w-12 h-12 text-gray-200 mx-auto mb-4" />
-                  <p className="text-gray-500 font-bold">No assignments found.</p>
-                </div>
-              )}
-            </div>
-
-            {/* Work History Summary */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-white p-6 rounded-3xl shadow-xl border border-gray-100">
-                <div className="flex items-center space-x-4">
-                  <div className="p-3 bg-blue-50 rounded-2xl">
-                    <Package className="w-6 h-6 text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Total Assignments</p>
-                    <p className="text-2xl font-black text-gray-900">{assignments.length}</p>
-                  </div>
-                </div>
-              </div>
-              <div className="bg-white p-6 rounded-3xl shadow-xl border border-gray-100">
-                <div className="flex items-center space-x-4">
-                  <div className="p-3 bg-green-50 rounded-2xl">
-                    <CheckCircle2 className="w-6 h-6 text-green-600" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Paid Tasks</p>
-                    <p className="text-2xl font-black text-gray-900">
-                      {assignments.filter(a => role === 'photographer' ? a.photographerPaid : role === 'editor' ? a.editorPaid : a.otherPaid).length}
-                    </p>
-                  </div>
-                </div>
-              </div>
-              <div className="bg-white p-6 rounded-3xl shadow-xl border border-gray-100">
-                <div className="flex items-center space-x-4">
-                  <div className="p-3 bg-red-50 rounded-2xl">
-                    <Clock className="w-6 h-6 text-red-600" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-black text-gray-400 uppercase tracking-widest">Unpaid Tasks</p>
-                    <p className="text-2xl font-black text-gray-900">
-                      {assignments.filter(a => !(role === 'photographer' ? a.photographerPaid : role === 'editor' ? a.editorPaid : a.otherPaid)).length}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </motion.div>
-        )}
+        ) : null}
       </AnimatePresence>
 
       <ConfirmModal
