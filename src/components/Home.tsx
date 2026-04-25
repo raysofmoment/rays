@@ -43,30 +43,61 @@ const Home: React.FC = () => {
     { name: 'Other', icon: MoreHorizontal }
   ];
 
+  const FALLBACK_IMAGES = [
+    { id: 'f1', name: 'Wedding 1', webViewLink: 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=800', thumbnailLink: 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=800', mimeType: 'image/jpeg' },
+    { id: 'f2', name: 'Wedding 2', webViewLink: 'https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&q=80&w=800', thumbnailLink: 'https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&q=80&w=800', mimeType: 'image/jpeg' },
+    { id: 'f3', name: 'Portrait 1', webViewLink: 'https://images.unsplash.com/photo-1542038784456-1ea8e935640e?auto=format&fit=crop&q=80&w=800', thumbnailLink: 'https://images.unsplash.com/photo-1542038784456-1ea8e935640e?auto=format&fit=crop&q=80&w=800', mimeType: 'image/jpeg' },
+    { id: 'f4', name: 'Event 1', webViewLink: 'https://images.unsplash.com/photo-1519225421980-715cb0215aed?auto=format&fit=crop&q=80&w=800', thumbnailLink: 'https://images.unsplash.com/photo-1519225421980-715cb0215aed?auto=format&fit=crop&q=80&w=800', mimeType: 'image/jpeg' },
+    { id: 'f5', name: 'Kids 1', webViewLink: 'https://images.unsplash.com/photo-1520856629106-ac9b48af63b2?auto=format&fit=crop&q=80&w=800', thumbnailLink: 'https://images.unsplash.com/photo-1520856629106-ac9b48af63b2?auto=format&fit=crop&q=80&w=800', mimeType: 'image/jpeg' },
+    { id: 'f6', name: 'Other 1', webViewLink: 'https://images.unsplash.com/photo-1532712938310-34cb3982ef74?auto=format&fit=crop&q=80&w=800', thumbnailLink: 'https://images.unsplash.com/photo-1532712938310-34cb3982ef74?auto=format&fit=crop&q=80&w=800', mimeType: 'image/jpeg' },
+  ];
+
   useEffect(() => {
+    // Health check to verify backend connectivity
+    const checkHealth = async () => {
+      try {
+        const response = await fetch(`${window.location.origin}/api/health`);
+        if (response.ok) {
+          const data = await response.json();
+          console.log('[Home] Backend health check successful:', data);
+        } else {
+          console.warn('[Home] Backend health check returned non-200 status. This might be normal if the server is starting.');
+        }
+      } catch (err) {
+        console.warn('[Home] Backend is currently unreachable. Will retry or use fallbacks.');
+      }
+    };
+    checkHealth();
+
     const fetchPortfolio = async () => {
       try {
         setLoadingPortfolio(true);
         const folderId = FOLDER_MAP[activeCategory];
-        // Use relative path for more reliable fetching in varying environments
-        const apiUrl = `/api/drive/list/${folderId}`;
+        
+        if (!folderId) {
+          setPortfolioItems(FALLBACK_IMAGES);
+          setLoadingPortfolio(false);
+          return;
+        }
+
+        const apiUrl = `${window.location.origin}/api/drive/list/${folderId}`;
+        console.log(`[Home] Fetching portfolio: ${activeCategory}`);
         
         const response = await fetch(apiUrl);
         if (!response.ok) {
-          const errorText = await response.text();
-          console.error(`Portfolio fetch failed with status ${response.status}:`, errorText);
-          throw new Error(`Failed to fetch portfolio: ${response.status}`);
+          throw new Error(`Status ${response.status}`);
         }
         
         const data = await response.json();
-        const images = data.filter((f: any) => f.mimeType && f.mimeType.startsWith('image/')).slice(0, 9);
-        setPortfolioItems(images);
-      } catch (error: any) {
-        console.error('Error fetching portfolio:', error);
-        // If it's a network error (Failed to fetch), provide more context
-        if (error.message === 'Failed to fetch') {
-          console.warn('Network error detected. Check if the server is running and accessible.');
+        if (data && Array.isArray(data) && data.length > 0) {
+          const images = data.filter((f: any) => f.mimeType && f.mimeType.startsWith('image/')).slice(0, 9);
+          setPortfolioItems(images.length > 0 ? images : FALLBACK_IMAGES);
+        } else {
+          setPortfolioItems(FALLBACK_IMAGES);
         }
+      } catch (error: any) {
+        console.warn('[Home] Using fallback images due to fetch error:', error.message);
+        setPortfolioItems(FALLBACK_IMAGES);
       } finally {
         setLoadingPortfolio(false);
       }

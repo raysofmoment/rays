@@ -118,7 +118,8 @@ const PhotoSelection: React.FC<PhotoSelectionProps> = ({ user, role }) => {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
 
-      const response = await fetch(`/api/drive/list/${folderId}`, {
+      const apiUrl = `${window.location.origin}/api/drive/list/${folderId}`;
+      const response = await fetch(apiUrl, {
         signal: controller.signal
       });
       clearTimeout(timeoutId);

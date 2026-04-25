@@ -42,7 +42,7 @@ const WIPAssetLibrary = ({ onClose }: { onClose: () => void }) => {
 
   const fetchFiles = async () => {
     try {
-      const response = await fetch(`/api/drive/list/${WIP_FOLDER_ID}`);
+      const response = await fetch(`${window.location.origin}/api/drive/list/${WIP_FOLDER_ID}`);
       const data = await response.json();
       if (Array.isArray(data)) {
         setFiles(data);
