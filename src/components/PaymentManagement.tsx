@@ -231,7 +231,7 @@ const PaymentManagement: React.FC<PaymentManagementProps> = ({ role }) => {
           <h1 className="text-3xl font-bold text-gray-900">Payment Management</h1>
           <p className="text-gray-500 mt-1">Review and confirm manual payment submissions from clients.</p>
           <a 
-            href="https://drive.google.com/drive/folders/10MEuvB7YLVCuqzsAczfckbRUU5ieVUkh" 
+            href="https://drive.google.com/drive/u/1/folders/18i7ozCbEtFI9O4Pg2uxclc2KBQyGePkB" 
             target="_blank" 
             rel="noopener noreferrer"
             className="inline-flex items-center space-x-2 text-xs font-bold text-blue-600 hover:text-blue-700 mt-2 bg-blue-50 px-3 py-1.5 rounded-lg transition-colors"

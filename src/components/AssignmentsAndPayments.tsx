@@ -141,6 +141,22 @@ const AssignmentsAndPayments: React.FC<AssignmentsAndPaymentsProps> = ({ user, r
           await updateDoc(doc(db, 'orders', orderDocs.docs[0].id), updates);
         }
 
+        // Notify staff via email
+        try {
+          const staffDoc = await getDoc(doc(db, 'users', staffUid));
+          if (staffDoc.exists() && staffDoc.data().email) {
+            import('../utils/emailHelper').then(({ sendEmail }) => {
+              sendEmail({
+                to: staffDoc.data().email,
+                subject: `Payment Received - RAYS OF MOMENT`,
+                text: `Hi ${staffDoc.data().displayName || 'Team Member'},\n\nYou have received a payment of ₹${amount} for Invoice ${orderData.invoiceNumber}.\nLog into your dashboard to check the details.\n\nBest regards,\nThe RAYS OF MOMENT Team`
+              });
+            });
+          }
+        } catch (emailErr) {
+          console.error("Failed to notify staff about payment", emailErr);
+        }
+
         toast.success(`₹${amount} paid successfully.`);
       }
     } catch (error) {

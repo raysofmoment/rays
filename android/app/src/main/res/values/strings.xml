@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Rays of Moment</string>
+    <string name="title_activity_main">Rays of Moment</string>
+    <string name="package_name">com.raysofmoment.app</string>
+    <string name="custom_url_scheme">com.raysofmoment.app</string>
+</resources>

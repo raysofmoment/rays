@@ -1,6 +1,7 @@
 import React from 'react';
 import { format } from 'date-fns';
 import Logo from './Logo';
+import { getFormattedOrderName } from '../utils/orderFormatting';
 
 interface InvoiceProps {
   data: {
@@ -37,6 +38,8 @@ const Invoice: React.FC<InvoiceProps> = ({ data, id }) => {
   const shippingHandling = 0;
   const total = subtotalLessDiscount + shippingHandling;
 
+  const formattedName = getFormattedOrderName({ eventType: data.eventType, packageName: data.packageName });
+
   return (
     <div id={id} className="bg-white p-12 max-w-[800px] mx-auto font-sans text-gray-800 relative min-h-[1100px]">
       {/* Vertical Invoice Number */}
@@ -63,7 +66,7 @@ const Invoice: React.FC<InvoiceProps> = ({ data, id }) => {
             <div className="absolute inset-0 border-2 border-gray-200 rounded-full flex items-center justify-center p-2">
               <div className="text-center">
                 <div className="text-[8px] font-bold tracking-tighter uppercase leading-none mb-1">YOUR MOMENT OUR PRIORITY</div>
-                <Logo className="w-12 h-12 mx-auto" />
+                <Logo className="w-20 h-20 mx-auto" />
                 <div className="text-[8px] font-bold tracking-tighter uppercase leading-none mt-1">RAYS OF MOMENT</div>
               </div>
             </div>
@@ -76,7 +79,7 @@ const Invoice: React.FC<InvoiceProps> = ({ data, id }) => {
             <h3 className="text-blue-600 font-bold border-b border-blue-600 mb-4 pb-1 uppercase text-sm">BILL TO</h3>
             <div className="space-y-1 text-sm">
               <p className="font-bold">{data.clientName}</p>
-              <p>{data.packageName}</p>
+              <p className="capitalize">{formattedName}</p>
               <p>{data.location || 'Berhampore, Murshidabad'}</p>
               <p>{data.clientMobile}</p>
             </div>
@@ -105,7 +108,7 @@ const Invoice: React.FC<InvoiceProps> = ({ data, id }) => {
           </thead>
           <tbody className="text-sm">
             <tr>
-              <td className="py-2 px-4 border border-gray-200">{data.packageName}</td>
+              <td className="py-2 px-4 border border-gray-200 capitalize">{formattedName}</td>
               <td className="py-2 px-4 border border-gray-200 text-center">1</td>
               <td className="py-2 px-4 border border-gray-200 text-right">{data.totalAmount.toFixed(2)}</td>
               <td className="py-2 px-4 border border-gray-200 text-right">{data.totalAmount.toFixed(2)}</td>
@@ -126,12 +129,18 @@ const Invoice: React.FC<InvoiceProps> = ({ data, id }) => {
           <div className="flex-grow">
             {data.packageDetails && data.packageDetails.length > 0 && (
               <div className="text-sm">
-                <h4 className="font-bold underline mb-2">{data.packageName}</h4>
-                <ul className="space-y-1">
-                  {data.packageDetails.map((detail, idx) => (
-                    <li key={idx}>{idx + 1}. {detail}</li>
-                  ))}
-                </ul>
+                <h4 className="text-blue-600 font-bold border-b border-blue-600 mb-3 pb-1 uppercase text-xs">Package Details & Inclusions</h4>
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                  <h5 className="font-bold mb-2 capitalize text-gray-900">{formattedName}</h5>
+                  <ul className="space-y-1 text-gray-600 text-xs">
+                    {data.packageDetails.map((detail, idx) => (
+                      <li key={idx} className="flex items-start gap-2">
+                        <span className="font-bold text-blue-600 shrink-0">{idx + 1}.</span>
+                        <span>{detail}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               </div>
             )}
           </div>

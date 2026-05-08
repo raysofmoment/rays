@@ -1,32 +1,35 @@
 import express from "express";
 import path from "path";
 import cors from "cors";
+import crypto from "crypto";
 
 console.log("Starting server.ts...");
 
-import Stripe from "stripe";
 import dotenv from "dotenv";
 import { google } from "googleapis";
 import multer from "multer";
 import cookieSession from "cookie-session";
 import { Readable } from "stream";
+import nodemailer from "nodemailer";
+import { initializeApp, getApps } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
 
 dotenv.config();
 
-let globalDriveTokens: any = null;
-
-// These will be initialized lazily
-let stripeClient: Stripe | null = null;
-const getStripe = () => {
-  if (!stripeClient) {
-    const key = (process.env.STRIPE_SECRET_KEY || "").trim();
-    if (key && !key.startsWith('sk_') && !key.startsWith('rk_')) {
-      console.warn(`[Stripe] Warning: STRIPE_SECRET_KEY does not appear to be a valid Stripe key. It starts with: ${key.substring(0, 8)}`);
-    }
-    stripeClient = new Stripe(key);
+// Initialize Admin SDK with values from config
+let adminDb: any;
+try {
+  if (getApps().length === 0) {
+    initializeApp({
+      projectId: "gen-lang-client-0181287072"
+    });
   }
-  return stripeClient;
-};
+  adminDb = getFirestore("ai-studio-f0783e53-3cf8-4d36-b766-31c39e6bf608");
+} catch (err) {
+  console.error("Failed to initialize Firebase Admin SDK:", err);
+}
+
+let globalDriveTokens: any = null;
 
 const oauth2Client = new google.auth.OAuth2(
   process.env.GOOGLE_CLIENT_ID,
@@ -42,7 +45,7 @@ async function startServer() {
 
   app.use(cors());
   app.use(express.json());
-  
+
   // Request logging middleware
   app.use((req, res, next) => {
     const start = Date.now();
@@ -98,16 +101,19 @@ async function startServer() {
 
   // API routes
   app.get("/api/health", async (req, res) => {
+    console.log("[Health] Checking system status...");
     const protocol = req.headers["x-forwarded-proto"] || "http";
     const host = req.headers.host;
     
     res.json({ 
       status: "ok", 
+      message: "Server is running",
       env: process.env.NODE_ENV,
       detectedOrigin: `${protocol}://${host}`,
       configAppUrl: process.env.APP_URL,
       configRedirectUri: process.env.GOOGLE_REDIRECT_URI,
-      driveTokensLoaded: !!globalDriveTokens
+      driveTokensLoaded: !!globalDriveTokens,
+      timestamp: new Date().toISOString()
     });
   });
 
@@ -265,13 +271,14 @@ async function startServer() {
       const response = await drive.files.create({
         requestBody: fileMetadata,
         media: media,
-        fields: "id, webViewLink, webContentLink, thumbnailLink",
+        fields: "id, name, webViewLink, webContentLink, thumbnailLink",
       });
 
-      console.log(`[Drive Upload] Successfully uploaded file ID: ${response.data.id}`);
+      console.log(`[Drive Upload] Successfully uploaded file ID: ${response.data.id} (${response.data.name})`);
 
       res.json({
         id: response.data.id,
+        name: response.data.name,
         url: response.data.webViewLink,
         thumbnailUrl: response.data.thumbnailLink || response.data.webViewLink,
       });
@@ -293,111 +300,53 @@ async function startServer() {
     const { folderId } = req.params;
     console.log(`[Drive] API Request Received - Listing folder: ${folderId}`);
     
-    let drive: any = null;
-    let apiKey = getApiKey();
-
-    if (!apiKey && !globalDriveTokens) {
-      console.warn("[Drive] API Error: No API Key or OAuth tokens available");
-    }
-
-    const tryGetFolder = async (dClient: any) => {
-      await dClient.files.get({ fileId: folderId, fields: "id, name" });
-    };
-
-    let authMethod = "None";
-
     try {
-      if (globalDriveTokens) {
-        console.log("[Drive] Trying authenticated OAuth tokens for listing");
-        oauth2Client.setCredentials(globalDriveTokens);
-        drive = google.drive({ version: "v3", auth: oauth2Client });
-        try {
-          await tryGetFolder(drive);
-          authMethod = "OAuth";
-        } catch (err: any) {
-          // Silent fallback
-          drive = null; // Reset to try API key
-        }
-      }
-
-      if (!drive) {
-        if (!apiKey) {
-           return res.status(400).json({ 
-             error: "Google Drive access required. Please link your Google Drive in Studio Hub or set an API Key." 
-           });
-        }
-        console.log(`[Drive] Trying API Key for listing: ${apiKey.substring(0, 6)}...`);
-        drive = google.drive({ version: "v3", auth: apiKey });
-        try {
-           await tryGetFolder(drive);
-           authMethod = "API Key";
-        } catch (folderErr: any) {
-           console.warn(`[Drive] Pre-check failed for folder ${folderId} with API Key:`, folderErr.message);
-           if (folderErr.code === 404) {
-             throw new Error(`Folder not found or is private. Make sure the folder sharing is set to 'Anyone with the link can view'.`);
-           } else if (folderErr.code === 403) {
-             throw new Error("Permission Denied. The API key does not have access, or the folder is restricted.");
-           }
-           throw folderErr;
-        }
-      }
-
-      // Helper function to fetch all files recursively/paginated for a given query
-      const fetchAllFiles = async (folderIdToSearch: string) => {
-        let allItems: any[] = [];
-        let pageToken: string | undefined = undefined;
-        let pagesChecked = 0;
-        
-        do {
-          const response = await drive.files.list({
-            q: `'${folderIdToSearch}' in parents and trashed = false`,
-            fields: "nextPageToken, files(id, name, mimeType, thumbnailLink, webContentLink, webViewLink)",
-            pageSize: 1000,
-            pageToken: pageToken,
-          });
-          
-          if (response.data.files) {
-            allItems = allItems.concat(response.data.files);
-          }
-          pageToken = response.data.nextPageToken || undefined;
-          pagesChecked++;
-          
-          // Safeguard: limit to max 10 pages (10,000 files) per directory to prevent infinite loops
-        } while (pageToken && pagesChecked < 10);
-        
-        return allItems;
-      };
-
-      let allFiles = await fetchAllFiles(folderId);
-      let mediaFiles = allFiles.filter(f => f.mimeType?.includes('image/') || f.mimeType?.includes('video/'));
+      let oauthTokens = globalDriveTokens || (req as any).session?.tokens;
+      let apiKey = getApiKey();
       
-      // If no media but we found folders, check ONE LEVEL deep.
-      if (mediaFiles.length === 0) {
-        const subfolders = allFiles.filter(f => f.mimeType === 'application/vnd.google-apps.folder');
-        if (subfolders.length > 0) {
-          console.log(`[Drive] No media in root, checking ${subfolders.length} subfolders...`);
-          // Note: To avoid rate-limiting or massive fetches, we might want to cap how many subfolders/files we fetch.
-          for (let subfolder of subfolders.slice(0, 5)) { // limit to first 5 subfolders to avoid rate limits
-            if (!subfolder.id) continue;
-            try {
-              const subFiles = await fetchAllFiles(subfolder.id);
-              const subMedia = subFiles.filter(f => f.mimeType?.includes('image/') || f.mimeType?.includes('video/'));
-              mediaFiles = [...mediaFiles, ...subMedia];
-            } catch (e) {
-              console.warn(`[Drive] Could not check subfolder ${subfolder.id}`);
-            }
-          }
-        }
+      let drive: any;
+      let authMethod = "None";
+
+      if (oauthTokens) {
+        console.log("[Drive] Using OAuth tokens for listing");
+        oauth2Client.setCredentials(oauthTokens);
+        drive = google.drive({ version: "v3", auth: oauth2Client });
+        authMethod = "OAuth";
+      } else if (apiKey) {
+        console.log(`[Drive] Using API Key for listing`);
+        drive = google.drive({ version: "v3", auth: apiKey });
+        authMethod = "API Key";
+      } else {
+        return res.status(401).json({ error: "Google Drive not connected. Please set up API Key or OAuth." });
       }
 
-      console.log(`[Drive] Search in folder ${folderId} returned ${mediaFiles.length} media files`);
-      res.json(mediaFiles);
-    } catch (error: any) {
-      console.error("[Drive] List error details:", error);
-      const statusCode = (typeof error.code === 'number' && error.code >= 100 && error.code < 600) ? error.code : 500;
-      res.status(statusCode).json({ 
-        error: error.message || "Failed to fetch from Drive"
+      // Fetch files
+      const response = await drive.files.list({
+        q: `'${folderId}' in parents and trashed = false`,
+        fields: "nextPageToken, files(id, name, mimeType, thumbnailLink, webContentLink, webViewLink, size, createdTime)",
+        pageSize: 100, // Reduced from 1000 for faster response
+        includeItemsFromAllDrives: true,
+        supportsAllDrives: true,
       });
+
+      const files = response.data.files || [];
+      
+      // Filter for images and videos
+      let mediaFiles = files.filter((f: any) => 
+        f.mimeType?.startsWith('image/') || f.mimeType?.startsWith('video/')
+      );
+
+      console.log(`[Drive] Folder ${folderId} contains ${mediaFiles.length} media files (Method: ${authMethod})`);
+      res.json(mediaFiles);
+
+    } catch (error: any) {
+      if (error.code === 404 || error.code === '404' || error.message?.includes('File not found')) {
+        console.warn(`[Drive] Folder not found or not shared publicly: ${folderId}`);
+        // Return 200 OK with empty array so frontend doesn't crash or show errors, just empty content
+        return res.json([]);
+      }
+      console.error("[Drive] List API Critical Error:", error);
+      res.status(500).json({ error: error.message || "Internal server error" });
     }
   });
 
@@ -599,38 +548,114 @@ async function startServer() {
     }
   });
 
-  app.post("/api/create-checkout-session", async (req, res) => {
+  // PhonePe Integration
+  app.post("/api/phonepe/initiate", async (req, res) => {
     try {
-      const { orderId, amount, clientName, clientEmail, type = "order" } = req.body;
+      const { orderId, amount, clientName, clientEmail, type = "booking" } = req.body;
       
-      const appUrl = process.env.APP_URL || "https://www.raysofmoment.com";
-      const session = await getStripe().checkout.sessions.create({
-        payment_method_types: ["card"],
-        customer_email: clientEmail,
-        line_items: [
-          {
-            price_data: {
-              currency: "usd",
-              product_data: {
-                name: type === "booking" ? `Photography Booking #${orderId}` : `Photography Order #${orderId}`,
-                description: `Payment for ${clientName}`,
-              },
-              unit_amount: Math.round(amount * 100),
-            },
-            quantity: 1,
-          },
-        ],
-        mode: "payment",
-        success_url: `${appUrl}/payment-success?orderId=${orderId}&type=${type}`,
-        cancel_url: `${appUrl}/payment-cancel?orderId=${orderId}&type=${type}`,
-        metadata: {
-          orderId,
-          type,
-        },
+      const merchantId = process.env.PHONEPE_MERCHANT_ID || "PGTESTPAYUAT";
+      const saltKey = process.env.PHONEPE_SALT_KEY || "099eb0cd-02cf-4e2a-8aca-3e6c6aff0399";
+      const saltIndex = process.env.PHONEPE_SALT_INDEX || "1";
+      const clientId = process.env.PHONEPE_CLIENT_ID;
+      const clientSecret = process.env.PHONEPE_CLIENT_SECRET;
+      let hostUrl = process.env.PHONEPE_HOST_URL || "https://api-preprod.phonepe.com/apis/pg-sandbox";
+      if (!hostUrl.startsWith("http://") && !hostUrl.startsWith("https://")) {
+        hostUrl = `https://${hostUrl}`;
+      }
+      
+      // Auto-correct invalid production/UAT host URLs that users might mistakenly use
+      if (hostUrl.includes("checkout/v2")) {
+        hostUrl = hostUrl.includes("preprod") || hostUrl.includes("sandbox") 
+          ? "https://api-preprod.phonepe.com/apis/pg-sandbox" 
+          : "https://api.phonepe.com/apis/hermes";
+      }
+
+      if (!hostUrl.includes("phonepe.com")) {
+        return res.status(400).json({ error: "Configuration Error: PHONEPE_HOST_URL must be a valid PhonePe API domain (e.g., api-preprod.phonepe.com or api.phonepe.com). Please check your Environment Variables." });
+      }
+
+      const transactionId = `MT${Date.now()}`;
+      const protocol = req.headers["x-forwarded-proto"] || "http";
+      const host = req.headers.host;
+      const currentOrigin = `${protocol}://${host}`;
+      const appUrl = process.env.APP_URL || currentOrigin;
+      
+      const payload = {
+        merchantId,
+        merchantTransactionId: transactionId,
+        merchantUserId: (clientEmail || `MUID${Date.now()}`).replace(/[^a-zA-Z0-9]/g, '').slice(0, 30),
+        amount: Math.round(amount * 100), // convert to paise
+        redirectUrl: `${appUrl}/payment-success?orderId=${orderId}&type=${type}&transactionId=${transactionId}`,
+        redirectMode: "REDIRECT",
+        callbackUrl: `${appUrl}/api/phonepe/callback`,
+        mobileNumber: "9999999999", // Can be passed from client
+        paymentInstrument: {
+          type: "PAY_PAGE"
+        }
+      };
+
+      const base64Payload = Buffer.from(JSON.stringify(payload)).toString("base64");
+      
+      let endpoint = hostUrl;
+      // If the provided hostUrl does not already contain the pay endpoint path, append the standard one
+      if (!endpoint.includes("/pay")) {
+        endpoint = endpoint.replace(/\/$/, "") + "/pg/v1/pay";
+      }
+
+      // PhonePe explicitly requires the string "/pg/v1/pay" for the checksum of this API
+      const stringToHash = base64Payload + "/pg/v1/pay" + saltKey;
+      const sha256 = crypto.createHash("sha256").update(stringToHash).digest("hex");
+      const xVerify = sha256 + "###" + saltIndex;
+
+      console.log(`[PhonePe] Initiating payment for ${orderId}, amount: ${amount}, endpoint: ${endpoint}`);
+
+      const headers: any = {
+        "Content-Type": "application/json",
+        "X-VERIFY": xVerify,
+        "accept": "application/json"
+      };
+
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ request: base64Payload })
       });
 
-      res.json({ id: session.id });
+      let data;
+      try {
+        const textResponse = await response.text();
+        data = JSON.parse(textResponse);
+      } catch (parseError) {
+        console.error("[PhonePe] Failed to parse PhonePe response. Is the Host URL correct?", parseError);
+        return res.status(400).json({ error: "PhonePe returned an invalid response. Ensure PHONEPE_HOST_URL is correct." });
+      }
+      
+      if (data.success && data.data && data.data.instrumentResponse) {
+        res.json({ url: data.data.instrumentResponse.redirectInfo.url });
+      } else {
+        console.error("[PhonePe] Initiation failed:", data);
+        if (data.code === '404' || data.code === 'KEY_NOT_CONFIGURED') {
+          res.status(400).json({ error: "PhonePe Error: Invalid Merchant ID or Salt Key. Check if you are using UAT credentials on a Production URL." });
+        } else if (data.message && data.message.includes("Api Mapping Not Found")) {
+          res.status(400).json({ error: "PhonePe Error: Invalid Host URL. Use 'https://api.phonepe.com/apis/hermes' for Production." });
+        } else {
+          res.status(400).json({ error: data.message || "Failed to initiate PhonePe payment" });
+        }
+      }
     } catch (error: any) {
+      console.error("[PhonePe] Error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/phonepe/callback", async (req, res) => {
+    try {
+      // Logic for verifying callback from PhonePe
+      console.log("[PhonePe] Callback received:", req.body);
+      // In production, verify the X-VERIFY header here as well
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error("[PhonePe] Callback Error:", error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -666,18 +691,111 @@ async function startServer() {
   console.log(`GOOGLE_REDIRECT_URI: ${process.env.GOOGLE_REDIRECT_URI || "DEFAULT"}`);
   console.log("--------------------------");
 
-  // Global error handler for API routes
-  app.use("/api", (err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-    console.error("API Error caught by global handler:", err);
-    res.status(err.status || 500).json({
-      error: err.message || "Internal Server Error",
-      code: err.code
-    });
+  // Common email configuration check
+  const smtpPort = parseInt(process.env.SMTP_PORT || "465");
+  const hostRaw = process.env.SMTP_HOST || "smtp.titan.email";
+  const smtpHost = hostRaw.replace(/^https?:\/\//, '').replace(/\/$/, '').trim();
+  
+  const transporter = nodemailer.createTransport({
+    host: smtpHost,
+    port: smtpPort,
+    secure: smtpPort === 465, // true for 465, false for other ports like 587 (STARTTLS)
+    auth: {
+      user: process.env.SMTP_USER || "raysofmoment@raysofmoment.com",
+      pass: process.env.SMTP_PASS || "", 
+    },
+    connectionTimeout: 15000,
+  });
+
+  // Generic Email Sending API
+  app.get("/api/check-email-status", async (req, res) => {
+    try {
+      if (!process.env.SMTP_PASS) {
+        return res.json({ 
+          connected: false, 
+          message: "SMTP password (SMTP_PASS) is missing in environment variables.",
+          host: process.env.SMTP_HOST || "smtp.titan.email",
+          user: process.env.SMTP_USER || "Enter your email",
+        });
+      }
+
+      await transporter.verify();
+      const options = transporter.options as any;
+      res.json({ 
+        connected: true, 
+        message: "Email server connected successfully!",
+        host: options.host,
+        user: options.auth?.user
+      });
+    } catch (error: any) {
+      console.error("Email Verification Error:", error);
+      const options = transporter.options as any;
+      let hint = "";
+      if (error.message && error.message.includes("timeout")) {
+        hint = " (Hint: This might be due to a blocked port or incorrect SMTP host. Port numbers 465 or 587 are usually used. Double-check your SMTP_HOST and SMTP_PORT)";
+      }
+      res.status(500).json({ 
+        connected: false, 
+        message: "Failed to connect to email server." + hint, 
+        error: error.message,
+        host: options.host,
+        port: options.port
+      });
+    }
+  });
+
+  app.post("/api/send-email", express.json(), async (req, res) => {
+    try {
+      const { to, subject, text, html } = req.body;
+      
+      if (!to || !subject || (!text && !html)) {
+        return res.status(400).json({ error: "Missing required fields (to, subject, text/html)" });
+      }
+
+      if (!process.env.SMTP_PASS) {
+        console.warn("SMTP_PASS is not set. Simulating email send:");
+        console.log(`To: ${to}\nSubject: ${subject}\nText: ${text}`);
+        return res.json({ success: true, message: "Email simulated (SMTP_PASS not set)" });
+      }
+
+      const info = await transporter.sendMail({
+        from: `"Rays of Moment" <${process.env.SMTP_USER}>`,
+        to,
+        subject,
+        text,
+        html,
+      });
+
+      console.log("Message sent: %s", info.messageId);
+      res.json({ success: true, messageId: info.messageId });
+    } catch (error: any) {
+      console.error("Error sending email:", error);
+      res.status(500).json({ error: "Failed to send email", details: error.message });
+    }
   });
 
   // Specific 404 for API routes to prevent falling through to Vite SPA
   app.all("/api/*", (req, res) => {
-    res.status(404).json({ error: `API route not found: ${req.method} ${req.url}` });
+    console.warn(`[404] API Route Not Found: ${req.method} ${req.url}`);
+    res.status(404).json({ 
+      error: `API route not found: ${req.method} ${req.url}`,
+      suggestion: "Check if the API path is correct and registered in server.ts"
+    });
+  });
+
+  // Global error handler for ALL routes
+  app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error("!!! GLOBAL SERVER ERROR !!!");
+    console.error(`Path: ${req.url}`);
+    console.error(err);
+    
+    if (req.url.startsWith('/api/')) {
+      return res.status(err.status || 500).json({
+        error: err.message || "Internal Server Error",
+        path: req.url
+      });
+    }
+    next(err);
   });
 
   // Vite middleware for development

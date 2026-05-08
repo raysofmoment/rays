@@ -227,6 +227,17 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
         'info',
         '/careers'
       );
+      
+      // Auto-reply to applicant
+      if (formData.email) {
+        import('../utils/emailHelper').then(({ sendEmail }) => {
+          sendEmail({
+            to: formData.email,
+            subject: 'Application Received - Rays of Moment',
+            text: `Hi ${formData.name},\n\nThank you for applying for the position of ${formData.designation}.\nWe have received your application and will contact you if your qualifications match our current needs.\n\nBest regards,\nThe Rays of Moment Team`
+          });
+        });
+      }
 
       toast.success('Application submitted successfully!');
       handleCloseModals();
@@ -362,6 +373,17 @@ const Careers: React.FC<CareersProps> = ({ user, role }) => {
         toast.success(`${acceptFormData.name}'s user role updated to ${acceptFormData.role} and added to team.`);
       } else {
         toast.info(`${acceptFormData.name} does not have a user account yet. They have been added to the Employee List.`);
+      }
+
+      // Send acceptance email to applicant
+      if (acceptFormData.email) {
+        import('../utils/emailHelper').then(({ sendEmail }) => {
+          sendEmail({
+            to: acceptFormData.email,
+            subject: `Congratulations! Your application has been accepted - Rays of Moment`,
+            text: `Hi ${acceptFormData.name},\n\nWe are thrilled to inform you that your application for the ${acceptFormData.designation} position has been accepted!\nWelcome to the team!\n\nBest regards,\nThe Rays of Moment Team`
+          });
+        });
       }
 
       // 3. Delete the application

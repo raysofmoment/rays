@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { User } from 'firebase/auth';
-import { collection, query, where, getDocs, addDoc, updateDoc, doc, deleteDoc, orderBy, onSnapshot, writeBatch } from 'firebase/firestore';
+import { collection, query, where, getDocs, addDoc, updateDoc, doc, deleteDoc, orderBy, onSnapshot, writeBatch, or } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { notifyAdmins, notifyUser } from '../services/notificationService';
-import { Calendar, Plus, Search, Filter, MoreVertical, Trash2, Edit2, CreditCard, Image as ImageIcon, User as UserIcon, Eye, Bell, ShoppingCart, Download, X, Camera } from 'lucide-react';
+import { Calendar, Plus, Search, Filter, MoreVertical, Trash2, Edit2, CreditCard, Image as ImageIcon, User as UserIcon, Eye, Bell, ShoppingCart, Download, X, Camera, Share2 } from 'lucide-react';
 import { format, isValid } from 'date-fns';
 import { toast } from 'sonner';
 import { loadStripe } from '@stripe/stripe-js';
@@ -18,6 +18,10 @@ if (stripePublishableKey && !stripePublishableKey.startsWith('pk_')) {
 }
 const stripePromise = loadStripe(stripePublishableKey);
 
+import { getFormattedOrderName } from '../utils/orderFormatting';
+
+import ConfirmModal from './ConfirmModal';
+
 interface OrderManagementProps {
   user: User;
   role: string | null;
@@ -25,24 +29,80 @@ interface OrderManagementProps {
 
 import ProjectDetailsModal from './ProjectDetailsModal';
 import EventCostForm from './EventCostForm';
-import ConfirmModal from './ConfirmModal';
 
 const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
   const { cart, clearCart, totalAmount } = useCart();
+  
+  const handleWhatsAppShare = (order: any) => {
+    if (!order.mobileNumber && !order.clientMobile) {
+      toast.error('No mobile number available for this client');
+      return;
+    }
+    const baseUrl = window.location.origin;
+    const items = [
+      `Hi *${order.clientName}*, here are your project links from Rays of Moment:`,
+      '',
+      `🧾 *Invoice*: ${baseUrl}/invoice/${order.bookingId || order.id}`,
+      `💰 *Total Amount*: ₹${(order.finalAmount || order.totalAmount).toLocaleString()}`,
+      `💳 *Payment Link*: ${baseUrl}/orders`,
+      `🖼️ *Photo Selection Link*: ${baseUrl}/photo-selection/${order.bookingId || order.id}`,
+      `🔍 *Find My Photos*: ${baseUrl}/find-my-photos`
+    ];
+    
+    let phoneStr = order.mobileNumber || order.clientMobile;
+    phoneStr = phoneStr.replace(/\D/g, ''); // remove non-digits
+    if (phoneStr.length === 10) {
+      phoneStr = '91' + phoneStr;
+    }
+    const message = encodeURIComponent(items.join('\n'));
+    window.open(`https://api.whatsapp.com/send?phone=${phoneStr}&text=${message}`, '_blank');
+  };
+
   const [orders, setOrders] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showBookingForm, setShowBookingForm] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
 
-  const handleDelete = async (orderId: string) => {
-    if (!window.confirm('Are you sure you want to delete this order?')) return;
+  const handleDelete = (orderId: string) => {
+    setItemToDelete(orderId);
+    setDeleteConfirmOpen(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
     try {
-      await deleteDoc(doc(db, 'orders', orderId));
-      toast.success('Order deleted successfully');
+      const order = orders.find(o => o.id === itemToDelete) || requests.find(r => r.id === itemToDelete);
+      const batch = writeBatch(db);
+      
+      batch.delete(doc(db, 'orders', itemToDelete));
+      
+      if (order?.bookingId) {
+        batch.delete(doc(db, 'bookings', order.bookingId));
+      } else {
+        // If it's a request, itemToDelete is the booking ID
+        batch.delete(doc(db, 'bookings', itemToDelete));
+      }
+      
+      // Delete associated payments
+      const paymentsQuery = query(collection(db, 'payments'), where('orderId', '==', itemToDelete));
+      const paymentsSnap = await getDocs(paymentsQuery);
+      paymentsSnap.forEach(p => {
+        batch.delete(doc(db, 'payments', p.id));
+      });
+      
+      await batch.commit();
+      toast.success('Deleted successfully');
     } catch (error) {
-      handleFirestoreError(error, OperationType.DELETE, `orders/${orderId}`);
+      console.error('Delete failed:', error);
+      toast.error('Failed to delete. Please check console.');
+      handleFirestoreError(error, OperationType.DELETE, `orders/${itemToDelete}`);
+    } finally {
+      setDeleteConfirmOpen(false);
+      setItemToDelete(null);
     }
   };
   const [showDetailsModal, setShowDetailsModal] = useState(false);
@@ -56,6 +116,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
     totalAmount: 0,
     clientName: user.displayName || '',
     mobileNumber: '',
+    clientEmail: '',
   });
 
   useEffect(() => {
@@ -77,11 +138,17 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
     } else if (role === 'other') {
       ordersQuery = query(collection(db, 'orders'), where('otherIds', 'array-contains', user.uid), orderBy('createdAt', 'desc'));
     } else {
-      ordersQuery = query(collection(db, 'orders'), where('clientId', '==', user.uid), orderBy('createdAt', 'desc'));
+      const conditions: any[] = [where('clientId', '==', user.uid)];
+      if (user.phoneNumber) conditions.push(where('mobileNumber', '==', user.phoneNumber.replace('+91', '')));
+      if (user.email) conditions.push(where('clientEmail', '==', user.email));
+      ordersQuery = query(collection(db, 'orders'), or(...conditions));
     }
 
     const unsubscribe = onSnapshot(ordersQuery, (snapshot) => {
-      const ordersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+      let ordersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any }));
+      if (role === 'client') {
+        ordersData.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      }
       setOrders(ordersData);
       setLoading(false);
 
@@ -107,9 +174,14 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
 
     let requestsUnsubscribe = () => {};
     if (role === 'client') {
-      const requestsQuery = query(collection(db, 'bookings'), where('clientId', '==', user.uid), where('adminStatus', '==', 'requested'));
+      const conditions: any[] = [where('clientId', '==', user.uid)];
+      if (user.phoneNumber) conditions.push(where('clientMobile', '==', user.phoneNumber.replace('+91', '')));
+      if (user.email) conditions.push(where('clientEmail', '==', user.email));
+      const requestsQuery = query(collection(db, 'bookings'), or(...conditions));
       requestsUnsubscribe = onSnapshot(requestsQuery, (snapshot) => {
-        setRequests(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any })));
+        let reqs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() as any })).filter(r => r.adminStatus === 'requested');
+        reqs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        setRequests(reqs);
       });
     } else if (role === 'admin') {
       const requestsQuery = query(collection(db, 'bookings'), where('adminStatus', '==', 'requested'));
@@ -152,7 +224,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
         status: 'pending',
         date: booking.eventDate,
         location: booking.eventPlace,
-        packageName: booking.package === 'Customize' ? booking.requirement : booking.package,
+        packageName: booking.package === 'Customize' ? booking.requirement : booking.package.split(' (')[0],
         totalAmount: booking.totalPackageAmount,
         discount,
         finalAmount: finalAmount,
@@ -178,6 +250,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
 
       await batch.commit();
       toast.success(`Request accepted! Invoice ${invoiceNumber} generated.`);
+      handleWhatsAppShare({ ...booking, invoiceNumber, finalAmount });
     } catch (error) {
       console.error('Error accepting request:', error);
       toast.error('Failed to accept request');
@@ -205,35 +278,44 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
       // If we have a cart, we might want to create multiple orders or one combined order
       // For simplicity, let's create one order with all items if cart is not empty
       const packageName = cart.length > 0 
-        ? cart.map(item => item.name).join(', ') 
+        ? cart.map(item => item.name.split(' (')[0]).join(', ') 
         : newOrder.packageName;
       
       const finalAmount = cart.length > 0 ? totalAmount : newOrder.totalAmount;
 
-      const orderData = {
+      const orderData: any = {
         ...newOrder,
         packageName,
         totalAmount: finalAmount,
-        clientId: user.uid,
         status: 'pending',
         paidAmount: 0,
         createdAt: new Date().toISOString(),
         invoiceNumber,
       };
+      
+      // If client places order, bind their user id. Else bind strictly null or matching client fields.
+      if (role === 'client') {
+         orderData.clientId = user.uid;
+      } else {
+         orderData.clientId = null;
+      }
+      
       await addDoc(collection(db, 'orders'), orderData);
 
       if (cart.length > 0) {
         clearCart();
       }
 
-      // Add notification for the user
-      await notifyUser(
-        user.uid,
-        'Order Placed!',
-        `Your booking for ${newOrder.packageName} has been received. Invoice: ${invoiceNumber}. We will review it soon.`,
-        'info',
-        '/orders'
-      );
+      // Add notification for the user (only if client is creating)
+      if (role === 'client') {
+        await notifyUser(
+          user.uid,
+          'Order Placed!',
+          `Your booking for ${newOrder.packageName} has been received. Invoice: ${invoiceNumber}. We will review it soon.`,
+          'info',
+          '/orders'
+        );
+      }
 
       // Notify admins
       await notifyAdmins(
@@ -245,6 +327,11 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
 
       toast.success('Order created successfully! Your invoice number is ' + invoiceNumber);
       setShowAddModal(false);
+      
+      if (role === 'admin') {
+        handleWhatsAppShare(orderData);
+      }
+      
       setNewOrder({
         packageName: '',
         date: format(new Date(), 'yyyy-MM-dd'),
@@ -252,6 +339,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
         totalAmount: 0,
         clientName: user.displayName || '',
         mobileNumber: '',
+        clientEmail: '',
       });
     } catch (error) {
       toast.error('Failed to create order');
@@ -322,6 +410,20 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
       // Also update the corresponding booking if it exists
       if (order.bookingId) {
         await updateDoc(doc(db, 'bookings', order.bookingId), updates);
+      }
+      
+      // Send email if newly assigned
+      if (!currentIds.includes(memberId)) {
+        const assignedMember = teamMembers.find(m => m.uid === memberId || m.id === memberId);
+        if (assignedMember?.email) {
+            import('../utils/emailHelper').then(({ sendEmail }) => {
+                sendEmail({
+                    to: assignedMember.email,
+                    subject: `New Assignment: Invoice ${order.invoiceNumber}`,
+                    text: `Hi ${assignedMember.displayName || assignedMember.name || 'Team Member'},\n\nYou have been newly assigned to an order (Invoice: ${order.invoiceNumber}) for client ${order.clientName}.\nPlease log in to your dashboard to check details about the event at ${order.location} on ${order.date}.\n\nBest regards,\nThe Rays of Moment Team`
+                });
+            });
+        }
       }
       
       toast.success('Assignment updated successfully');
@@ -401,7 +503,7 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
                   'Invoice Number': o.invoiceNumber || '-',
                   'Client Name': o.clientName,
                   'Mobile': o.mobileNumber,
-                  'Package': o.packageName,
+                  'Package': getFormattedOrderName(o),
                   'Date': o.date && isValid(new Date(o.date)) ? format(new Date(o.date), 'yyyy-MM-dd') : '-',
                   'Location': o.location || '-',
                   'Status': o.status,
@@ -511,9 +613,16 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
                         </button>
                         <button 
                           onClick={() => handleRejectRequest(req.id)}
-                          className="px-3 py-1 bg-red-600 text-white text-[10px] font-bold rounded-lg hover:bg-red-700 transition-colors"
+                          className="px-3 py-1 bg-gray-100 text-gray-600 text-[10px] font-bold rounded-lg hover:bg-gray-200 transition-colors"
                         >
                           Reject
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(req.id)}
+                          className="px-2 py-1 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                          title="Delete Request"
+                        >
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     )}
@@ -564,9 +673,9 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
                         setSelectedOrder(order);
                         setShowDetailsModal(true);
                       }}
-                      className="text-sm font-bold text-gray-900 hover:text-blue-600 transition-colors text-left"
+                      className="text-sm font-bold text-gray-900 hover:text-blue-600 transition-colors text-left capitalize"
                     >
-                      {order.packageName}
+                      {getFormattedOrderName(order)}
                     </button>
                     <p className="text-xs text-gray-500">{order.location}</p>
                     <p className="text-xs text-gray-400">
@@ -835,19 +944,23 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
                         </>
                       )}
                       {role === 'admin' && (
-                        <button 
-                          onClick={() => handleDelete(order.id)}
-                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                          title="Delete Order"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <>
+                          <button
+                            onClick={() => handleWhatsAppShare(order)}
+                            className="p-2 text-green-500 hover:bg-green-50 rounded-lg transition-colors"
+                            title="Share on WhatsApp"
+                          >
+                            <Share2 className="w-4 h-4" />
+                          </button>
+                          <button 
+                            onClick={() => handleDelete(order.id)}
+                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Delete Order"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </>
                       )}
-                      <button 
-                        className="p-2 text-gray-400 hover:text-black"
-                      >
-                        <MoreVertical className="w-5 h-5" />
-                      </button>
                     </div>
                   </td>
                 </tr>
@@ -889,6 +1002,16 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
                   onChange={(e) => setNewOrder({ ...newOrder, mobileNumber: e.target.value })}
                   className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-black outline-none"
                   required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+                <input
+                  type="email"
+                  placeholder="Enter email address"
+                  value={newOrder.clientEmail}
+                  onChange={(e) => setNewOrder({ ...newOrder, clientEmail: e.target.value })}
+                  className="w-full px-4 py-2 rounded-lg border border-gray-200 focus:border-black outline-none"
                 />
               </div>
               <div>
@@ -982,6 +1105,18 @@ const OrderManagement: React.FC<OrderManagementProps> = ({ user, role }) => {
           user={user}
         />
       )}
+      <ConfirmModal
+        isOpen={deleteConfirmOpen}
+        onClose={() => {
+          setDeleteConfirmOpen(false);
+          setItemToDelete(null);
+        }}
+        onConfirm={confirmDelete}
+        title="Delete Order"
+        message="Are you sure you want to delete this order? This will also permanently remove the associated booking and payment records."
+        confirmLabel="Delete Permanently"
+        variant="danger"
+      />
     </div>
   );
 };

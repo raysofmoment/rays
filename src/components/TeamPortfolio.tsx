@@ -42,6 +42,8 @@ import { motion, AnimatePresence } from 'motion/react';
 import { format, isValid } from 'date-fns';
 import { toast } from 'sonner';
 
+import ConfirmModal from './ConfirmModal';
+
 interface TeamPortfolioProps {
   user: any;
   role: string | null;
@@ -68,9 +70,17 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
   const [lastPostedId, setLastPostedId] = useState<string | null>(null);
   const [platform, setPlatform] = useState<'facebook' | 'instagram' | 'youtube' | 'other'>('other');
   
-  // Folder Creation State
+  // Folder Creation & Deletion State
   const [showNewFolderInput, setShowNewFolderInput] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
+  const [isDeletingFolder, setIsDeletingFolder] = useState<string | null>(null);
+  
+  const [deletePostConfirmOpen, setDeletePostConfirmOpen] = useState(false);
+  const [postToDelete, setPostToDelete] = useState<{id: string, userId: string, driveFileId?: string} | null>(null);
+  const [isDeletingPost, setIsDeletingPost] = useState(false);
+
+  const [deleteFolderConfirmOpen, setDeleteFolderConfirmOpen] = useState(false);
+  const [folderToDelete, setFolderToDelete] = useState<{id: string, name: string} | null>(null);
   
   const [previewType, setPreviewType] = useState<'image' | 'video' | null>(null);
   
@@ -147,6 +157,54 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
     }
   };
 
+  const handleDeleteFolder = async (folderId: string, folderName: string) => {
+    if (!user) return;
+    
+    // Permission check
+    if (role !== 'admin' && !folders.find(f => f.id === folderId && f.createdBy === user.uid)) {
+      toast.error('You do not have permission to delete this folder');
+      return;
+    }
+
+    setIsDeletingFolder(folderId);
+    try {
+      const folderItems = samples.filter(s => s.folderId === folderId);
+      
+      // 1. Delete folder document
+      await deleteDoc(doc(db, 'portfolioFolders', folderId));
+      
+      // 2. Update all samples in this folder to have no folderId
+      const { updateDoc } = await import('firebase/firestore');
+      const updatePromises = folderItems.map(item => 
+        updateDoc(doc(db, 'sampleWorks', item.id), {
+          folderId: '',
+          folderName: ''
+        })
+      );
+      
+      await Promise.all(updatePromises);
+      
+      if (selectedFolderId === folderId) {
+        setSelectedFolderId(null);
+      }
+      
+      toast.success(`Folder "${folderName}" deleted`);
+      setDeleteFolderConfirmOpen(false);
+      setFolderToDelete(null);
+    } catch (error: any) {
+      console.error('Folder deletion error:', error);
+      handleFirestoreError(error, OperationType.DELETE, `portfolioFolders/${folderId}`);
+    } finally {
+      setIsDeletingFolder(null);
+    }
+  };
+
+  const confirmFolderDelete = () => {
+    if (folderToDelete) {
+      handleDeleteFolder(folderToDelete.id, folderToDelete.name);
+    }
+  };
+
   const renderSamplePost = (sample: any) => (
     <motion.div
       key={sample.id}
@@ -178,8 +236,12 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
         <div className="flex items-center space-x-1 relative">
           {(role === 'admin' || user?.uid === sample.userId) && (
             <button
-              onClick={() => handleDelete(sample.id, sample.userId, sample.driveFileId)}
+              onClick={() => {
+                setPostToDelete({ id: sample.id, userId: sample.userId, driveFileId: sample.driveFileId });
+                setDeletePostConfirmOpen(true);
+              }}
               className="p-2 text-gray-400 hover:bg-red-50 hover:text-red-500 rounded-full transition-all"
+              title="Delete Post"
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -216,7 +278,8 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
                     {(role === 'admin' || user?.uid === sample.userId) && (
                       <button
                         onClick={() => {
-                          handleDelete(sample.id, sample.userId, sample.driveFileId);
+                          setPostToDelete({ id: sample.id, userId: sample.userId, driveFileId: sample.driveFileId });
+                          setDeletePostConfirmOpen(true);
                           setOpenMenuId(null);
                         }}
                         className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
@@ -404,7 +467,7 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
 
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('folderId', '1udT9Ir2gQ1dYHPho_ovOjrUPKZ_8Oe_J');
+    formData.append('folderId', '196BYDBYbvAlXFQueH32Kbadlk8ZvgG3r');
 
     try {
       const response = await fetch('/api/upload-to-drive', {
@@ -488,8 +551,7 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
       return;
     }
 
-    if (!window.confirm('Are you sure you want to delete this work?')) return;
-
+    setIsDeletingPost(true);
     try {
       // 1. Delete from Firestore first
       await deleteDoc(doc(db, 'sampleWorks', id));
@@ -509,9 +571,19 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
       }
       
       toast.success('Item deleted successfully');
-    } catch (error) {
+      setDeletePostConfirmOpen(false);
+      setPostToDelete(null);
+    } catch (error: any) {
       console.error('Delete error:', error);
-      toast.error('Failed to delete item');
+      handleFirestoreError(error, OperationType.DELETE, `sampleWorks/${id}`);
+    } finally {
+      setIsDeletingPost(false);
+    }
+  };
+
+  const confirmPostDelete = () => {
+    if (postToDelete) {
+      handleDelete(postToDelete.id, postToDelete.userId, postToDelete.driveFileId);
     }
   };
 
@@ -785,22 +857,37 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
                   <span className="text-sm font-bold">All Projects</span>
                 </button>
                 {folders.map((folder) => (
-                  <button
-                    key={folder.id}
-                    onClick={() => {
-                      setSelectedFolderId(folder.id);
-                      setActiveTab('all');
-                    }}
-                    className={`w-full flex items-center justify-between p-3 rounded-xl transition-all ${selectedFolderId === folder.id ? 'bg-blue-50 text-[#1877f2]' : 'hover:bg-gray-50 text-[#65676b]'}`}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <FolderOpen className={`w-5 h-5 ${selectedFolderId === folder.id ? 'text-[#1877f2]' : 'text-gray-400'}`} />
-                      <span className="text-sm font-bold truncate max-w-[120px]">{folder.name}</span>
-                    </div>
-                    <span className="text-[10px] bg-gray-100 px-2 py-0.5 rounded-full font-bold">
-                      {samples.filter(s => s.folderId === folder.id).length}
-                    </span>
-                  </button>
+                  <div key={folder.id} className="group flex items-center mb-1">
+                    <button
+                      onClick={() => {
+                        setSelectedFolderId(folder.id);
+                        setActiveTab('all');
+                      }}
+                      className={`flex-grow flex items-center justify-between p-3 rounded-xl transition-all ${selectedFolderId === folder.id ? 'bg-blue-50 text-[#1877f2]' : 'hover:bg-gray-50 text-[#65676b]'}`}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <FolderOpen className={`w-5 h-5 ${selectedFolderId === folder.id ? 'text-[#1877f2]' : 'text-gray-400'}`} />
+                        <span className="text-sm font-bold truncate max-w-[120px]">{folder.name}</span>
+                      </div>
+                      <span className="text-[10px] bg-gray-100 px-2 py-0.5 rounded-full font-bold">
+                        {samples.filter(s => s.folderId === folder.id).length}
+                      </span>
+                    </button>
+                    {(role === 'admin' || user?.uid === folder.createdBy) && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFolderToDelete({ id: folder.id, name: folder.name });
+                          setDeleteFolderConfirmOpen(true);
+                        }}
+                        className="p-2 text-gray-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all ml-1"
+                        disabled={isDeletingFolder === folder.id}
+                        title="Delete Folder"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 ))}
               </div>
             </div>
@@ -915,9 +1002,11 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleDelete(sample.id, sample.userId, sample.driveFileId);
+                              setPostToDelete({ id: sample.id, userId: sample.userId, driveFileId: sample.driveFileId });
+                              setDeletePostConfirmOpen(true);
                             }}
                             className="absolute top-2 right-2 p-1.5 bg-black/40 hover:bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-md"
+                            title="Delete Post"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -1290,8 +1379,10 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
               <div className="flex items-center space-x-2">
                 {(role === 'admin' || user?.uid === selectedImage.userId) && (
                   <button 
-                    onClick={() => {
-                      handleDelete(selectedImage.id, selectedImage.userId, selectedImage.driveFileId);
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPostToDelete({ id: selectedImage.id, userId: selectedImage.userId, driveFileId: selectedImage.driveFileId });
+                      setDeletePostConfirmOpen(true);
                       setSelectedImage(null);
                     }}
                     className="p-3 bg-red-500/10 hover:bg-red-500/20 rounded-full text-red-500 transition-all"
@@ -1401,6 +1492,32 @@ const TeamPortfolio: React.FC<TeamPortfolioProps> = ({ user, role }) => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ConfirmModal
+        isOpen={deletePostConfirmOpen}
+        onClose={() => {
+          setDeletePostConfirmOpen(false);
+          setPostToDelete(null);
+        }}
+        onConfirm={confirmPostDelete}
+        title="Delete Post"
+        message="Are you sure you want to delete this post? This action cannot be undone."
+        confirmLabel={isDeletingPost ? "Deleting..." : "Delete"}
+        variant="danger"
+      />
+
+      <ConfirmModal
+        isOpen={deleteFolderConfirmOpen}
+        onClose={() => {
+          setDeleteFolderConfirmOpen(false);
+          setFolderToDelete(null);
+        }}
+        onConfirm={confirmFolderDelete}
+        title="Delete Folder"
+        message={`Are you sure you want to delete the folder "${folderToDelete?.name}"? Items inside will be moved to "All Projects".`}
+        confirmLabel={isDeletingFolder ? "Deleting..." : "Delete"}
+        variant="danger"
+      />
     </div>
   );
 };

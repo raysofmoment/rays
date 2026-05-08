@@ -5,41 +5,53 @@ import * as THREE from 'three';
 
 const ParticleField = () => {
   const ref = useRef<THREE.Points>(null);
+  const count = 2000;
   
-  const sphere = useMemo(() => {
-    const points = new Float32Array(5000 * 3);
-    for (let i = 0; i < 5000; i++) {
-      const radius = 1.5;
-      const u = Math.random();
-      const v = Math.random();
-      const theta = 2 * Math.PI * u;
-      const phi = Math.acos(2 * v - 1);
-      const x = radius * Math.sin(phi) * Math.cos(theta);
-      const y = radius * Math.sin(phi) * Math.sin(theta);
-      const z = radius * Math.cos(phi);
-      points[i * 3] = x;
-      points[i * 3 + 1] = y;
-      points[i * 3 + 2] = z;
+  const particles = useMemo(() => {
+    const points = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+      points[i * 3] = (Math.random() - 0.5) * 4;
+      points[i * 3 + 1] = (Math.random() - 0.5) * 4;
+      points[i * 3 + 2] = (Math.random() - 0.5) * 4;
     }
     return points;
   }, []);
 
   useFrame((state, delta) => {
     if (ref.current) {
-      ref.current.rotation.x -= delta / 10;
-      ref.current.rotation.y -= delta / 15;
+      // Gentle floating motion
+      ref.current.rotation.x += delta * 0.05;
+      ref.current.rotation.y += delta * 0.03;
+      
+      // Subtle "handheld" camera jitter
+      const time = state.clock.getElapsedTime();
+      ref.current.position.x = Math.sin(time * 0.2) * 0.1;
+      ref.current.position.y = Math.cos(time * 0.3) * 0.05;
     }
   });
 
   return (
-    <group rotation={[0, 0, Math.PI / 4]}>
-      <Points ref={ref} positions={sphere} stride={3} frustumCulled={false}>
+    <group>
+      <Points ref={ref} positions={particles} stride={3} frustumCulled={false}>
+        <PointMaterial
+          transparent
+          color="#10b981"
+          size={0.015}
+          sizeAttenuation={true}
+          depthWrite={false}
+          opacity={0.4}
+          blending={THREE.AdditiveBlending}
+        />
+      </Points>
+      {/* Second layer for diverse "dust" sizes */}
+      <Points positions={particles.slice(0, 300)} stride={3} frustumCulled={false}>
         <PointMaterial
           transparent
           color="#ffffff"
           size={0.005}
           sizeAttenuation={true}
           depthWrite={false}
+          opacity={0.6}
         />
       </Points>
     </group>

@@ -145,7 +145,7 @@ const Blog: React.FC<BlogProps> = ({ user, role }) => {
         {isAdmin && (
           <button
             onClick={() => setShowAddModal(true)}
-            className="flex items-center space-x-2 bg-black text-white px-6 py-3 rounded-2xl font-bold hover:bg-gray-800 transition-all shadow-lg hover:shadow-xl active:scale-95"
+            className="flex items-center space-x-2 bg-primary text-white px-6 py-3 rounded-2xl font-bold hover:bg-primary-hover transition-all shadow-lg shadow-primary/20 hover:shadow-xl active:scale-95"
           >
             <Plus className="w-5 h-5" />
             <span>New Post</span>
@@ -222,7 +222,7 @@ const Blog: React.FC<BlogProps> = ({ user, role }) => {
               
               <Link
                 to={`/blog/${post.id}`}
-                className="inline-flex items-center font-bold text-black group/link"
+                className="inline-flex items-center font-bold text-primary group/link"
               >
                 <span>Read More</span>
                 <ArrowRight className="w-4 h-4 ml-2 transition-transform group-hover/link:translate-x-1" />

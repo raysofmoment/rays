@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { format } from 'date-fns';
+import { getFormattedOrderName } from '../utils/orderFormatting';
 
 interface InvoiceData {
   invoiceNumber: string;
@@ -27,6 +28,11 @@ export const generateInvoicePDF = (data: InvoiceData) => {
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
 
+  const formattedName = getFormattedOrderName({ eventType: data.eventType, packageName: data.packageName })
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+
   // Vertical Invoice Number on the left
   doc.setTextColor(200, 220, 255);
   doc.setFontSize(40);
@@ -39,6 +45,19 @@ export const generateInvoicePDF = (data: InvoiceData) => {
   // Company Header (Right of the vertical text)
   const leftMargin = 35;
   
+  // Logo Image (Circular replacement)
+  const logoUrl = 'https://69cb4f3f21aad77cf8fd3eac.imgix.net/photography/choto%20logo%20(1).png';
+  try {
+    doc.addImage(logoUrl, 'PNG', pageWidth - 50, 15, 30, 30);
+  } catch (err) {
+    console.warn('Failed to add logo image to PDF', err);
+    // Fallback to placeholder if image fails
+    doc.setDrawColor(200, 200, 200);
+    doc.circle(pageWidth - 35, 30, 15);
+    doc.setFontSize(6);
+    doc.text('RAYS OF MOMENT', pageWidth - 35, 30, { align: 'center' });
+  }
+
   // Logo Text
   doc.setFontSize(28);
   doc.setTextColor(255, 120, 0); // Orange for "Rays"
@@ -57,12 +76,6 @@ export const generateInvoicePDF = (data: InvoiceData) => {
   doc.setTextColor(100, 100, 100);
   doc.text('8967106723/9083486788', leftMargin, 47);
 
-  // Circular Logo Placeholder (Top Right)
-  doc.setDrawColor(200, 200, 200);
-  doc.circle(pageWidth - 35, 30, 15);
-  doc.setFontSize(6);
-  doc.text('RAYS OF MOMENT', pageWidth - 35, 30, { align: 'center' });
-
   // Bill To & Payment Method Section
   doc.setDrawColor(0, 0, 255);
   doc.setLineWidth(0.5);
@@ -77,7 +90,7 @@ export const generateInvoicePDF = (data: InvoiceData) => {
   doc.setTextColor(0, 0, 0);
   doc.setFont('helvetica', 'normal');
   doc.text(data.clientName, leftMargin, 73);
-  doc.text(data.packageName, leftMargin, 78);
+  doc.text(formattedName, leftMargin, 78);
   doc.text(data.location || 'Berhampore, Murshidabad', leftMargin, 83);
   if (data.clientMobile) doc.text(data.clientMobile, leftMargin, 88);
 
@@ -99,7 +112,7 @@ export const generateInvoicePDF = (data: InvoiceData) => {
 
   // Table
   const tableData = [
-    [data.packageName, '1', data.totalAmount.toFixed(2), data.totalAmount.toFixed(2)]
+    [formattedName, '1', data.totalAmount.toFixed(2), data.totalAmount.toFixed(2)]
   ];
 
   if (data.items && data.items.length > 0) {
@@ -129,14 +142,20 @@ export const generateInvoicePDF = (data: InvoiceData) => {
   // Package Details (Left side)
   let currentY = finalY;
   if (data.packageDetails && data.packageDetails.length > 0) {
+    doc.setTextColor(0, 0, 255);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
-    doc.text(data.packageName, leftMargin, currentY);
+    doc.text('Package Details & Inclusions', leftMargin, currentY);
+    doc.line(leftMargin, currentY + 1, leftMargin + 50, currentY + 1);
+    
+    currentY += 8;
+    doc.setTextColor(0, 0, 0);
+    doc.text(formattedName, leftMargin, currentY);
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
     data.packageDetails.forEach((detail, idx) => {
       currentY += 5;
-      doc.text(`${idx + 1}.${detail}`, leftMargin, currentY);
+      doc.text(`${idx + 1}. ${detail}`, leftMargin, currentY);
     });
   }
 

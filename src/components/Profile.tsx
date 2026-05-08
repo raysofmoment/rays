@@ -68,29 +68,97 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
   useEffect(() => {
     if (activeTab === 'orders') {
       setOrdersLoading(true);
-      const q = query(
-        collection(db, 'bookings'),
-        or(
-          where('clientId', '==', targetUid),
-          where('photographerId', '==', targetUid),
-          where('editorId', '==', targetUid),
-          where('otherId', '==', targetUid),
-          where('photographerIds', 'array-contains', targetUid),
-          where('editorIds', 'array-contains', targetUid),
-          where('otherIds', 'array-contains', targetUid)
-        )
-      );
-      const unsubscribe = onSnapshot(q, (snapshot) => {
-        const ordersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setOrders(ordersData);
+      
+      const email = userData?.email || user.email || '';
+      const phone = (userData?.phoneNumber || user.phoneNumber || '').replace('+91', '');
+      
+      const conditionsBookings = [
+        where('clientId', '==', targetUid),
+        where('photographerId', '==', targetUid),
+        where('editorId', '==', targetUid),
+        where('otherId', '==', targetUid),
+        where('photographerIds', 'array-contains', targetUid),
+        where('editorIds', 'array-contains', targetUid),
+        where('otherIds', 'array-contains', targetUid)
+      ];
+      
+      const conditionsOrders = [
+        where('clientId', '==', targetUid),
+        where('photographerId', '==', targetUid),
+        where('editorId', '==', targetUid),
+        where('otherId', '==', targetUid),
+        where('photographerIds', 'array-contains', targetUid),
+        where('editorIds', 'array-contains', targetUid),
+        where('otherIds', 'array-contains', targetUid)
+      ];
+
+      if (email) {
+        conditionsBookings.push(where('clientEmail', '==', email));
+        conditionsOrders.push(where('clientEmail', '==', email));
+      }
+      if (phone) {
+        conditionsBookings.push(where('clientMobile', '==', phone));
+        conditionsOrders.push(where('mobileNumber', '==', phone));
+      }
+
+      let fetchedBookings: any[] = [];
+      let fetchedOrders: any[] = [];
+      
+      const updateCombinedState = () => {
+        let combined = [...fetchedBookings, ...fetchedOrders];
+        // deduplicate by id if an order matches a booking id
+        const uniqueSet = new Map();
+        combined.forEach(item => {
+           if (item.bookingId && uniqueSet.has(item.bookingId)) {
+             // Prefer order details if both exist but booking is essentially the source
+             uniqueSet.set(item.bookingId, { ...uniqueSet.get(item.bookingId), ...item });
+           } else {
+             uniqueSet.set(item.id, item);
+           }
+        });
+        
+        const finalOrders = Array.from(uniqueSet.values());
+        finalOrders.sort((a: any, b: any) => {
+          const d1 = new Date(b.createdAt || b.date || b.eventDate || 0).getTime();
+          const d2 = new Date(a.createdAt || a.date || a.eventDate || 0).getTime();
+          return d1 - d2;
+        });
+        setOrders(finalOrders);
         setOrdersLoading(false);
+      };
+
+      const qBookings = query(
+        collection(db, 'bookings'),
+        or(...conditionsBookings)
+      );
+      
+      const qOrders = query(
+        collection(db, 'orders'),
+        or(...conditionsOrders)
+      );
+
+      const unsubBookings = onSnapshot(qBookings, (snapshot) => {
+        fetchedBookings = snapshot.docs.map(doc => ({ id: doc.id, _type: 'booking', ...doc.data() as any }));
+        updateCombinedState();
       }, (error) => {
         handleFirestoreError(error, OperationType.LIST, 'bookings');
         setOrdersLoading(false);
       });
-      return () => unsubscribe();
+      
+      const unsubOrders = onSnapshot(qOrders, (snapshot) => {
+         fetchedOrders = snapshot.docs.map(doc => ({ id: doc.id, _type: 'order', ...doc.data() as any }));
+         updateCombinedState();
+      }, (error) => {
+         handleFirestoreError(error, OperationType.LIST, 'orders');
+         setOrdersLoading(false);
+      });
+
+      return () => {
+        unsubBookings();
+        unsubOrders();
+      };
     }
-  }, [activeTab, targetUid]);
+  }, [activeTab, targetUid, userData, user]);
 
   useEffect(() => {
     if (activeTab === 'samples') {
@@ -118,7 +186,9 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
     try {
       await deleteDoc(doc(db, 'sampleWorks', itemToDelete));
       toast.success('Sample deleted');
+      setDeleteConfirmOpen(false);
     } catch (error) {
+      console.error('Error deleting sample:', error);
       handleFirestoreError(error, OperationType.DELETE, 'sampleWorks');
     } finally {
       setItemToDelete(null);
@@ -157,6 +227,7 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
       await updateProfile(user, { displayName });
       await updateDoc(doc(db, 'users', user.uid), {
         displayName,
+        phoneNumber: userData?.phoneNumber || '',
         updatedAt: new Date().toISOString()
       });
       toast.success('Profile updated successfully!');
@@ -338,6 +409,17 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
                             className="w-full px-4 py-2 rounded-xl border border-gray-200 bg-gray-100 text-gray-500 cursor-not-allowed outline-none"
                           />
                         </div>
+                        <div>
+                          <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Phone Number</label>
+                          <input
+                            type="tel"
+                            value={userData?.phoneNumber || ''}
+                            onChange={(e) => setUserData({ ...userData, phoneNumber: e.target.value })}
+                            disabled={(isViewingOther && !isAdmin) || (auth.currentUser?.phoneNumber === userData?.phoneNumber && !!userData?.phoneNumber)}
+                            className="w-full px-4 py-2 rounded-xl border border-gray-200 focus:border-black outline-none transition-all disabled:bg-gray-100 disabled:text-gray-500"
+                            placeholder="Enter phone number"
+                          />
+                        </div>
                       </div>
                     </div>
 
@@ -440,16 +522,16 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
                               Order #{order.invoiceNumber || 'N/A'}
                             </span>
                             <span className="text-gray-400 text-sm font-medium">
-                              {order.eventDate ? format(new Date(order.eventDate), 'MMMM d, yyyy') : 'Date N/A'}
+                              {(order.eventDate || order.date) ? format(new Date(order.eventDate || order.date), 'MMMM d, yyyy') : 'Date N/A'}
                             </span>
                           </div>
-                          <h2 className="text-4xl font-black text-gray-900">{order.eventType}</h2>
-                          <p className="text-gray-500 font-medium mt-1">{order.eventPlace || 'Location N/A'}</p>
+                          <h2 className="text-4xl font-black text-gray-900">{order.eventType || 'Photography Service'}</h2>
+                          <p className="text-gray-500 font-medium mt-1">{order.eventPlace || order.location || 'Location N/A'}</p>
                         </div>
                         <div className="text-right">
                           <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">Total Amount</p>
-                          <p className="text-4xl font-black text-black">₹{order.totalPackageAmount?.toLocaleString()}</p>
-                          {order.dueAmount > 0 && (
+                          <p className="text-4xl font-black text-black">₹{((order.finalAmount || order.totalPackageAmount || order.totalAmount) || 0).toLocaleString()}</p>
+                          {(order.dueAmount || 0) > 0 && (
                             <p className="text-sm font-bold text-red-500 mt-1">Due: ₹{order.dueAmount?.toLocaleString()}</p>
                           )}
                         </div>
@@ -466,7 +548,7 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
                             <div className="space-y-4">
                               <div className="flex justify-between text-sm">
                                 <span className="text-gray-500 font-bold">Package</span>
-                                <span className="text-gray-900 font-black">{order.package}</span>
+                                <span className="text-gray-900 font-black">{order.package || order.packageName || 'N/A'}</span>
                               </div>
                               <div className="flex justify-between text-sm">
                                 <span className="text-gray-500 font-bold">Client</span>
@@ -474,7 +556,7 @@ const Profile: React.FC<ProfileProps> = ({ user, role }) => {
                               </div>
                               <div className="flex justify-between text-sm">
                                 <span className="text-gray-500 font-bold">Mobile</span>
-                                <span className="text-gray-900 font-black">{order.clientMobile}</span>
+                                <span className="text-gray-900 font-black">{order.clientMobile || order.mobileNumber || 'N/A'}</span>
                               </div>
                               
                               {/* Staff Payment Info */}

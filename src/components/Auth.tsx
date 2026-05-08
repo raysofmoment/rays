@@ -1,8 +1,16 @@
-import React, { useState } from 'react';
-import { signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
+import React, { useState, useEffect } from 'react';
+import { 
+  signInWithPopup, 
+  GoogleAuthProvider, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword,
+  RecaptchaVerifier,
+  signInWithPhoneNumber,
+  ConfirmationResult
+} from 'firebase/auth';
 import { auth, db } from '../firebase';
-import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { Mail, Lock, User, Github } from 'lucide-react';
+import { doc, setDoc } from 'firebase/firestore';
+import { Mail, Lock, User, Phone, CheckCircle2 } from 'lucide-react';
 import Logo from './Logo';
 import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
@@ -10,10 +18,87 @@ import ThreeDScene from './ThreeDScene';
 
 const Auth: React.FC = () => {
   const [isLogin, setIsLogin] = useState(true);
+  const [authMethod, setAuthMethod] = useState<'email' | 'phone'>('email');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [otp, setOtp] = useState('');
+  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
   const [displayName, setDisplayName] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      // Clean up reCAPTCHA if component unmounts
+      if ((window as any).recaptchaVerifier) {
+        (window as any).recaptchaVerifier.clear();
+      }
+    };
+  }, []);
+
+  const setupRecaptcha = () => {
+    if (!(window as any).recaptchaVerifier) {
+      (window as any).recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+        'size': 'invisible',
+        'callback': () => {
+          // reCAPTCHA solved, allow signInWithPhoneNumber.
+        }
+      });
+    }
+  };
+
+  const handlePhoneSignIn = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!phoneNumber) return toast.error('Please enter a phone number');
+    
+    setLoading(true);
+    try {
+      setupRecaptcha();
+      const appVerifier = (window as any).recaptchaVerifier;
+      const confirmation = await signInWithPhoneNumber(auth, phoneNumber, appVerifier);
+      setConfirmationResult(confirmation);
+      toast.success('Verification code sent!');
+    } catch (error: any) {
+      console.error('Phone Sign-In Error:', error);
+      if (error.code === 'auth/operation-not-allowed' && error.message.includes('region')) {
+        toast.error('SMS region not enabled. Please enable it in Firebase Console -> Authentication -> Settings -> SMS Region Policy.', { duration: 8000 });
+      } else {
+        toast.error(error.message || 'Failed to send verification code');
+      }
+      // Note: We deliberately do not clear the recaptchaVerifier here. 
+      // Clearing it and then attempting to recreate it on the same DOM element 
+      // can cause a "reCAPTCHA has already been rendered" error.
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!otp || !confirmationResult) return;
+
+    setLoading(true);
+    try {
+      const result = await confirmationResult.confirm(otp);
+      const user = result.user;
+      
+      // If new user, create profile
+      await setDoc(doc(db, 'users', user.uid), {
+        uid: user.uid,
+        phoneNumber: user.phoneNumber,
+        displayName: displayName || user.phoneNumber,
+        role: 'client',
+        lastLogin: new Date().toISOString()
+      }, { merge: true });
+
+      toast.success('Successfully signed in!');
+    } catch (error: any) {
+      console.error('OTP Verification Error:', error);
+      toast.error('Invalid verification code');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleGoogleSignIn = async () => {
     if (loading) return;
@@ -56,6 +141,18 @@ const Auth: React.FC = () => {
           role: 'client',
           createdAt: new Date().toISOString()
         });
+        
+        // Send welcome email
+        if (user.email) {
+          import('../utils/emailHelper').then(({ sendEmail }) => {
+            sendEmail({
+              to: user.email!,
+              subject: 'Welcome to Rays of Moment!',
+              text: `Hi ${displayName},\n\nWelcome to Rays of Moment! We are thrilled to have you here.\n\nBest regards,\nThe Rays of Moment Team`
+            });
+          });
+        }
+        
         toast.success('Account created successfully!');
       }
     } catch (error: any) {
@@ -71,6 +168,8 @@ const Auth: React.FC = () => {
         <ThreeDScene />
         <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px]" />
       </div>
+
+      <div id="recaptcha-container"></div>
 
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
@@ -89,57 +188,140 @@ const Auth: React.FC = () => {
           <p className="text-gray-500 mt-2">{isLogin ? 'Welcome back to your creative space' : 'Start your photography journey with us'}</p>
         </div>
 
-        <form onSubmit={handleEmailAuth} className="space-y-4">
-          <AnimatePresence mode="wait">
-            {!isLogin && (
-              <motion.div 
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="relative"
-              >
-                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Full Name"
-                  value={displayName}
-                  onChange={(e) => setDisplayName(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all bg-white/50"
-                  required
-                />
-              </motion.div>
-            )}
-          </AnimatePresence>
-          <div className="relative">
-            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <input
-              type="email"
-              placeholder="Email Address"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all bg-white/50"
-              required
-            />
-          </div>
-          <div className="relative">
-            <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <input
-              type="password"
-              placeholder="Password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all bg-white/50"
-              required
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-black text-white py-3 rounded-xl font-semibold hover:bg-gray-800 transition-all active:scale-95 disabled:opacity-50 shadow-lg shadow-black/20"
+        <div className="flex bg-gray-100 p-1 rounded-2xl mb-8">
+          <button 
+            onClick={() => setAuthMethod('email')}
+            className={`flex-1 py-2 px-4 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${authMethod === 'email' ? 'bg-white text-black shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
           >
-            {loading ? 'Processing...' : (isLogin ? 'Sign In' : 'Create Account')}
+            Email
           </button>
-        </form>
+          <button 
+            onClick={() => setAuthMethod('phone')}
+            className={`flex-1 py-2 px-4 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${authMethod === 'phone' ? 'bg-white text-black shadow-sm' : 'text-gray-400 hover:text-gray-600'}`}
+          >
+            Phone
+          </button>
+        </div>
+
+        {authMethod === 'email' ? (
+          <form onSubmit={handleEmailAuth} className="space-y-4">
+            <AnimatePresence mode="wait">
+              {!isLogin && (
+                <motion.div 
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="relative"
+                >
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Full Name"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all bg-white/50"
+                    required
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <div className="relative">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                type="email"
+                placeholder="Email Address"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all bg-white/50"
+                required
+              />
+            </div>
+            <div className="relative">
+              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                type="password"
+                placeholder="Password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all bg-white/50"
+                required
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full bg-black text-white py-3 rounded-xl font-semibold hover:bg-gray-800 transition-all active:scale-95 disabled:opacity-50 shadow-lg shadow-black/20"
+            >
+              {loading ? 'Processing...' : (isLogin ? 'Sign In' : 'Create Account')}
+            </button>
+          </form>
+        ) : (
+          <div className="space-y-4">
+            {!confirmationResult ? (
+              <form onSubmit={handlePhoneSignIn} className="space-y-4">
+                <div className="relative">
+                  <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    type="tel"
+                    placeholder="+1 234 567 8900"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all bg-white/50"
+                    required
+                  />
+                </div>
+                {!isLogin && (
+                   <div className="relative">
+                   <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                   <input
+                     type="text"
+                     placeholder="Full Name"
+                     value={displayName}
+                     onChange={(e) => setDisplayName(e.target.value)}
+                     className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all bg-white/50"
+                     required
+                   />
+                 </div>
+                )}
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-black text-white py-3 rounded-xl font-semibold hover:bg-gray-800 transition-all active:scale-95 disabled:opacity-50 shadow-lg shadow-black/20"
+                >
+                  {loading ? 'Sending Code...' : 'Send Verification Code'}
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleVerifyOtp} className="space-y-4">
+                <div className="relative">
+                  <CheckCircle2 className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Enter 6-digit OTP"
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value)}
+                    className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:border-black focus:ring-1 focus:ring-black outline-none transition-all bg-white/50"
+                    required
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full bg-primary text-white py-3 rounded-xl font-semibold hover:bg-primary/90 transition-all active:scale-95 disabled:opacity-50 shadow-lg shadow-primary/20"
+                >
+                  {loading ? 'Verifying...' : 'Verify & Continue'}
+                </button>
+                <button 
+                  type="button"
+                  onClick={() => setConfirmationResult(null)}
+                  className="w-full text-gray-400 text-xs font-bold uppercase tracking-widest hover:text-gray-600 transition-colors"
+                >
+                  Change Phone Number
+                </button>
+              </form>
+            )}
+          </div>
+        )}
 
         <div className="relative my-8">
           <div className="absolute inset-0 flex items-center">

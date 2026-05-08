@@ -225,19 +225,23 @@ service cloud.firestore {
     }
 
     match /bookings/{bookingId} {
-      allow read: if isAuthenticated() && (
-        isAdmin() || 
-        isTeam() || 
-        isOther() ||
-        (resource.data.clientId == request.auth.uid) ||
-        (resource.data.photographerId == request.auth.uid) || 
-        (resource.data.editorId == request.auth.uid) || 
-        (resource.data.otherId == request.auth.uid) ||
-        (request.auth.uid in resource.data.get('photographerIds', [])) ||
-        (request.auth.uid in resource.data.get('editorIds', [])) ||
-        (request.auth.uid in resource.data.get('otherIds', []))
+      allow read: if (isAdmin() || isTeam() || isOther() ||
+        (isAuthenticated() && resource.data.clientId == request.auth.uid) ||
+        (isAuthenticated() && resource.data.clientEmail != null && resource.data.clientEmail == request.auth.token.email) ||
+        (isAuthenticated() && resource.data.clientMobile != null && request.auth.token.phone_number != null && (resource.data.clientMobile == request.auth.token.phone_number || resource.data.clientMobile == request.auth.token.phone_number.replace('+91', ''))) ||
+        (isAuthenticated() && (
+          resource.data.photographerId == request.auth.uid || 
+          resource.data.editorId == request.auth.uid || 
+          resource.data.otherId == request.auth.uid ||
+          (request.auth.uid in resource.data.get('photographerIds', [])) ||
+          (request.auth.uid in resource.data.get('editorIds', [])) ||
+          (request.auth.uid in resource.data.get('otherIds', []))
+        )) ||
+        // Allow public read for photo selection flow
+        (!isAuthenticated() && resource.data.clientMobile != null)
       );
-      allow create: if isAuthenticated() && (isAdmin() || isTeam() || request.resource.data.clientId == request.auth.uid);
+      allow create: if (isAuthenticated() && (isAdmin() || isTeam() || request.resource.data.clientId == request.auth.uid)) ||
+                   (!isAuthenticated() && request.resource.data.adminStatus == 'requested');
       allow update: if isAuthenticated() && (
         isAdmin() || 
         isTeam() ||
@@ -247,7 +251,9 @@ service cloud.firestore {
         (request.auth.uid in resource.data.get('photographerIds', [])) ||
         (request.auth.uid in resource.data.get('editorIds', [])) ||
         (request.auth.uid in resource.data.get('otherIds', [])) ||
-        (resource.data.clientId == request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['discountRequest', 'clientMobile', 'clientEmail', 'address', 'eventPlace', 'eventDate']))
+        (resource.data.clientId == request.auth.uid) ||
+        (resource.data.clientEmail != null && resource.data.clientEmail == request.auth.token.email) ||
+        (resource.data.clientMobile != null && request.auth.token.phone_number != null && (resource.data.clientMobile == request.auth.token.phone_number || resource.data.clientMobile == request.auth.token.phone_number.replace('+91', '')))
       );
       allow delete: if isAdmin();
     }
@@ -276,6 +282,8 @@ service cloud.firestore {
     match /orders/{orderId} {
       allow read: if isAuthenticated() && (
         request.auth.uid == resource.data.clientId || 
+        (resource.data.clientEmail != null && resource.data.clientEmail == request.auth.token.email) ||
+        (resource.data.mobileNumber != null && request.auth.token.phone_number != null && (resource.data.mobileNumber == request.auth.token.phone_number || resource.data.mobileNumber == request.auth.token.phone_number.replace('+91', ''))) ||
         request.auth.uid == resource.data.photographerId || 
         request.auth.uid == resource.data.editorId || 
         request.auth.uid == resource.data.otherId || 
@@ -289,10 +297,13 @@ service cloud.firestore {
       allow create: if isAuthenticated() && (request.auth.uid == request.resource.data.clientId || isAdmin());
       allow update: if isAuthenticated() && (
         request.auth.uid == resource.data.clientId || 
+        (resource.data.clientEmail != null && resource.data.clientEmail == request.auth.token.email) ||
+        (resource.data.mobileNumber != null && request.auth.token.phone_number != null && (resource.data.mobileNumber == request.auth.token.phone_number || resource.data.mobileNumber == request.auth.token.phone_number.replace('+91', ''))) ||
         isAdmin() || 
         (isTeam() && (request.auth.uid == resource.data.photographerId || request.auth.uid == resource.data.editorId || (request.auth.uid in resource.data.get('photographerIds', [])) || (request.auth.uid in resource.data.get('editorIds', [])))) ||
         (isOther() && (request.auth.uid == resource.data.otherId || (request.auth.uid in resource.data.get('otherIds', []))))
       );
+      allow delete: if isAdmin();
     }
 
     match /teamMembers/{uid} {
@@ -385,10 +396,15 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && (isAdmin() || isOwner(resource.data.userId));
     }
 
+    match /pinnedAssets/{assetId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
     match /photoSelections/{selectionId} {
-      allow read: if isAdmin() || isTeam() || (isAuthenticated() && resource.data.clientId == request.auth.uid);
-      allow create: if (isAdmin() || isTeam() || (isAuthenticated() && request.resource.data.clientId == request.auth.uid)) && isValidPhotoSelection(request.resource.data);
-      allow update: if (isAdmin() || isTeam() || (isAuthenticated() && resource.data.clientId == request.auth.uid)) && isValidPhotoSelection(request.resource.data);
+      allow read: if isAdmin() || isTeam() || (isAuthenticated() && resource.data.clientId == request.auth.uid) || (!isAuthenticated());
+      allow create: if (isAdmin() || isTeam() || (isAuthenticated() && request.resource.data.clientId == request.auth.uid) || (!isAuthenticated())) && isValidPhotoSelection(request.resource.data);
+      allow update: if (isAdmin() || isTeam() || (isAuthenticated() && resource.data.clientId == request.auth.uid) || (!isAuthenticated())) && isValidPhotoSelection(request.resource.data);
       allow delete: if isAdmin();
     }
 

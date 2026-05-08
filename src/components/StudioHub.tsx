@@ -101,8 +101,12 @@ const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
   useEffect(() => {
     const checkDriveStatus = async () => {
       try {
-        const response = await fetch(`${window.location.origin}/api/auth/google/status`);
+        const response = await fetch('/api/auth/google/status');
         if (!response.ok) return; // Prevent parsing non-200 responses like 'Rate exceeded'
+        
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) return;
+        
         const data = await response.json();
         
         if (!data.connected && role === 'admin') {
@@ -113,7 +117,7 @@ const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
           
           if (docSnap.exists()) {
             const tokens = docSnap.data().value;
-            await fetch(`${window.location.origin}/api/auth/google/sync`, {
+            await fetch('/api/auth/google/sync', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ tokens })
@@ -152,7 +156,7 @@ const StudioHub: React.FC<StudioHubProps> = ({ user, role }) => {
   const handleConnectDrive = async () => {
     setIsConnectingDrive(true);
     try {
-      const response = await fetch(`${window.location.origin}/api/auth/google/url`);
+      const response = await fetch('/api/auth/google/url');
       if (!response.ok) {
         try {
           const errData = await response.json();

@@ -224,6 +224,20 @@
         "finalAmount": { "type": "number" },
         "clientId": { "type": "string" },
         "googleDriveFolderId": { "type": "string" },
+        "projectLinks": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" },
+              "url": { "type": "string" },
+              "isVisibleToClient": { "type": "boolean" },
+              "addedBy": { "type": "string" },
+              "addedAt": { "type": "string", "format": "date-time" }
+            }
+          }
+        },
         "faceRecognitionPhotos": {
           "type": "array",
           "items": { "type": "string" }

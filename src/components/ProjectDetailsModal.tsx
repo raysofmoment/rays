@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { doc, getDoc, collection, query, where, getDocs, onSnapshot, deleteDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs, onSnapshot, deleteDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { X, ExternalLink, Download, FileText, CheckCircle2, Clock, Eye, IndianRupee, Plus, Receipt, Trash2, Edit2, Save, Heart, Music, Camera } from 'lucide-react';
+import { X, ExternalLink, Download, FileText, CheckCircle2, Clock, Eye, EyeOff, IndianRupee, Plus, Receipt, Trash2, Edit2, Save, Heart, Music, Camera, Star, Share2, Link } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { User } from 'firebase/auth';
@@ -9,6 +9,8 @@ import EventCostForm from './EventCostForm';
 import Invoice from './Invoice';
 import ConfirmModal from './ConfirmModal';
 import { generateInvoicePDF } from '../services/invoiceService';
+import { packageData } from '../constants/packages';
+import { getFormattedOrderName } from '../utils/orderFormatting';
 
 interface ProjectDetailsModalProps {
   order: any;
@@ -28,6 +30,8 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
   
+  const [newLink, setNewLink] = useState({ title: '', url: '' });
+  const [isAddingLink, setIsAddingLink] = useState(false);
   const [isEditingInfo, setIsEditingInfo] = useState(false);
   const [editFormData, setEditFormData] = useState({
     brideName: '',
@@ -45,6 +49,31 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
     makeupArtist: '',
     songSelection: ''
   });
+
+  const handleDeleteProject = async () => {
+    if (!window.confirm('Are you sure you want to delete this entire project? This will remove the order and the associated booking record. This action cannot be undone.')) return;
+    try {
+      const batch = writeBatch(db);
+      batch.delete(doc(db, 'orders', order.id));
+      if (booking?.id || order.bookingId) {
+        batch.delete(doc(db, 'bookings', booking?.id || order.bookingId));
+      }
+      
+      // Delete associated payments
+      const paymentsQuery = query(collection(db, 'payments'), where('orderId', '==', order.id));
+      const paymentsSnap = await getDocs(paymentsQuery);
+      paymentsSnap.forEach(p => {
+        batch.delete(doc(db, 'payments', p.id));
+      });
+      
+      await batch.commit();
+      toast.success('Project deleted successfully');
+      onClose();
+    } catch (error) {
+      handleFirestoreError(error, OperationType.DELETE, `orders/${order.id}`);
+      toast.error('Failed to delete project');
+    }
+  };
 
   useEffect(() => {
     const fetchData = async () => {
@@ -154,6 +183,188 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
     }
   };
 
+  const handleAddProjectLink = async () => {
+    if (!newLink.title || !newLink.url || !booking?.id) return;
+    try {
+      const updatedLinks = [
+        ...(booking.projectLinks || []),
+        {
+          id: crypto.randomUUID(),
+          title: newLink.title,
+          url: newLink.url,
+          isVisibleToClient: false,
+          addedBy: user.uid,
+          addedAt: new Date().toISOString()
+        }
+      ];
+      await updateDoc(doc(db, 'bookings', booking.id), {
+        projectLinks: updatedLinks,
+        updatedAt: new Date().toISOString(),
+        updatedBy: user.uid
+      });
+      setBooking({ ...booking, projectLinks: updatedLinks });
+      setNewLink({ title: '', url: '' });
+      setIsAddingLink(false);
+      toast.success('Project link added!');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `bookings/${booking.id}`);
+      toast.error('Failed to add link');
+    }
+  };
+
+  const handleDeleteProjectLink = async (linkId: string) => {
+    if (!booking?.id) return;
+    try {
+      const updatedLinks = booking.projectLinks.filter((l: any) => l.id !== linkId);
+      await updateDoc(doc(db, 'bookings', booking.id), {
+        projectLinks: updatedLinks,
+        updatedAt: new Date().toISOString(),
+        updatedBy: user.uid
+      });
+      setBooking({ ...booking, projectLinks: updatedLinks });
+      toast.success('Link removed');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `bookings/${booking.id}`);
+      toast.error('Failed to remove link');
+    }
+  };
+
+  const toggleLinkVisibility = async (linkId: string) => {
+    if (!booking?.id || role !== 'admin') return;
+    try {
+      const updatedLinks = booking.projectLinks.map((l: any) => 
+        l.id === linkId ? { ...l, isVisibleToClient: !l.isVisibleToClient } : l
+      );
+      await updateDoc(doc(db, 'bookings', booking.id), {
+        projectLinks: updatedLinks,
+        updatedAt: new Date().toISOString(),
+        updatedBy: user.uid
+      });
+      setBooking({ ...booking, projectLinks: updatedLinks });
+      toast.success('Visibility updated');
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `bookings/${booking.id}`);
+      toast.error('Failed to update visibility');
+    }
+  };
+
+  const renderProjectLinks = () => {
+    const isStaff = role === 'admin' || role === 'photographer' || role === 'editor' || role === 'other';
+    const visibleLinks = booking?.projectLinks?.filter((l: any) => isStaff || l.isVisibleToClient) || [];
+
+    if (visibleLinks.length === 0 && !isStaff) return null;
+
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center bg-gray-50 p-4 rounded-2xl border border-gray-100">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-black rounded-xl text-white">
+              <Link className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-gray-900 tracking-tight">Project Assets & Links</h3>
+              <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Digital Deliveries & References</p>
+            </div>
+          </div>
+          {isStaff && (
+            <button
+              onClick={() => setIsAddingLink(!isAddingLink)}
+              className="flex items-center gap-2 px-4 py-2 bg-white text-black border border-gray-100 rounded-xl text-xs font-bold hover:bg-gray-50 transition-all shadow-sm"
+            >
+              <Plus className={`w-4 h-4 transition-transform ${isAddingLink ? 'rotate-45' : ''}`} />
+              <span>{isAddingLink ? 'Cancel' : 'Add Link'}</span>
+            </button>
+          )}
+        </div>
+
+        {isAddingLink && isStaff && (
+          <div className="p-4 bg-white border border-gray-100 rounded-2xl shadow-sm space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <input
+                type="text"
+                placeholder="Link Title (e.g., Raw Project Files)"
+                value={newLink.title}
+                onChange={(e) => setNewLink({ ...newLink, title: e.target.value })}
+                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-black outline-none"
+              />
+              <input
+                type="url"
+                placeholder="https://..."
+                value={newLink.url}
+                onChange={(e) => setNewLink({ ...newLink, url: e.target.value })}
+                className="w-full px-4 py-2.5 bg-gray-50 border border-gray-100 rounded-xl text-sm focus:ring-2 focus:ring-black outline-none"
+              />
+            </div>
+            <div className="flex justify-end">
+              <button
+                onClick={handleAddProjectLink}
+                disabled={!newLink.title || !newLink.url}
+                className="px-6 py-2 bg-black text-white rounded-xl text-xs font-bold hover:bg-gray-800 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Save Project Link
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-3">
+          {visibleLinks.length > 0 ? (
+            visibleLinks.map((l: any) => (
+              <div key={l.id} className="group p-4 bg-white border border-gray-100 rounded-2xl flex items-center justify-between hover:shadow-md transition-all">
+                <div className="flex items-center gap-4">
+                  <div className={`p-2 rounded-xl ${l.isVisibleToClient ? 'bg-green-50 text-green-600' : 'bg-gray-50 text-gray-400'}`}>
+                    <Link className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                      {l.title}
+                      {!l.isVisibleToClient && isStaff && (
+                        <span className="px-1.5 py-0.5 bg-gray-100 text-[8px] text-gray-400 font-bold uppercase rounded tracking-widest">Internal Only</span>
+                      )}
+                    </h4>
+                    <p className="text-xs text-gray-400 font-medium truncate max-w-[200px] md:max-w-md">{l.url}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {role === 'admin' && (
+                    <button
+                      onClick={() => toggleLinkVisibility(l.id)}
+                      className={`p-2 rounded-lg transition-all ${l.isVisibleToClient ? 'bg-green-100 text-green-600 hover:bg-green-200' : 'bg-gray-100 text-gray-400 hover:bg-gray-200'}`}
+                      title={l.isVisibleToClient ? 'Visible to Client' : 'Hidden from Client'}
+                    >
+                      {l.isVisibleToClient ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                    </button>
+                  )}
+                  <a
+                    href={l.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-all"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </a>
+                  {isStaff && (
+                    <button
+                      onClick={() => handleDeleteProjectLink(l.id)}
+                      className="p-2 bg-red-50 text-red-600 rounded-lg opacity-0 group-hover:opacity-100 transition-all hover:bg-red-100"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="p-10 bg-gray-50 rounded-3xl border border-dashed border-gray-200 flex flex-col items-center justify-center text-center">
+              <Link className="w-8 h-8 text-gray-300 mb-3" />
+              <p className="text-xs text-gray-400 italic">No project links shared yet.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const totalPaid = payments.reduce((sum, p) => sum + Number(p.amount || 0), 0);
   const totalCost = costs.reduce((sum, c) => {
     return sum + (
@@ -190,6 +401,8 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
 
   const renderPhotographerOtherView = () => (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {renderPackageDetails()}
+
       {/* Header Info Grid */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100 flex items-center gap-4">
@@ -315,8 +528,6 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
         </div>
       </div>
 
-      {renderPackageDetails()}
-      
       {(booking?.songSelection || (booking?.songLinks && booking.songLinks.length > 0)) && (
         <div className="p-6 bg-black text-white rounded-3xl shadow-xl space-y-4">
           <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-2">
@@ -353,9 +564,11 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
 
   const renderEditorView = () => (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+      {renderPackageDetails()}
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
-          <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Client Identifier</h4>
+          <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Client Name</h4>
           <p className="text-base font-bold text-gray-900">{order.clientName}</p>
         </div>
         <div className="p-4 bg-gray-50 rounded-2xl border border-gray-100">
@@ -466,8 +679,6 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
         </div>
       </div>
       
-      {renderPackageDetails()}
-      
       {(booking?.songSelection || (booking?.songLinks && booking.songLinks.length > 0)) && (
         <div className="p-6 bg-blue-900 text-white rounded-3xl shadow-xl shadow-blue-900/10 space-y-4">
           <h4 className="text-[10px] font-bold text-blue-300 uppercase tracking-widest flex items-center gap-2">
@@ -502,8 +713,39 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
     </div>
   );
 
+  const getPackageFeatures = () => {
+    const eventTypeToCategory: Record<string, string> = {
+      'WEDD GROOM': 'WeddingGroom',
+      'WEDD BRIDESIDE': 'WeddingBride',
+      'WEDD BOTH': 'WeddingBoth',
+      'BIRTHDAY': 'Birthday',
+      'ANNOPRASAN': 'Birthday',
+      'UPANAYAN': 'Upanayan',
+      'MODEL SHOOT': 'ModelShoot',
+      'EVENT': 'Event',
+      'OUTDOOR': 'PrePostWedding'
+    };
+
+    const category = eventTypeToCategory[order.eventType];
+    const cleanOrderPackageName = (order.packageName || '').split(' (')[0];
+    const categoryPackages = category ? packageData[category] : [];
+    const matchedPackage = categoryPackages?.find(p => 
+      p.name.toLowerCase().includes(cleanOrderPackageName.toLowerCase()) || 
+      cleanOrderPackageName.toLowerCase().includes(p.name.toLowerCase())
+    );
+
+    const features = matchedPackage?.features || [];
+    // Include custom requirements as well
+    const allDetails = [...features];
+    if (booking?.requirement) allDetails.push(booking.requirement);
+    if (booking?.specialRequirement) allDetails.push(booking.specialRequirement);
+    
+    return allDetails;
+  };
+
   const handleDownloadInvoice = () => {
     try {
+      const packageDetails = getPackageFeatures();
       generateInvoicePDF({
         invoiceNumber: order.invoiceNumber,
         clientName: order.clientName,
@@ -520,7 +762,7 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
         paidAmount: order.paidAmount || 0,
         dueAmount: (order.finalAmount || order.totalAmount) - (order.paidAmount || 0),
         location: order.location,
-        packageDetails: booking?.requirement ? [booking.requirement] : undefined,
+        packageDetails,
         items: booking?.extraCosts?.map((c: any) => ({ name: c.label, price: c.amount }))
       });
       toast.success('Invoice generated successfully!');
@@ -530,52 +772,96 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
     }
   };
 
-  const renderPackageDetails = () => (
-    <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100">
-      <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
-        <FileText className="w-4 h-4 text-blue-600" />
-        Package Inclusions
-      </h3>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-3">
-          <div>
-            <p className="text-[10px] text-gray-500 uppercase font-bold">Package Name</p>
-            <p className="text-sm font-bold text-gray-900">{order.packageName}</p>
-          </div>
-          <div>
-            <p className="text-[10px] text-gray-500 uppercase font-bold">Event Type</p>
-            <p className="text-sm font-medium text-gray-900">{order.eventType}</p>
-          </div>
-        </div>
-        <div className="space-y-2">
-          <p className="text-[10px] text-gray-500 uppercase font-bold">What's Included</p>
-          <ul className="space-y-1">
-            {booking?.requirement ? (
-              <li className="flex items-start gap-2 text-xs text-gray-600">
-                <CheckCircle2 className="w-3 h-3 text-green-500 mt-0.5" />
-                <span>{booking.requirement}</span>
-              </li>
-            ) : (
-              <li className="text-xs text-gray-400 italic">No specific inclusions listed.</li>
+  const renderPackageDetails = () => {
+    const eventTypeToCategory: Record<string, string> = {
+      'WEDD GROOM': 'WeddingGroom',
+      'WEDD BRIDESIDE': 'WeddingBride',
+      'WEDD BOTH': 'WeddingBoth',
+      'BIRTHDAY': 'Birthday',
+      'ANNOPRASAN': 'Birthday', // Usually same packages
+      'UPANAYAN': 'Upanayan',
+      'MODEL SHOOT': 'ModelShoot',
+      'EVENT': 'Event',
+      'OUTDOOR': 'PrePostWedding'
+    };
+
+    const category = eventTypeToCategory[order.eventType];
+    const cleanOrderPackageName = (order.packageName || '').split(' (')[0];
+    const categoryPackages = category ? packageData[category] : [];
+    const matchedPackage = categoryPackages?.find(p => 
+      p.name.toLowerCase().includes(cleanOrderPackageName.toLowerCase()) || 
+      cleanOrderPackageName.toLowerCase().includes(p.name.toLowerCase())
+    );
+
+    return (
+      <div className="bg-gray-50 p-6 rounded-2xl border border-gray-100">
+        <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
+          <FileText className="w-4 h-4 text-blue-600" />
+          Package Details & Inclusions
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="space-y-4">
+            <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+              <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest mb-1">Package Name</p>
+              <p className="text-sm font-black text-gray-900 capitalize">{getFormattedOrderName(order)}</p>
+            </div>
+            <div className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm">
+              <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest mb-1">Event Reference</p>
+              <p className="text-sm font-bold text-gray-700">{order.eventType}</p>
+            </div>
+            {matchedPackage?.description && (
+              <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+                <p className="text-[10px] text-blue-600 uppercase font-black tracking-widest mb-1">Standard Duration</p>
+                <p className="text-xs font-bold text-blue-800">{matchedPackage.description}</p>
+              </div>
             )}
-            {/* Common inclusions based on event type if not explicitly listed */}
-            {order.eventType.includes('WEDD') && (
-              <>
-                <li className="flex items-start gap-2 text-xs text-gray-600">
-                  <CheckCircle2 className="w-3 h-3 text-green-500 mt-0.5" />
-                  <span>Candid & Traditional Photography</span>
-                </li>
-                <li className="flex items-start gap-2 text-xs text-gray-600">
-                  <CheckCircle2 className="w-3 h-3 text-green-500 mt-0.5" />
-                  <span>Cinematic Wedding Film & Teaser</span>
-                </li>
-              </>
+          </div>
+          
+          <div className="space-y-4">
+            <div>
+              <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest mb-2 flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3" /> Core Inclusions
+              </p>
+              <ul className="grid grid-cols-1 gap-2">
+                {matchedPackage?.features ? (
+                  matchedPackage.features.map((feature: string, idx: number) => (
+                    <li key={idx} className="flex items-start gap-2 text-xs text-gray-600 bg-white p-2 rounded-lg border border-gray-50 shadow-sm">
+                      <CheckCircle2 className="w-3 h-3 text-green-500 mt-0.5 shrink-0" />
+                      <span className="font-medium">{feature}</span>
+                    </li>
+                  ))
+                ) : (
+                  <li className="text-xs text-gray-400 italic bg-white p-3 rounded-xl border border-dashed border-gray-200 text-center">
+                    No standard features found for this package.
+                  </li>
+                )}
+              </ul>
+            </div>
+
+            {(booking?.requirement || booking?.specialRequirement) && (
+              <div className="pt-4 border-t border-gray-200">
+                <p className="text-[10px] text-gray-400 uppercase font-black tracking-widest mb-2 flex items-center gap-1">
+                  <Star className="w-3 h-3" /> Custom Requirements
+                </p>
+                <div className="space-y-2">
+                  {booking?.requirement && (
+                    <div className="text-xs text-gray-700 bg-yellow-50/50 p-3 rounded-xl border border-yellow-100 italic">
+                      {booking.requirement}
+                    </div>
+                  )}
+                  {booking?.specialRequirement && (
+                    <div className="text-xs text-gray-700 bg-purple-50/50 p-3 rounded-xl border border-purple-100 italic">
+                      {booking.specialRequirement}
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
-          </ul>
+          </div>
         </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderClientView = () => (
     <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -1027,18 +1313,66 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
                 <div className="border-t pt-8">
                   <h3 className="text-sm font-bold text-gray-400 uppercase tracking-widest mb-6">Client View Preview</h3>
                   {renderClientView()}
+                  <div className="mt-8 pt-8 border-t">
+                    {renderProjectLinks()}
+                  </div>
                 </div>
               )}
 
-              {(role === 'photographer' || role === 'other') && renderPhotographerOtherView()}
-              {role === 'editor' && renderEditorView()}
-              {role === 'client' && renderClientView()}
+              {(role === 'photographer' || role === 'other') && (
+                <div className="space-y-8">
+                  {renderPhotographerOtherView()}
+                  {renderProjectLinks()}
+                </div>
+              )}
+              {role === 'editor' && (
+                <div className="space-y-8">
+                  {renderEditorView()}
+                  {renderProjectLinks()}
+                </div>
+              )}
+              {role === 'client' && (
+                <div className="space-y-8">
+                  {renderClientView()}
+                  {renderProjectLinks()}
+                </div>
+              )}
             </div>
           ) : activeTab === 'financials' ? (
             renderFinancialsView()
           ) : (
             <div className="bg-gray-100 p-8 rounded-2xl">
-              <div className="flex justify-end mb-4">
+              <div className="flex justify-end gap-3 mb-4">
+                <button
+                  onClick={() => {
+                    const baseUrl = window.location.origin;
+                    const linksToShare = booking?.projectLinks?.filter((l: any) => l.isVisibleToClient) || [];
+                    const items = [
+                      `Hi *${order.clientName}*, here are your project links from Rays of Moment:`,
+                      '',
+                      `🧾 *Invoice*: ${baseUrl}/invoice/${order.bookingId || order.id}`,
+                      `💰 *Total Amount*: ₹${(order.finalAmount || order.totalAmount).toLocaleString()}`,
+                      `💳 *Payment Link*: ${baseUrl}/orders`,
+                      `🖼️ *Photo Selection Link*: ${baseUrl}/photo-selection/${order.bookingId || order.id}`,
+                      `🔍 *Find My Photos*: ${baseUrl}/find-my-photos`,
+                      ...linksToShare.map((l: any) => `🔗 *${l.title}*: ${l.url}`)
+                    ];
+                    
+                    let phoneStr = booking?.clientMobile || order.mobileNumber;
+                    if (!phoneStr) {
+                      import('sonner').then(m => m.toast.error('No mobile number available for this client'));
+                      return;
+                    }
+                    phoneStr = phoneStr.replace(/\D/g, '');
+                    if (phoneStr.length === 10) phoneStr = '91' + phoneStr;
+                    const message = encodeURIComponent(items.join('\n'));
+                    window.open(`https://api.whatsapp.com/send?phone=${phoneStr}&text=${message}`, '_blank');
+                  }}
+                  className="flex items-center space-x-2 px-4 py-2 bg-green-500 text-white rounded-xl text-sm font-bold hover:bg-green-600 transition-all"
+                >
+                  <Share2 className="w-4 h-4" />
+                  <span>Share via WhatsApp</span>
+                </button>
                 <button 
                   onClick={handleDownloadInvoice}
                   className="flex items-center space-x-2 px-4 py-2 bg-black text-white rounded-xl text-sm font-bold hover:bg-gray-800 transition-all"
@@ -1065,7 +1399,7 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
                     paidAmount: order.paidAmount || 0,
                     dueAmount: (order.finalAmount || order.totalAmount) - (order.paidAmount || 0),
                     location: order.location,
-                    packageDetails: booking?.requirement ? [booking.requirement] : undefined,
+                    packageDetails: getPackageFeatures(),
                     items: booking?.extraCosts?.map((c: any) => ({ name: c.label, price: c.amount }))
                   }} 
                 />
@@ -1074,7 +1408,19 @@ const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({ order, role, 
           )}
         </div>
 
-        <div className="p-6 border-t border-gray-100 bg-gray-50/50 flex justify-end">
+        <div className="p-6 border-t border-gray-100 bg-gray-50/50 flex justify-between items-center">
+          <div>
+            {role === 'admin' && (
+              <button
+                onClick={handleDeleteProject}
+                className="flex items-center space-x-2 text-red-600 hover:text-red-700 font-bold transition-colors"
+                title="Delete Project"
+              >
+                <Trash2 className="w-5 h-5" />
+                <span>Delete Project</span>
+              </button>
+            )}
+          </div>
           <button
             onClick={onClose}
             className="px-8 py-3 rounded-xl bg-black text-white font-bold hover:bg-gray-800 transition-all shadow-lg shadow-black/20"

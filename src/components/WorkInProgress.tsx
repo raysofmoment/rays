@@ -5,11 +5,13 @@ import { Search, ExternalLink, CheckCircle2, Clock, AlertCircle, Filter, Chevron
 import { motion, AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 
-const WIP_FOLDER_ID = '1udT9Ir2gQ1dYHPho_ovOjrUPKZ_8Oe_J';
+const WIP_FOLDER_ID = '196BYDBYbvAlXFQueH32Kbadlk8ZvgG3r';
 
 interface Booking {
   id: string;
   clientName: string;
+  clientEmail?: string;
+  invoiceNumber?: string;
   eventDate: string;
   eventType: string;
   package: string;
@@ -42,7 +44,7 @@ const WIPAssetLibrary = ({ onClose }: { onClose: () => void }) => {
 
   const fetchFiles = async () => {
     try {
-      const response = await fetch(`${window.location.origin}/api/drive/list/${WIP_FOLDER_ID}`);
+      const response = await fetch(`/api/drive/list/${WIP_FOLDER_ID}`);
       const data = await response.json();
       if (Array.isArray(data)) {
         setFiles(data);
@@ -250,6 +252,17 @@ const WorkInProgress: React.FC<{ user: any; role: string | null }> = ({ user, ro
         [field]: newStatus
       });
       toast.success('Status updated');
+      
+      const booking = bookings.find(b => b.id === bookingId);
+      if (booking?.clientEmail) {
+        import('../utils/emailHelper').then(({ sendEmail }) => {
+          sendEmail({
+            to: booking.clientEmail,
+            subject: `Update on your Booking: ${booking.invoiceNumber || ''}`,
+            text: `Hi ${booking.clientName},\n\nThe status for ${field.replace('Status', '')} has been updated to "${newStatus}".\nLog in predicting progress any time at our portal.\n\nThank you!`
+          });
+        });
+      }
     } catch (error) {
       toast.error('Failed to update status');
     }

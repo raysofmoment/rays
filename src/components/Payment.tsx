@@ -4,15 +4,8 @@ import { collection, query, where, getDocs, doc, updateDoc, addDoc, serverTimest
 import { db, auth } from '../firebase';
 import { Search, CreditCard, Loader2, CheckCircle2, AlertCircle, Mail, Phone, User as UserIcon, Calendar, IndianRupee, FileText, Upload, Image as ImageIcon, X, Download, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
-import { loadStripe } from '@stripe/stripe-js';
 import { generateInvoicePDF } from '../services/invoiceService';
 import Captcha from './Captcha';
-
-const stripePublishableKey = ((import.meta as any).env.VITE_STRIPE_PUBLISHABLE_KEY || '').trim();
-if (stripePublishableKey && !stripePublishableKey.startsWith('pk_')) {
-  console.warn('[Stripe] Warning: VITE_STRIPE_PUBLISHABLE_KEY does not appear to be a valid Stripe publishable key.');
-}
-const stripePromise = loadStripe(stripePublishableKey);
 
 interface PaymentProps {
   user?: User | null;
@@ -38,10 +31,19 @@ const Payment: React.FC<PaymentProps> = ({ user, role }) => {
   const [isDriveConnected, setIsDriveConnected] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [otpRequired, setOtpRequired] = useState(false);
+  const [otpGenerated, setOtpGenerated] = useState('');
+  const [otpInput, setOtpInput] = useState('');
+  const [pendingBookingData, setPendingBookingData] = useState<any>(null);
+
   const checkDriveStatus = async () => {
     try {
-      const response = await fetch(`${window.location.origin}/api/auth/google/status`);
+      const response = await fetch('/api/auth/google/status');
       if (!response.ok) return;
+      
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) return;
+      
       const data = await response.json();
       setIsDriveConnected(data.connected);
     } catch (err) {
@@ -67,7 +69,7 @@ const Payment: React.FC<PaymentProps> = ({ user, role }) => {
   const handleConnectDrive = async () => {
     setIsConnectingDrive(true);
     try {
-      const response = await fetch(`${window.location.origin}/api/auth/google/url`);
+      const response = await fetch('/api/auth/google/url');
       if (!response.ok) {
         const errData = await response.json();
         throw new Error(errData.error || 'Failed to get auth URL');
@@ -94,6 +96,53 @@ const Payment: React.FC<PaymentProps> = ({ user, role }) => {
       console.error('Error connecting to Google Drive:', error);
       toast.error(error.message || 'Failed to initiate Google Drive connection');
       setIsConnectingDrive(false);
+    }
+  };
+
+  const fetchPaymentsForBooking = async (bookingId: string) => {
+    try {
+      const isPrivileged = role === 'admin';
+      let paymentsConditions: any[] = [where('orderId', '==', bookingId)];
+      if (user && !isPrivileged) paymentsConditions.push(where('clientId', '==', user.uid));
+      
+      const paymentsQuery = query(collection(db, 'payments'), ...paymentsConditions);
+      const paymentsSnapshot = await getDocs(paymentsQuery);
+      setPayments(paymentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    } catch (error) {
+      console.error('Error fetching payments:', error);
+    }
+  };
+
+  const handleStartOtpFlow = (bookingData: any) => {
+    if (role === 'admin') {
+      setBooking(bookingData);
+      setManualAmount(bookingData.dueAmount.toString());
+      fetchPaymentsForBooking(bookingData.id);
+      return;
+    }
+    
+    // Generate 4-digit OTP
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+    setOtpGenerated(otp);
+    setPendingBookingData(bookingData);
+    setOtpRequired(true);
+    
+    // Simulate sending OTP
+    toast.success(`OTP for testing has been sent to ${bookingData.clientMobile || 'your mobile number'}.`);
+    toast(`Your OTP is: ${otp}`, { duration: 10000, position: 'top-center' });
+  };
+
+  const handleVerifyOtp = async () => {
+    if (otpInput === otpGenerated && pendingBookingData) {
+      setOtpRequired(false);
+      setOtpInput('');
+      setOtpGenerated('');
+      setBooking(pendingBookingData);
+      setManualAmount(pendingBookingData.dueAmount.toString());
+      toast.success('Successfully verified!');
+      await fetchPaymentsForBooking(pendingBookingData.id);
+    } else {
+      toast.error('Invalid OTP. Please try again.');
     }
   };
 
@@ -168,17 +217,8 @@ const Payment: React.FC<PaymentProps> = ({ user, role }) => {
           invoiceNumber: data.invoiceNumber,
           location: data.location || data.eventPlace
         };
-        setBooking(normalizedData);
-        setManualAmount(normalizedData.dueAmount.toString());
         
-        // Fetch existing payments for this booking
-        let paymentsConditions: any[] = [where('orderId', '==', querySnapshot.docs[0].id)];
-        if (user && !isPrivileged) paymentsConditions.push(where('clientId', '==', user.uid));
-        
-        const paymentsQuery = query(collection(db, 'payments'), ...paymentsConditions);
-        const paymentsSnapshot = await getDocs(paymentsQuery);
-        setPayments(paymentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-        
+        handleStartOtpFlow(normalizedData);
         toast.success('Booking found!');
       }
     } catch (error) {
@@ -201,10 +241,10 @@ const Payment: React.FC<PaymentProps> = ({ user, role }) => {
     setUploading(true);
     const formData = new FormData();
     formData.append('file', file);
-    formData.append('folderId', '10MEuvB7YLVCuqzsAczfckbRUU5ieVUkh');
+    formData.append('folderId', '18i7ozCbEtFI9O4Pg2uxclc2KBQyGePkB');
 
     try {
-      const response = await fetch(`${window.location.origin}/api/upload-to-drive`, {
+      const response = await fetch('/api/upload-to-drive', {
         method: 'POST',
         body: formData,
       });
@@ -305,7 +345,7 @@ const Payment: React.FC<PaymentProps> = ({ user, role }) => {
 
     setPaying(true);
     try {
-      const response = await fetch('/api/create-checkout-session', {
+      const response = await fetch('/api/phonepe/initiate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -324,15 +364,10 @@ const Payment: React.FC<PaymentProps> = ({ user, role }) => {
         throw new Error(session.error);
       }
 
-      const stripe = await stripePromise;
-      if (!stripe) throw new Error('Stripe failed to load');
-
-      const { error } = await (stripe as any).redirectToCheckout({
-        sessionId: session.id,
-      });
-
-      if (error) {
-        toast.error(error.message);
+      if (session.url) {
+        window.location.href = session.url;
+      } else {
+        throw new Error('Failed to get payment URL');
       }
     } catch (error: any) {
       console.error('Payment error:', error);
@@ -353,32 +388,65 @@ const Payment: React.FC<PaymentProps> = ({ user, role }) => {
         {!booking ? (
           <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100 max-w-md mx-auto">
             <h2 className="text-xl font-bold mb-6">Client Login</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Mobile or Invoice Number</label>
-                <div className="relative">
-                  <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+            {otpRequired ? (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Verification Code (OTP)</label>
                   <input
                     type="text"
-                    placeholder="Enter mobile or invoice number..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-12 pr-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-black outline-none transition-all"
+                    placeholder="Enter 4-digit code"
+                    value={otpInput}
+                    onChange={(e) => setOtpInput(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleVerifyOtp()}
+                    maxLength={4}
+                    className="w-full px-4 py-3 text-center tracking-[0.5em] font-bold text-2xl rounded-xl border border-gray-200 focus:ring-2 focus:ring-black outline-none transition-all"
                   />
+                  <p className="text-xs text-gray-400 mt-4 text-center">A verification code has been sent to your mobile number.</p>
+                </div>
+                <div className="flex gap-4">
+                  <button
+                    onClick={() => setOtpRequired(false)}
+                    className="w-full bg-gray-100 text-gray-600 py-4 rounded-xl font-bold hover:bg-gray-200 transition-all"
+                  >
+                    Back
+                  </button>
+                  <button
+                    onClick={handleVerifyOtp}
+                    className="w-full bg-black text-white py-4 rounded-xl font-bold hover:bg-gray-800 transition-all flex items-center justify-center space-x-2"
+                  >
+                    Verify
+                  </button>
                 </div>
               </div>
-              
-              <Captcha onVerify={setIsCaptchaVerified} className="bg-white" />
+            ) : (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 uppercase mb-2">Mobile or Invoice Number</label>
+                  <div className="relative">
+                    <Phone className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Enter mobile or invoice number..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && (!loading && isCaptchaVerified) && handleFindBooking()}
+                      className="w-full pl-12 pr-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-black outline-none transition-all"
+                    />
+                  </div>
+                </div>
+                
+                <Captcha onVerify={setIsCaptchaVerified} className="bg-white" />
 
-              <button
-                onClick={handleFindBooking}
-                disabled={loading || !isCaptchaVerified}
-                className="w-full bg-black text-white py-4 rounded-xl font-bold hover:bg-gray-800 transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
-              >
-                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
-                <span>Find My Booking</span>
-              </button>
-            </div>
+                <button
+                  onClick={handleFindBooking}
+                  disabled={loading || !isCaptchaVerified}
+                  className="w-full bg-black text-white py-4 rounded-xl font-bold hover:bg-gray-800 transition-all flex items-center justify-center space-x-2 disabled:opacity-50"
+                >
+                  {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
+                  <span>Find My Booking</span>
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="space-y-8">
@@ -486,7 +554,7 @@ const Payment: React.FC<PaymentProps> = ({ user, role }) => {
                         )}
                       </button>
                       <p className="text-xs text-center text-gray-400">
-                        Secure payment powered by Stripe. All major cards accepted.
+                        Secure payment powered by PhonePe. All major UPI, cards and Netbanking accepted.
                       </p>
                     </div>
                   </div>

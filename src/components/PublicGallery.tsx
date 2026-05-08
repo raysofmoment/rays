@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { collection, query, where, onSnapshot, orderBy, addDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
-import { ImageIcon, ArrowRight, Camera, Filter, Search, Plus, X, Download, Play, Heart, ChevronLeft, ChevronRight, Youtube, Music, Baby, Calendar, MoreHorizontal, Trash2 } from 'lucide-react';
+import { ImageIcon, ArrowRight, Camera, Filter, Search, Plus, X, Download, Play, Heart, ChevronLeft, ChevronRight, Youtube, Music, Baby, Calendar, MoreHorizontal, Trash2, Pin, PinOff } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { setDoc } from 'firebase/firestore';
 import ConfirmModal from './ConfirmModal';
+
+import Logo from './Logo';
 
 interface PublicGalleryProps {
   user: any;
@@ -30,13 +33,14 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
   const [uploadCategory, setUploadCategory] = useState('Other');
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [itemToDelete, setItemToDelete] = useState<any>(null);
+  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   
   const FOLDER_MAP: Record<string, string> = {
-    'Wedding': '1sWUCrEJQHgZfzF0C3ZbqL5xbYGxYo4Qn',
-    'Music': '1UIs_4grBIKa2aq7qGLxWIlTmBm8gsXBg',
-    'Kids': '1tX7LLW8IuorWPEh4_GZWir79T4SkPMM3',
-    'Event': '1RUcpnCc3NIV87PI4OEhsiTQHd13FBAa0',
-    'Other': '1WkAnOgDEioFqAyvD5BzTGi2ybB6ohc0V'
+    'Wedding': '1MyprAhR1qLeye5TC832J9XvmFw2Afjra',
+    'Music': '1YgviutdlsMvMrZxDmEBvle3n0ssB2eWk',
+    'Kids': '1vWObut98zYGgkvAnctVu1wInJVDKOIbV',
+    'Event': '15nzoF4PdtZkSE33r_3AO_jya6jIWXFR-',
+    'Other': '1wEaZxNFrhTRglcS5JV96XZL_66wPPIVC'
   };
 
   const categories = [
@@ -49,13 +53,74 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
     { name: 'Other', icon: MoreHorizontal }
   ];
 
+  const fetchDriveFiles = useCallback(async (isRefresh = false) => {
+    try {
+      if (!isRefresh) setLoading(true);
+      setError(null);
+      
+      const fetchPromises = Object.entries(FOLDER_MAP).map(async ([category, folderId]) => {
+        try {
+          const fetchUrl = `/api/drive/list/${folderId}`;
+          console.log(`[PublicGallery] Attempting fetch: ${fetchUrl}`);
+          
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+          
+          const response = await fetch(fetchUrl, { 
+            signal: controller.signal,
+            headers: { 'Accept': 'application/json' }
+          });
+          clearTimeout(timeoutId);
+          
+          if (!response.ok) {
+            console.warn(`[PublicGallery] Folder ${category} error (${response.status}): ${folderId}`);
+            if (response.status === 401) {
+              setError("Google Drive access required. Please link your Drive in the Admin Hub.");
+            }
+            return [];
+          }
+          
+          const contentType = response.headers.get('content-type');
+          if (!contentType || !contentType.includes('application/json')) {
+            console.error(`[PublicGallery] Non-JSON response for ${category}`);
+            return [];
+          }
+          
+          const data = await response.json();
+          return Array.isArray(data) ? data.map((file: any) => ({ ...file, driveCategory: category })) : [];
+        } catch (err: any) {
+          if (err.name === 'AbortError') {
+            console.warn(`[PublicGallery] Fetch timeout for folder ${category}`);
+          } else {
+            console.error(`Error fetching folder ${category}:`, err.message || err);
+          }
+          return [];
+        }
+      });
+
+      const results = await Promise.all(fetchPromises);
+      const allFiles = results.flat();
+      setDriveFiles(allFiles);
+    } catch (err: any) {
+      console.error('Critical error in fetchDriveFiles:', err);
+      if (!driveFiles.length) {
+        setError(err.message || 'Failed to establish Drive connection');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     const checkDriveStatus = async () => {
       try {
         const response = await fetch('/api/auth/google/status');
         if (!response.ok) return;
-        const data = await response.json();
-        setIsDriveConnected(data.connected);
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const data = await response.json();
+          setIsDriveConnected(data.connected);
+        }
       } catch (err) {
         console.error('Error checking Drive status:', err);
       }
@@ -67,12 +132,24 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
       const videos = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
-        isYoutube: doc.data().type === 'youtube' || doc.data().type === 'link'
+        isYoutube: (doc.data() as any).type === 'youtube' || (doc.data() as any).type === 'link'
       }));
       setYoutubeVideos(videos);
     });
-    return () => unsubscribe();
-  }, []);
+
+    // Listen for pins
+    const pinsUnsubscribe = onSnapshot(collection(db, 'pinnedAssets'), (snapshot) => {
+      const ids = snapshot.docs.map(doc => doc.id);
+      setPinnedIds(ids);
+    });
+
+    fetchDriveFiles();
+
+    return () => {
+      unsubscribe();
+      pinsUnsubscribe();
+    };
+  }, [fetchDriveFiles]);
 
   const getYoutubeId = (url: string) => {
     const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|\&v=)([^#\&\?]*).*/;
@@ -167,10 +244,10 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
     if (!file) return;
 
     setIsUploading(true);
+    const toastId = toast.loading(`Uploading ${file.name} to Drive...`);
     const formData = new FormData();
     formData.append('file', file);
     
-    // Determine target folder based on selected category in modal
     const targetFolderId = FOLDER_MAP[uploadCategory] || FOLDER_MAP['Other'];
     formData.append('folderId', targetFolderId);
 
@@ -192,12 +269,13 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
         }
       }
 
-      toast.success('File uploaded to Drive successfully');
-      // The gallery will refresh automatically because it fetches from Drive on mount or we can trigger a refresh
-      window.location.reload(); 
-    } catch (err) {
+      toast.success('File uploaded to Drive successfully', { id: toastId });
+      setShowAddModal(false);
+      // Refresh only the drive files instead of reloading the page
+      fetchDriveFiles(true);
+    } catch (err: any) {
       console.error('Error uploading file:', err);
-      toast.error('Failed to upload file');
+      toast.error(err.message || 'Failed to upload file', { id: toastId });
     } finally {
       setIsUploading(false);
     }
@@ -206,11 +284,36 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
   const handleConnectDrive = async () => {
     try {
       const response = await fetch('/api/auth/google/url');
-      const { url } = await response.json();
-      window.open(url, '_blank', 'width=600,height=600');
+      if (!response.ok) throw new Error('Failed to get auth URL');
+      const data = await response.json();
+      window.open(data.url, '_blank', 'width=600,height=600');
     } catch (err) {
       console.error('Error getting auth URL:', err);
       toast.error('Failed to connect to Google Drive');
+    }
+  };
+
+  const handleTogglePin = async (item: any) => {
+    if (role !== 'admin') return;
+    
+    const isPinned = pinnedIds.includes(item.id);
+    const pinDocRef = doc(db, 'pinnedAssets', item.id);
+    
+    try {
+      if (isPinned) {
+        await deleteDoc(pinDocRef);
+        toast.success('Asset unpinned from top');
+      } else {
+        await setDoc(pinDocRef, {
+          pinnedAt: new Date().toISOString(),
+          type: item.isDrive ? 'drive' : 'youtube',
+          category: item.driveCategory || item.category || 'Other'
+        });
+        toast.success('Asset pinned to top');
+      }
+    } catch (err) {
+      console.error('Error toggling pin:', err);
+      toast.error('Failed to update pin status');
     }
   };
 
@@ -218,6 +321,12 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
     ...driveFiles.map(f => ({ ...f, isDrive: true })),
     ...youtubeVideos
   ].sort((a, b) => {
+    const isPinnedA = pinnedIds.includes(a.id);
+    const isPinnedB = pinnedIds.includes(b.id);
+    
+    if (isPinnedA && !isPinnedB) return -1;
+    if (!isPinnedA && isPinnedB) return 1;
+    
     const dateA = a.createdAt || a.createdTime || '';
     const dateB = b.createdAt || b.createdTime || '';
     return dateB.localeCompare(dateA);
@@ -265,334 +374,242 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedFile, handleNext, handlePrev]);
 
-  useEffect(() => {
-    const fetchDriveFiles = async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        
-        const fetchPromises = Object.entries(FOLDER_MAP).map(async ([category, folderId]) => {
-          try {
-            const response = await fetch(`/api/drive/list/${folderId}`);
-            if (!response.ok) return [];
-            const data = await response.json();
-            return data.map((file: any) => ({ ...file, driveCategory: category }));
-          } catch (err) {
-            console.error(`Error fetching folder ${category}:`, err);
-            return [];
-          }
-        });
-
-        const results = await Promise.all(fetchPromises);
-        const allFiles = results.flat();
-        setDriveFiles(allFiles);
-      } catch (err: any) {
-        console.error('Error fetching Drive files:', err);
-        setError(err.message || 'An unknown error occurred');
-        setDriveFiles([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchDriveFiles();
-  }, []);
-
   return (
-    <div className="bg-[#fafafa] min-h-screen pb-12">
-      {/* Instagram Profile Header */}
-      <div className="max-w-4xl mx-auto pt-8 md:pt-12 px-4 mb-4 md:mb-12">
-        <div className="flex flex-col md:flex-row items-center md:items-start gap-6 md:gap-16">
-          {/* Avatar */}
-          <div className="relative flex-shrink-0">
-            <div className="w-24 h-24 sm:w-32 sm:h-32 md:w-40 md:h-40 rounded-full p-1 bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600">
-              <div className="w-full h-full rounded-full border-2 md:border-4 border-white overflow-hidden bg-gray-200">
-                <img 
-                  src="https://picsum.photos/seed/photographer/400/400" 
-                  alt="Profile" 
-                  className="w-full h-full object-cover"
-                />
-              </div>
-            </div>
-            {role === 'admin' && (
-              <button 
-                onClick={() => {
-                  if (activeCategory === 'Videos') {
-                    setAddType('youtube');
-                    setYoutubeForm(prev => ({ ...prev, category: 'Videos' }));
-                  } else {
-                    setAddType('drive');
-                    setUploadCategory(activeCategory === 'All' ? 'Other' : activeCategory);
-                  }
-                  setShowAddModal(true);
-                }}
-                className="absolute bottom-1 right-1 md:bottom-2 md:right-2 p-1.5 md:p-2 bg-blue-500 text-white rounded-full border-2 border-white shadow-lg hover:scale-110 transition-transform"
-              >
-                <Plus className="w-3 h-3 md:w-4 md:h-4" />
-              </button>
-            )}
-          </div>
-
-          {/* Profile Info */}
-          <div className="flex-grow text-center md:text-left">
-            <div className="flex flex-col md:flex-row md:items-center gap-3 md:gap-4 mb-4 md:mb-6">
-              <h1 className="text-xl md:text-2xl font-light text-gray-900">rays_of_moment</h1>
-              <div className="flex items-center justify-center md:justify-start gap-2">
-                <button className="flex-1 md:flex-none px-4 py-1.5 bg-blue-500 text-white text-sm font-semibold rounded-lg hover:bg-blue-600 transition-colors">
-                  Follow
-                </button>
-                <button className="flex-1 md:flex-none px-4 py-1.5 bg-gray-100 text-gray-900 text-sm font-semibold rounded-lg hover:bg-gray-200 transition-colors">
-                  Message
-                </button>
-                <button className="p-1.5 bg-gray-100 text-gray-900 rounded-lg hover:bg-gray-200 transition-colors">
-                  <Camera className="w-5 h-5" />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-center md:justify-start gap-4 sm:gap-8 mb-4 md:mb-6 border-y md:border-none border-gray-100 py-3 md:py-0">
-              <div className="text-sm md:text-base text-center md:text-left">
-                <span className="font-semibold block md:inline">{driveFiles.length}</span> 
-                <span className="text-gray-500 md:text-gray-900"> posts</span>
-              </div>
-              <div className="text-sm md:text-base text-center md:text-left">
-                <span className="font-semibold block md:inline">12.4k</span> 
-                <span className="text-gray-500 md:text-gray-900"> followers</span>
-              </div>
-              <div className="text-sm md:text-base text-center md:text-left">
-                <span className="font-semibold block md:inline">842</span> 
-                <span className="text-gray-500 md:text-gray-900"> following</span>
-              </div>
-            </div>
-
-            <div className="max-w-md mx-auto md:mx-0">
-              <h2 className="font-semibold text-gray-900 text-sm md:text-base mb-1">Rays of Moment Photography</h2>
-              <p className="text-gray-600 text-xs md:text-sm leading-relaxed px-4 md:px-0">
-                📸 Capturing moments that last forever<br />
-                🌍 Travel | Wedding | Portrait<br />
-                📍 Based in Murshidabad, West Bengal<br />
-                ✨ Open for bookings worldwide
-              </p>
-              <a href="https://www.instagram.com/rays.of.moment/" target="_blank" rel="noopener noreferrer" className="text-blue-900 text-xs md:text-sm font-semibold mt-2 block hover:underline">
-                instagram.com/rays.of.moment
-              </a>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Tabs / Highlights */}
-      <div className="max-w-4xl mx-auto border-gray-200">
-        <div className="flex justify-start md:justify-center items-start gap-4 md:gap-8 lg:gap-12 py-6 md:py-10 overflow-x-auto no-scrollbar scroll-smooth px-4">
-          {categories.map((cat) => (
-            <button
-              key={cat.name}
-              onClick={() => setActiveCategory(cat.name)}
-              className="flex flex-col items-center gap-3 group min-w-[72px] md:min-w-[80px] shrink-0"
-              id={`category-${cat.name.toLowerCase()}`}
-            >
-              <div className={`relative p-[1.5px] rounded-full transition-all duration-500 transform ${
-                activeCategory === cat.name 
-                  ? 'bg-gradient-to-tr from-yellow-400 via-red-500 to-purple-600 scale-110 active:scale-100' 
-                  : 'bg-gray-200 group-hover:bg-gray-300'
-              }`}>
-                <div className="w-14 h-14 md:w-16 md:h-16 lg:w-18 lg:h-18 rounded-full border-2 border-white bg-white flex items-center justify-center overflow-hidden transition-transform duration-300">
-                  <cat.icon className={`w-6 h-6 md:w-7 md:h-7 lg:w-8 lg:h-8 transition-colors ${
-                    activeCategory === cat.name ? 'text-black' : 'text-gray-400 group-hover:text-gray-600'
-                  }`} />
-                </div>
-              </div>
-              <span className={`text-[10px] md:text-xs font-bold leading-tight transition-colors truncate max-w-full ${
-                activeCategory === cat.name ? 'text-black' : 'text-gray-500 group-hover:text-gray-700'
-              }`}>
-                {cat.name}
-              </span>
-            </button>
-          ))}
-          {role === 'admin' && activeCategory === 'Videos' && (
-            <button 
+    <div className="bg-white min-h-screen pb-32">
+      {/* Product Header */}
+      <div className="max-w-7xl mx-auto pt-32 px-6 sm:px-10 lg:px-14 mb-32 flex flex-col items-center text-center">
+        <motion.div
+          initial={{ opacity: 0, letterSpacing: "0.2em" }}
+          animate={{ opacity: 1, letterSpacing: "0.8em" }}
+          transition={{ duration: 1.5 }}
+          className="text-[10px] font-black uppercase text-primary mb-12"
+        >
+          STUDIO.ARCHIVE.PRO
+        </motion.div>
+        
+        <motion.h1 
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-7xl md:text-[10rem] font-sans font-black text-gray-900 leading-[0.8] tracking-tighter uppercase mb-20"
+        >
+          Visual <br /> Assets
+        </motion.h1>
+        
+        <div className="flex flex-col md:flex-row items-center gap-12 w-full max-w-4xl">
+          <motion.p 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.5 }}
+            className="text-gray-400 text-sm font-medium leading-relaxed flex-grow text-center md:text-left"
+          >
+            A technical repository of high-fidelity visual documentation. Engineered for precision, preserved for permanence. Authorized studio access only for specific protocols.
+          </motion.p>
+          
+          {role === 'admin' && (
+            <motion.button 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
               onClick={() => {
-                setAddType('youtube');
+                if (activeCategory === 'Videos') {
+                  setAddType('youtube');
+                  setYoutubeForm(prev => ({ ...prev, category: 'Videos' }));
+                } else {
+                  setAddType('drive');
+                  setUploadCategory(activeCategory === 'All' ? 'Other' : activeCategory);
+                }
                 setShowAddModal(true);
               }}
-              className="flex flex-col items-center gap-3 group min-w-[72px] md:min-w-[80px] shrink-0"
+              className="btn-premium whitespace-nowrap px-10 py-5 text-[10px] tracking-[0.4em]"
             >
-              <div className="p-[1.5px] rounded-full bg-blue-500/20 group-hover:bg-blue-500/40 transition-colors">
-                <div className="w-14 h-14 md:w-16 md:h-16 lg:w-18 lg:h-18 rounded-full border-2 border-white bg-gray-50 flex items-center justify-center">
-                  <Plus className="w-6 h-6 md:w-7 md:h-7 lg:w-8 lg:h-8 text-blue-600" />
-                </div>
-              </div>
-              <span className="text-[10px] md:text-xs font-bold text-blue-600">Add New</span>
-            </button>
+              <Plus className="w-4 h-4 mr-2" />
+              ADD ASSET
+            </motion.button>
           )}
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-0 mt-4">
+      {/* Minimal Category Tab Bar */}
+      <div className="sticky top-20 z-40 bg-white/60 backdrop-blur-3xl border-y border-gray-100/50 mb-20">
+        <div className="max-w-7xl mx-auto px-6 overflow-x-auto no-scrollbar scroll-smooth">
+          <div className="flex justify-start md:justify-center items-center py-8 gap-12">
+            {categories.map((cat) => (
+              <button
+                key={cat.name}
+                onClick={() => setActiveCategory(cat.name)}
+                className={`flex items-center gap-4 transition-all relative group whitespace-nowrap px-6 py-2`}
+              >
+                <cat.icon className={`w-4 h-4 transition-all duration-500 ${activeCategory === cat.name ? 'text-primary scale-125' : 'text-gray-300 group-hover:text-primary'}`} />
+                <span className={`text-[10px] font-black uppercase tracking-[0.4em] transition-all duration-500 ${activeCategory === cat.name ? 'text-gray-900 border-b-2 border-primary pb-1' : 'text-gray-300 group-hover:text-primary'}`}>
+                  {cat.name}
+                </span>
+                {activeCategory === cat.name && (
+                  <motion.div layoutId="catGlow" className="absolute inset-0 bg-primary/5 blur-xl rounded-full" />
+                )}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* High-Fidelity Asset Grid */}
+      <div className="max-w-7xl mx-auto px-6 sm:px-10 lg:px-14">
         {loading ? (
-          <div className="flex justify-center py-24">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12">
+            {[...Array(9)].map((_, i) => (
+              <div key={i} className="bg-gray-50 aspect-[4/5] animate-pulse rounded-[3rem]" />
+            ))}
           </div>
         ) : error ? (
-          <div className="text-center py-12 bg-white border border-gray-200 rounded-lg">
-            <X className="w-12 h-12 text-red-400 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Gallery Error</h3>
-            <p className="text-gray-500 text-sm max-w-xs mx-auto">{error}</p>
+          <div className="text-center py-40 border border-red-50/50 rounded-[4rem] bg-red-50/10">
+            <X className="w-16 h-16 text-red-200 mx-auto mb-10" />
+            <h3 className="text-2xl font-black text-gray-900 uppercase tracking-tighter mb-4">Connection Terminated</h3>
+            <p className="text-gray-400 text-sm font-medium mb-10">{error}</p>
+            <button 
+              onClick={() => fetchDriveFiles()}
+              className="px-12 py-5 bg-gray-900 text-white rounded-full text-[10px] font-black tracking-[0.4em] hover:bg-black transition-all"
+            >
+              RE-ESTABLISH HANDSHAKE
+            </button>
           </div>
         ) : filteredFiles.length > 0 ? (
-          <div className="grid grid-cols-3 gap-1 md:gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-12">
             <AnimatePresence mode="popLayout">
               {filteredFiles.map((item, i) => (
                 <motion.div
                   key={item.id}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: i * 0.02 }}
                   layout
-                  className="group relative aspect-square overflow-hidden bg-gray-200 cursor-pointer"
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1] }}
+                  className="relative aspect-[4/5] overflow-hidden rounded-[3rem] bg-gray-50 group border border-gray-100 hover:border-primary/20 hover:product-shadow transition-all duration-1000 cursor-none"
                   onClick={() => setSelectedFile(item)}
                 >
-                  {role === 'admin' && (item.isYoutube || item.isDrive || item.type === 'video' || item.mimeType?.startsWith('video/') || item.mimeType?.startsWith('image/')) && (
-                    <button 
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleDeleteItem(item);
-                      }}
-                      className="absolute top-2 right-2 md:top-3 md:left-3 p-2 md:p-2.5 bg-red-500 hover:bg-red-600 active:scale-90 text-white rounded-full z-[40] opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-all shadow-xl pointer-events-auto flex items-center justify-center border border-white/20"
-                      title="Delete Item"
-                    >
-                      <Trash2 className="w-4 h-4 md:w-5 md:h-5" />
-                    </button>
-                  )}
-                  {item.isYoutube ? (
-                    <div className="w-full h-full relative">
-                      <img
-                        src={`https://img.youtube.com/vi/${getYoutubeId(item.url)}/hqdefault.jpg`}
-                        alt={item.title}
-                        className="w-full h-full object-cover"
-                      />
-                      <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center shadow-lg">
-                          <Play className="w-6 h-6 text-white fill-white ml-1" />
+                  {/* Media Content */}
+                  <div className="relative w-full h-full overflow-hidden">
+                    {pinnedIds.includes(item.id) && (
+                      <div className="absolute top-6 right-6 z-30 bg-primary text-white p-2 rounded-full shadow-lg">
+                        <Pin className="w-3 h-3 fill-current" />
+                      </div>
+                    )}
+                    {item.isYoutube ? (
+                      <div className="relative w-full h-full">
+                        <img
+                          src={`https://img.youtube.com/vi/${getYoutubeId(item.url)}/hqdefault.jpg`}
+                          alt={item.title}
+                          className="w-full h-full object-cover transition-transform duration-[2000ms] group-hover:scale-105"
+                        />
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-40 group-hover:opacity-100 transition-opacity">
+                           <Play className="w-16 h-16 text-white bg-white/20 backdrop-blur-2xl p-5 rounded-full border border-white/20" />
                         </div>
                       </div>
-                      <div className="absolute top-2 right-2">
-                        <Youtube className="w-5 h-5 text-white drop-shadow-md" />
-                      </div>
-                    </div>
-                  ) : item.type === 'image' ? (
-                    <img
-                      src={item.url || null}
-                      alt={item.title}
-                      className="w-full h-full object-cover"
-                    />
-                  ) : item.type === 'video' ? (
-                    <div className="w-full h-full flex items-center justify-center bg-black">
-                      <Play className="w-12 h-12 text-white opacity-50" />
-                      <div className="absolute top-2 right-2">
-                        <Play className="w-5 h-5 text-white fill-white" />
-                      </div>
-                    </div>
-                  ) : item.mimeType?.startsWith('video/') ? (
-                    <div className="w-full h-full flex items-center justify-center bg-black">
-                      <Play className="w-8 h-8 text-white opacity-50" />
-                      <div className="absolute top-2 right-2">
-                        <Play className="w-5 h-5 text-white fill-white" />
-                      </div>
-                    </div>
-                  ) : (
-                    <img
-                      src={item.isDrive ? `/api/drive/image/${item.id}` : (item.thumbnailLink?.replace('=s220', '=s800') || item.webViewLink)}
-                      alt={item.name}
-                      className="w-full h-full object-cover"
-                      referrerPolicy="no-referrer"
-                    />
-                  )}
-                  
-                  {/* Instagram Hover Overlay */}
-                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-6 text-white font-bold pointer-events-none">
-                    <div className="flex items-center gap-1.5">
-                      <Heart className="w-6 h-6 fill-white" />
-                      <span>{Math.floor(Math.random() * 500) + 50}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <ImageIcon className="w-6 h-6 fill-white" />
-                      <span>{Math.floor(Math.random() * 50) + 5}</span>
-                    </div>
+                    ) : (
+                      <img
+                        src={item.thumbnailLink ? item.thumbnailLink.replace('=s220', '=s2048') : `/api/drive/image/${item.id}`}
+                        alt={item.name}
+                        className="w-full h-full object-cover transition-transform duration-[3000ms] group-hover:scale-110 filter brightness-95 group-hover:brightness-100"
+                        referrerPolicy="no-referrer"
+                      />
+                    )}
                   </div>
+                  
+                  {/* Admin Direct Access */}
+                  {role === 'admin' && (
+                    <div className="absolute top-8 left-8 flex flex-col gap-2 z-20">
+                      <button 
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleDeleteItem(item); }}
+                        className="w-10 h-10 bg-red-500/80 backdrop-blur-xl text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-500 hover:bg-red-600 scale-50 group-hover:scale-100"
+                        title="Delete asset"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                      <button 
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleTogglePin(item); }}
+                        className={`w-10 h-10 backdrop-blur-xl rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-500 scale-50 group-hover:scale-100 ${
+                          pinnedIds.includes(item.id) ? 'bg-primary text-white' : 'bg-white/80 text-gray-900 hover:bg-white'
+                        }`}
+                        title={pinnedIds.includes(item.id) ? "Unpin from top" : "Pin to top"}
+                      >
+                        {pinnedIds.includes(item.id) ? <PinOff className="w-4 h-4" /> : <Pin className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  )}
                 </motion.div>
               ))}
             </AnimatePresence>
           </div>
         ) : (
-          <div className="text-center py-24 bg-white border border-gray-200 rounded-lg">
-            <ImageIcon className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-            <p className="text-gray-500">No posts yet.</p>
+          <div className="text-center py-60 border border-gray-50 rounded-[4rem]">
+            <Logo className="w-20 h-20 text-gray-100 mx-auto mb-10 animate-pulse" />
+            <p className="text-gray-200 font-sans font-black uppercase tracking-[0.8em] text-[10px]">Data Stream Inactive</p>
           </div>
         )}
       </div>
 
-      {/* Add Post Modal */}
+      {/* Add Asset Modal */}
       <AnimatePresence>
         {showAddModal && (
-          <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-[110] backdrop-blur-sm">
+          <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-6 z-[110] backdrop-blur-md">
             <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.9 }}
-              className="bg-white rounded-2xl max-w-lg w-full p-8 shadow-2xl max-h-[90vh] overflow-y-auto"
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white rounded-[3rem] max-w-2xl w-full p-8 md:p-12 shadow-2xl max-h-[90vh] overflow-y-auto no-scrollbar relative"
             >
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold text-gray-900">Add New Content</h2>
-                <button onClick={() => setShowAddModal(false)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+              <div className="flex justify-between items-center mb-12">
+                <div>
+                  <h2 className="text-4xl font-sans font-black text-gray-900 tracking-tighter uppercase leading-none mb-2">Deploy <br /> Asset</h2>
+                  <p className="text-gray-400 text-[10px] font-black uppercase tracking-[0.4em]">Protocol Authorization Required</p>
+                </div>
+                <button onClick={() => setShowAddModal(false)} className="w-12 h-12 bg-gray-50 flex items-center justify-center rounded-full hover:bg-gray-100 transition-colors">
                   <X className="w-6 h-6" />
                 </button>
               </div>
 
               {activeCategory !== 'Videos' && (
-                <div className="flex gap-4 mb-8 p-1 bg-gray-100 rounded-xl">
+                <div className="flex gap-4 mb-12 p-2 bg-gray-50 rounded-[2rem]">
                   <button 
                     onClick={() => setAddType('drive')}
-                    className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${addType === 'drive' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    className={`flex-1 py-4 text-[10px] font-black uppercase tracking-[0.3em] rounded-full transition-all duration-500 ${addType === 'drive' ? 'bg-white text-primary shadow-xl' : 'text-gray-400 hover:text-gray-700'}`}
                   >
-                    Drive Upload
+                    Drive Stream
                   </button>
                   <button 
                     onClick={() => setAddType('youtube')}
-                    className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${addType === 'youtube' ? 'bg-white text-black shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                    className={`flex-1 py-4 text-[10px] font-black uppercase tracking-[0.3em] rounded-full transition-all duration-500 ${addType === 'youtube' ? 'bg-white text-primary shadow-xl' : 'text-gray-400 hover:text-gray-700'}`}
                   >
-                    YouTube Link
+                    External Link
                   </button>
                 </div>
               )}
 
               {addType === 'drive' ? (
-                <div className="space-y-6">
+                <div className="space-y-10">
                   {!isDriveConnected ? (
-                    <div className="p-8 border-2 border-dashed border-gray-200 rounded-2xl text-center bg-gray-50">
-                      <Camera className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                      <h3 className="text-lg font-bold text-gray-900 mb-2">Connect Google Drive</h3>
-                      <p className="text-sm text-gray-500 mb-6">You need to authorize the app to upload files to your Google Drive.</p>
+                    <div className="p-16 border border-dashed border-gray-200 rounded-[3rem] text-center bg-gray-50/50">
+                      <Camera className="w-16 h-16 text-gray-100 mx-auto mb-10" />
+                      <h3 className="text-xl font-black text-gray-900 uppercase tracking-tighter mb-4">DRIVE_HANDSHAKE_REQUIRED</h3>
+                      <p className="text-gray-400 text-sm font-medium mb-12">Authorization is mandatory to facilitate cloud-based asset ingestion.</p>
                       <button 
                         onClick={handleConnectDrive}
-                        className="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200"
+                        className="btn-premium px-12 py-5 text-[10px] tracking-[0.4em]"
                       >
-                        Connect Now
+                        AUTHORIZE NOW
                       </button>
                     </div>
                   ) : (
-                      <div className="space-y-6">
+                      <div className="space-y-12">
                         <div>
-                          <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Target Category</label>
-                          <div className="grid grid-cols-2 gap-2">
+                          <label className="block text-[10px] font-black text-gray-300 uppercase tracking-[0.4em] mb-6">Security Clearance (Category)</label>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                             {Object.keys(FOLDER_MAP).map(cat => (
                               <button
                                 key={cat}
                                 type="button"
                                 onClick={() => setUploadCategory(cat)}
-                                className={`px-4 py-2 text-xs font-bold rounded-lg border-2 transition-all ${uploadCategory === cat ? 'border-black bg-black text-white' : 'border-gray-100 bg-gray-50 text-gray-500 hover:border-gray-200'}`}
+                                className={`px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] rounded-2xl border-2 transition-all duration-500 ${uploadCategory === cat ? 'border-primary bg-primary text-white shadow-xl shadow-primary/20 scale-105' : 'border-gray-50 bg-gray-50 text-gray-400 hover:border-gray-200'}`}
                               >
                                 {cat}
                               </button>
@@ -600,67 +617,52 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
                           </div>
                         </div>
 
-                        <div className="p-8 border-2 border-dashed border-blue-200 rounded-2xl text-center bg-blue-50/30 relative py-12">
+                        <div className="p-16 border border-dashed border-primary/20 rounded-[3rem] text-center bg-primary/5 relative group transition-all duration-1000">
                           <input 
                             type="file" 
-                            className="absolute inset-0 opacity-0 cursor-pointer" 
+                            className="absolute inset-0 opacity-0 cursor-pointer z-10" 
                             onChange={handleFileUpload}
                             disabled={isUploading}
                           />
-                          <div className="pointer-events-none">
-                            <Plus className="w-12 h-12 text-blue-500 mx-auto mb-4" />
-                            <h3 className="text-lg font-bold text-gray-900 mb-1">
-                              {isUploading ? 'Uploading...' : 'Click to Upload'}
+                          <div className="relative z-0 group-hover:scale-110 transition-transform duration-700">
+                            <Plus className="w-16 h-16 text-primary mx-auto mb-8" />
+                            <h3 className="text-xl font-black text-gray-900 uppercase tracking-tighter mb-4">
+                              {isUploading ? 'Injesting Data...' : 'Submit Media Asset'}
                             </h3>
-                            <p className="text-sm text-gray-500 px-4">Selected Category: <span className="text-blue-600 font-bold uppercase">{uploadCategory}</span></p>
-                            <p className="text-[10px] text-gray-400 mt-2">Photos or Videos (Max 10MB)</p>
+                            <p className="text-xs font-medium text-gray-400">Target Protocol: <span className="text-primary font-black uppercase tracking-widest">{uploadCategory}</span></p>
+                            <p className="text-[9px] text-gray-300 font-black uppercase tracking-[0.4em] mt-6">Maximum payload: 10MB</p>
                           </div>
-                        </div>
-                        <div className="p-4 bg-gray-50 rounded-xl border border-gray-100">
-                          <p className="text-xs text-gray-500 text-center">
-                            Files will be uploaded to the <span className="font-bold text-gray-700">{uploadCategory}</span> folder in your Google Drive.
-                          </p>
-                        </div>
-                        <div className="text-center">
-                          <a 
-                            href={`https://drive.google.com/drive/folders/${FOLDER_MAP[uploadCategory] || FOLDER_MAP['Other']}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-sm font-semibold text-blue-600 hover:underline"
-                          >
-                            View Folder in Google Drive
-                          </a>
                         </div>
                       </div>
                   )}
                 </div>
               ) : (
-                <form onSubmit={handleAddYoutube} className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">YouTube URL</label>
+                <form onSubmit={handleAddYoutube} className="space-y-8">
+                  <div className="space-y-4">
+                    <label className="block text-[10px] font-black text-gray-300 uppercase tracking-[0.4em]">Asset Endpoint (URL)</label>
                     <input 
                       type="url" 
                       required
-                      placeholder="https://www.youtube.com/watch?v=..."
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black outline-none transition-all"
+                      placeholder="https://protocol-link.com/sequence"
+                      className="w-full px-8 py-5 bg-gray-50 border border-gray-100 rounded-2xl focus:border-primary outline-none transition-all font-medium"
                       value={youtubeForm.url}
                       onChange={e => setYoutubeForm({...youtubeForm, url: e.target.value})}
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Title</label>
+                  <div className="space-y-4">
+                    <label className="block text-[10px] font-black text-gray-300 uppercase tracking-[0.4em]">Asset Title</label>
                     <input 
                       type="text" 
-                      placeholder="Enter video title"
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black outline-none transition-all"
+                      placeholder="Sequence Label..."
+                      className="w-full px-8 py-5 bg-gray-50 border border-gray-100 rounded-2xl focus:border-primary outline-none transition-all font-medium"
                       value={youtubeForm.title}
                       onChange={e => setYoutubeForm({...youtubeForm, title: e.target.value})}
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Category</label>
+                  <div className="space-y-4">
+                    <label className="block text-[10px] font-black text-gray-300 uppercase tracking-[0.4em]">Classification</label>
                     <select 
-                      className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black outline-none transition-all"
+                      className="w-full px-8 py-5 bg-gray-50 border border-gray-100 rounded-2xl focus:border-primary outline-none transition-all font-medium uppercase"
                       value={youtubeForm.category}
                       onChange={e => setYoutubeForm({...youtubeForm, category: e.target.value})}
                     >
@@ -673,173 +675,97 @@ const PublicGallery: React.FC<PublicGalleryProps> = ({ user, role }) => {
                   <button 
                     type="submit"
                     disabled={isSubmitting}
-                    className="w-full py-4 bg-black text-white rounded-xl font-bold hover:bg-gray-800 transition-all disabled:opacity-50"
+                    className="btn-premium w-full py-6 text-[10px] tracking-[0.5em] disabled:opacity-50"
                   >
-                    {isSubmitting ? 'Adding...' : 'Add YouTube Video'}
+                    {isSubmitting ? 'Injesting...' : 'REGISTER MODULE'}
                   </button>
                 </form>
               )}
-              
-              <button 
-                onClick={() => setShowAddModal(false)}
-                className="w-full py-3 mt-4 bg-gray-100 text-gray-900 rounded-xl font-bold hover:bg-gray-200 transition-all"
-              >
-                Cancel
-              </button>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
 
+      {/* Asset Inspection Modal */}
       <AnimatePresence>
         {selectedFile && (
-          <div className="fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-[100] backdrop-blur-sm">
+          <div className="fixed inset-0 bg-black/95 flex items-center justify-center p-0 md:p-12 z-[110] backdrop-blur-3xl">
             <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
+              initial={{ opacity: 0, scale: 1.1 }}
               animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="relative max-w-6xl w-full bg-white rounded-sm overflow-hidden flex flex-col md:flex-row h-full max-h-[90vh]"
+              exit={{ opacity: 0, scale: 1.1 }}
+              className="relative max-w-[100vw] md:max-w-7xl w-full bg-transparent overflow-hidden flex flex-col lg:flex-row h-full max-h-[100vh] md:max-h-[85vh] md:rounded-[4rem]"
             >
-              {/* Image/Video Side */}
-              <div className="flex-grow bg-black flex items-center justify-center relative min-h-[40vh]">
-                {/* Navigation Arrows */}
+              <button 
+                onClick={() => setSelectedFile(null)}
+                className="absolute top-10 right-10 z-50 w-14 h-14 bg-white/10 backdrop-blur-3xl flex items-center justify-center rounded-full text-white hover:bg-white/20 transition-all active:scale-95"
+              >
+                <X className="w-8 h-8" />
+              </button>
+
+              {/* High-Fidelity Preview Side */}
+              <div className="flex-grow bg-black flex items-center justify-center relative min-h-[50vh]">
+                {/* Admin/User Overlay Actions */}
+                <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-50 flex items-center gap-4">
+                  {role === 'admin' && (
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDeleteItem(selectedFile);
+                        setSelectedFile(null);
+                      }}
+                      className="w-14 h-14 bg-red-500/80 backdrop-blur-3xl flex items-center justify-center rounded-full text-white hover:bg-red-600 transition-all active:scale-95"
+                    >
+                      <Trash2 className="w-6 h-6" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Navigation Controls */}
                 {filteredFiles.length > 1 && (
                   <>
                     <button 
                       onClick={(e) => { e.stopPropagation(); handlePrev(); }}
-                      className="absolute left-4 z-10 p-2 bg-black/20 hover:bg-black/40 text-white rounded-full transition-colors hidden md:block"
+                      className="absolute left-10 z-20 w-16 h-16 bg-white/5 hover:bg-white/10 text-white rounded-full flex items-center justify-center transition-all duration-500 backdrop-blur-xl border border-white/5 hidden md:flex"
                     >
                       <ChevronLeft className="w-8 h-8" />
                     </button>
                     <button 
                       onClick={(e) => { e.stopPropagation(); handleNext(); }}
-                      className="absolute right-4 z-10 p-2 bg-black/20 hover:bg-black/40 text-white rounded-full transition-colors hidden md:block"
+                      className="absolute right-10 z-20 w-16 h-16 bg-white/5 hover:bg-white/10 text-white rounded-full flex items-center justify-center transition-all duration-500 backdrop-blur-xl border border-white/5 hidden md:flex"
                     >
                       <ChevronRight className="w-8 h-8" />
                     </button>
                   </>
                 )}
 
-                {selectedFile.isYoutube ? (
-                  <iframe
-                    src={`https://www.youtube.com/embed/${getYoutubeId(selectedFile.url)}?autoplay=1`}
-                    className="w-full h-full border-0"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  />
-                ) : (selectedFile.type === 'video' || (selectedFile.mimeType && selectedFile.mimeType.startsWith('video/'))) ? (
-                  <video 
-                    src={selectedFile.type === 'video' ? selectedFile.url : selectedFile.webContentLink} 
-                    controls 
-                    autoPlay 
-                    className="max-w-full max-h-full"
-                  />
-                ) : (
-                  <img 
-                    src={selectedFile.isDrive ? `/api/drive/image/${selectedFile.id}` : (selectedFile.type === 'image' ? (selectedFile.url || undefined) : (selectedFile.thumbnailLink?.replace('=s220', '=s1600') || selectedFile.webViewLink))} 
-                    alt={selectedFile.name || selectedFile.title}
-                    className="max-w-full max-h-full object-contain"
-                    referrerPolicy="no-referrer"
-                  />
-                )}
-                <button 
-                  onClick={() => setSelectedFile(null)}
-                  className="absolute top-4 right-4 p-2 text-white hover:text-gray-300 md:hidden"
-                >
-                  <X className="w-6 h-6" />
-                </button>
-              </div>
-              
-              {/* Sidebar Info Side */}
-              <div className="w-full md:w-[400px] flex flex-col bg-white border-l border-gray-200">
-                <div className="p-4 border-b border-gray-100 flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-200">
-                      <img src="https://picsum.photos/seed/photographer/100/100" alt="Avatar" />
-                    </div>
-                    <span className="font-semibold text-sm">rays_of_moment</span>
-                    <span className="text-blue-500 font-semibold text-sm cursor-pointer hover:text-blue-700">• Follow</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {role === 'admin' && (
-                      <button 
-                        onClick={() => {
-                          handleDeleteItem(selectedFile);
-                          setSelectedFile(null);
-                        }}
-                        className="p-2 text-red-500 hover:bg-red-50 rounded-full transition-colors"
-                        title="Delete this post"
-                      >
-                        <Trash2 className="w-5 h-5" />
-                      </button>
-                    )}
-                    <button onClick={() => setSelectedFile(null)} className="hidden md:block p-2 hover:bg-gray-100 rounded-full transition-colors">
-                      <X className="w-5 h-5 text-gray-500" />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="flex-grow p-4 overflow-y-auto">
-                  <div className="flex gap-3 mb-4">
-                    <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-200 flex-shrink-0">
-                      <img src="https://picsum.photos/seed/photographer/100/100" alt="Avatar" />
-                    </div>
-                    <div>
-                      <p className="text-sm">
-                        <span className="font-semibold mr-2">rays_of_moment</span>
-                        {selectedFile.isYoutube ? selectedFile.title : selectedFile.name}
-                      </p>
-                      <p className="text-gray-400 text-xs mt-2 uppercase tracking-wider">
-                        {format(new Date(selectedFile.createdAt || selectedFile.createdTime || new Date()), 'MMMM d')}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Mock Comments */}
-                  {[1, 2, 3].map(i => (
-                    <div key={i} className="flex gap-3 mb-4">
-                      <div className="w-8 h-8 rounded-full overflow-hidden bg-gray-200 flex-shrink-0">
-                        <img src={`https://picsum.photos/seed/user${i}/100/100`} alt="User" />
-                      </div>
-                      <div>
-                        <p className="text-sm">
-                          <span className="font-semibold mr-2">user_{i}</span>
-                          This shot is absolutely incredible! Love the lighting.
-                        </p>
-                        <div className="flex gap-3 mt-1">
-                          <span className="text-gray-400 text-xs">2h</span>
-                          <span className="text-gray-500 text-xs font-semibold cursor-pointer">Reply</span>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="p-4 border-t border-gray-100">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex gap-4">
-                      <Heart className="w-6 h-6 cursor-pointer hover:text-gray-600" />
-                      <ImageIcon className="w-6 h-6 cursor-pointer hover:text-gray-600" />
-                      <Download className="w-6 h-6 cursor-pointer hover:text-gray-600" onClick={() => window.open(selectedFile.webContentLink)} />
-                    </div>
-                  </div>
-                  <p className="font-semibold text-sm mb-1">{Math.floor(Math.random() * 500) + 50} likes</p>
-                  <p className="text-gray-400 text-[10px] uppercase tracking-wider">{format(new Date(), 'MMMM d, yyyy')}</p>
-                </div>
-
-                <div className="p-4 border-t border-gray-100">
-                  <div className="flex items-center gap-3">
-                    <input 
-                      type="text" 
-                      placeholder="Add a comment..." 
-                      className="flex-grow text-sm outline-none"
+                <div className="w-full h-full flex items-center justify-center p-12">
+                  {selectedFile.isYoutube ? (
+                    <iframe
+                      src={`https://www.youtube.com/embed/${getYoutubeId(selectedFile.url)}?autoplay=1&modestbranding=1&rel=0`}
+                      className="w-full aspect-video md:h-full border-0 rounded-3xl shadow-2xl"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
                     />
-                    <button className="text-blue-500 font-semibold text-sm opacity-50">Post</button>
-                  </div>
+                  ) : (selectedFile.type === 'video' || (selectedFile.mimeType && selectedFile.mimeType.startsWith('video/'))) ? (
+                    <video 
+                      src={selectedFile.type === 'video' ? selectedFile.url : selectedFile.webContentLink} 
+                      controls 
+                      autoPlay 
+                      className="max-w-full max-h-full rounded-3xl"
+                    />
+                  ) : (
+                    <img 
+                      src={selectedFile.thumbnailLink ? selectedFile.thumbnailLink.replace('=s220', '=s2048') : `/api/drive/image/${selectedFile.id}`} 
+                      alt={selectedFile.name || selectedFile.title}
+                      className="max-w-full max-h-full object-contain md:rounded-[3rem] product-shadow"
+                      referrerPolicy="no-referrer"
+                    />
+                  )}
                 </div>
-              </div>
-            </motion.div>
-          </div>
+                </div>
+              </motion.div>
+            </div>
         )}
       </AnimatePresence>
 

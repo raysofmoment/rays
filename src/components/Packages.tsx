@@ -3,6 +3,7 @@ import { Check, Camera, Heart, Users, Briefcase, Star, ArrowRight, LayoutDashboa
 import { motion, AnimatePresence } from 'motion/react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
+import Logo from './Logo';
 
 import { categories, packageData } from '../constants/packages';
 
@@ -27,26 +28,33 @@ const Packages: React.FC = () => {
   );
 
   return (
-    <div className="py-24 bg-gray-50 min-h-screen">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-16">
-          <h1 className="text-5xl font-bold text-gray-900 mb-4">Our Packages & Services</h1>
-          <p className="text-xl text-gray-500 max-w-2xl mx-auto">Choose from our curated packages or customize your own with our add-on services.</p>
+    <div className="py-20 md:py-32 bg-white min-h-screen relative overflow-hidden">
+      <div className="absolute top-0 right-0 w-full h-full bg-accent/5 blur-[120px] rounded-full opacity-30 -translate-y-1/2 translate-x-1/3" />
+      
+      <div className="max-w-7xl mx-auto px-6 sm:px-10 lg:px-14 relative z-10">
+        <div className="text-center mb-32 max-w-3xl mx-auto">
+          <span className="text-[10px] font-black uppercase tracking-[0.6em] text-primary mb-8 block">The Collection</span>
+          <h1 className="text-4xl md:text-8xl font-sans font-black text-gray-900 tracking-tighter uppercase leading-[0.85] mb-12">
+            Engineered <br /> Experiences
+          </h1>
+          <p className="text-gray-400 text-lg font-medium leading-relaxed">
+            Select from our performance-tuned visual archives or facilitate a bespoke sequence tailored to your creative objectives.
+          </p>
         </div>
 
         {/* Category Navigation */}
-        <div className="flex flex-wrap justify-center gap-4 mb-12">
+        <div className="flex flex-wrap justify-center gap-6 mb-24 border-b border-gray-100 pb-12 overflow-x-auto no-scrollbar scroll-smooth">
           {categories.map((cat) => (
             <button
               key={cat.id}
               onClick={() => setActiveCategory(cat.id)}
-              className={`flex items-center space-x-2 px-6 py-3 rounded-full font-bold transition-all ${
+              className={`flex items-center gap-4 px-10 py-4 rounded-full font-sans font-black text-[10px] uppercase tracking-[0.3em] transition-all duration-700 whitespace-nowrap ${
                 activeCategory === cat.id 
-                ? 'bg-black text-white shadow-lg' 
-                : 'bg-white text-gray-600 hover:bg-gray-100'
+                ? 'bg-primary text-white shadow-2xl shadow-primary/40 scale-105' 
+                : 'bg-transparent text-gray-400 hover:text-black hover:bg-gray-50'
               }`}
             >
-              {cat.icon}
+              <span className={activeCategory === cat.id ? 'text-white' : 'text-primary'}>{cat.icon}</span>
               <span>{cat.name}</span>
             </button>
           ))}
@@ -56,48 +64,60 @@ const Packages: React.FC = () => {
           {activeCategory !== "AddOn" ? (
             <motion.div
               key={activeCategory}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8"
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -30 }}
+              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-12"
             >
               {packageData[activeCategory]?.map((pkg, i) => (
                 <motion.div
                   key={i}
-                  className={`relative bg-white rounded-3xl p-8 shadow-sm border border-gray-100 flex flex-col h-full ${pkg.popular ? 'ring-2 ring-yellow-500 scale-105 z-10' : ''}`}
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: i * 0.1, duration: 0.8 }}
+                  className={`relative glass-card p-12 rounded-[3.5rem] flex flex-col h-full group hover:scale-[1.02] transition-all duration-700 ${pkg.popular ? 'border-primary/30 product-shadow' : ''}`}
                 >
                   {pkg.popular && (
-                    <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-yellow-500 text-white px-4 py-1 rounded-full text-sm font-bold">
-                      Most Popular
+                    <div className="absolute top-0 right-12 -translate-y-1/2 bg-accent text-white px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-[0.4em] shadow-xl shadow-accent/20">
+                      Standard Issue
                     </div>
                   )}
                   
-                  <h3 className="text-3xl font-black text-gray-900 mb-1">{pkg.name}</h3>
-                  <p className="text-gray-500 text-sm font-medium mb-8">{pkg.description}</p>
-                  
-                  <div className="mb-10">
-                    <div className="flex items-baseline">
-                      <span className="text-5xl font-black text-gray-900">₹{pkg.price}</span>
-                      {pkg.unit && <span className="text-gray-500 ml-1 font-bold">{pkg.unit}</span>}
+                  <div className="flex justify-between items-start mb-10">
+                    <div>
+                      <h3 className="text-3xl font-black text-gray-900 tracking-tighter uppercase leading-none mb-3">{pkg.name}</h3>
+                      <p className="text-gray-400 text-xs font-bold uppercase tracking-widest">{activeCategory}</p>
                     </div>
-                    <span className="text-gray-400 block text-sm font-bold mt-1">Starting from</span>
+                    <div className="w-12 h-12 bg-primary/5 rounded-2xl flex items-center justify-center text-primary group-hover:scale-110 group-hover:rotate-6 transition-all duration-500">
+                      <Camera className="w-6 h-6" />
+                    </div>
                   </div>
                   
-                  <ul className="space-y-5 mb-10 flex-grow">
+                  <div className="mb-12">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-5xl font-black text-gray-900 tracking-tighter">₹{pkg.price.toLocaleString()}</span>
+                      {pkg.unit && <span className="text-gray-400 font-bold uppercase text-[10px] tracking-widest">{pkg.unit}</span>}
+                    </div>
+                    <span className="text-primary text-[9px] font-black uppercase tracking-[0.3em] block mt-2">Base Specification Cost</span>
+                  </div>
+                  
+                  <ul className="space-y-6 mb-16 flex-grow">
                     {pkg.features.map((feature, idx) => (
-                      <li key={idx} className="flex items-center space-x-4 text-sm font-bold text-gray-600">
-                        <Check className="w-5 h-5 text-green-500 flex-shrink-0" />
-                        <span>{feature}</span>
+                      <li key={idx} className="flex items-start gap-4 text-xs font-medium text-gray-500 group-hover:text-gray-900 transition-colors">
+                        <div className="w-5 h-5 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <Check className="w-3 h-3 text-primary" />
+                        </div>
+                        <span className="leading-relaxed">{feature}</span>
                       </li>
                     ))}
                   </ul>
                   
                   <button
                     onClick={() => handleBookNow(pkg)}
-                    className={`w-full py-4 rounded-xl text-white font-bold text-center transition-all flex items-center justify-center space-x-2 ${pkg.btnColor}`}
+                    className="btn-premium w-full py-6 text-xs tracking-[0.4em] uppercase flex items-center justify-center gap-4"
                   >
-                    <span>Book Now</span>
-                    <ArrowRight className="w-5 h-5" />
+                    <span>Initiate Booking</span>
+                    <ArrowRight className="w-4 h-4" />
                   </button>
                 </motion.div>
               ))}
@@ -105,31 +125,34 @@ const Packages: React.FC = () => {
           ) : (
             <motion.div
               key="AddOn"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100"
+              initial={{ opacity: 0, scale: 0.98 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 1.02 }}
+              className="bg-white rounded-[3.5rem] p-16 product-shadow border border-gray-100"
             >
-              <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 gap-4">
-                <h2 className="text-3xl font-bold text-gray-900">Add-On Services</h2>
+              <div className="flex flex-col md:flex-row md:items-end justify-between mb-20 gap-12">
+                <div className="max-w-xl">
+              <h2 className="text-4xl font-sans font-black text-gray-900 tracking-tighter uppercase leading-none mb-6">Component <br /> Upgrades</h2>
+                  <p className="text-gray-400 font-medium">Refine your session with tactical add-ons designed for maximum visual performance.</p>
+                </div>
                 <div className="relative max-w-md w-full">
-                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+                  <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-300" />
                   <input
                     type="text"
-                    placeholder="Search services..."
+                    placeholder="Search Specifications..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-12 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-black transition-all"
+                    className="w-full pl-16 pr-6 py-6 bg-gray-50 border border-gray-100 rounded-3xl outline-none focus:border-primary transition-all font-sans font-medium text-lg placeholder:text-gray-200"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                 {filteredAddOns.map((item, idx) => (
-                  <div key={idx} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl hover:bg-gray-100 transition-colors group">
-                    <div className="flex-grow pr-4">
-                      <h4 className="font-bold text-gray-900 group-hover:text-black">{item.name}</h4>
-                      <p className="text-sm text-gray-500">₹{item.price}</p>
+                  <div key={idx} className="flex items-center justify-between p-8 bg-gray-50 rounded-[2.5rem] hover:bg-white hover:product-shadow border border-transparent hover:border-gray-100 transition-all duration-700 group">
+                    <div className="flex-grow pr-6">
+                      <h4 className="font-bold text-gray-900 group-hover:text-primary transition-colors tracking-tight uppercase text-sm mb-2">{item.name}</h4>
+                      <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest">₹{item.price.toLocaleString()}</p>
                     </div>
                     <button 
                       onClick={() => {
@@ -141,7 +164,7 @@ const Packages: React.FC = () => {
                         });
                         navigate('/cart');
                       }}
-                      className="p-2 bg-white rounded-full shadow-sm hover:bg-black hover:text-white transition-all"
+                      className="w-12 h-12 bg-white rounded-full flex items-center justify-center shadow-lg group-hover:bg-primary group-hover:text-white transition-all duration-500"
                     >
                       <Plus className="w-5 h-5" />
                     </button>
@@ -150,8 +173,9 @@ const Packages: React.FC = () => {
               </div>
               
               {filteredAddOns.length === 0 && (
-                <div className="text-center py-12">
-                  <p className="text-gray-500">No services found matching your search.</p>
+                <div className="text-center py-20">
+                  <Logo className="w-16 h-16 text-gray-100 mx-auto mb-8 animate-pulse" />
+                  <p className="text-gray-300 font-sans font-black uppercase tracking-[0.4em] text-xs">No Data Found</p>
                 </div>
               )}
             </motion.div>
@@ -159,10 +183,15 @@ const Packages: React.FC = () => {
         </AnimatePresence>
 
         {/* Custom Package Builder */}
-        <div className="mt-24 bg-white rounded-3xl p-8 md:p-12 shadow-sm border border-gray-100">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold text-gray-900 mb-4">Build Your Own Package</h2>
-            <p className="text-gray-500 max-w-2xl mx-auto">Customize every detail of your shoot and get an instant estimate tailored to your needs.</p>
+        <div className="mt-40 bg-[#0a0a0a] rounded-[4rem] p-12 md:p-24 shadow-2xl relative overflow-hidden group">
+          <div className="absolute top-0 left-0 w-full h-full bg-primary/5 blur-[120px] rounded-full opacity-50 translate-x-1/2 -translate-y-1/2 group-hover:bg-accent/5 transition-all duration-1000" />
+          
+          <div className="text-center mb-32 relative z-10 max-w-2xl mx-auto">
+            <span className="text-[10px] font-black uppercase tracking-[0.6em] text-primary mb-8 block">The Forge</span>
+            <h2 className="text-4xl md:text-8xl font-sans font-black text-white tracking-tighter uppercase leading-[0.85] mb-12">Bespoke <br /> Generation</h2>
+            <p className="text-white/40 text-lg font-medium leading-relaxed">
+              Manually configure your session parameters. Our real-time engine will calculate a precision estimate based on your unique creative requirements.
+            </p>
           </div>
 
           <CustomPackageForm />
@@ -273,165 +302,165 @@ const CustomPackageForm: React.FC = () => {
   const amount = calculateAmount();
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-start">
-      <div className="space-y-8">
-        <div className="space-y-6">
-          <h4 className="text-lg font-bold flex items-center gap-2">
-            <Filter className="w-5 h-5" />
-            Base Configuration
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-24 items-start relative z-10 text-white">
+      <div className="space-y-16">
+        <div className="space-y-10">
+          <h4 className="text-[10px] font-black uppercase tracking-[0.4em] text-primary flex items-center gap-4">
+            <Filter className="w-4 h-4" />
+            Core Configuration
           </h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Type of Work</label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+            <div className="space-y-4">
+              <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-white/30">Engagement Archetype</label>
               <select 
                 value={formData.workType}
                 onChange={(e) => setFormData({...formData, workType: e.target.value})}
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-black transition-all"
+                className="w-full bg-white/[0.02] border-b border-white/10 py-4 outline-none focus:border-primary transition-all text-white font-sans font-medium text-lg"
               >
-                <option value="WeddingGroom">Wedding (Groom Side)</option>
-                <option value="WeddingBride">Wedding (Bride Side)</option>
-                <option value="WeddingBoth">Wedding (Both Side)</option>
-                <option value="Birthday">Birthday / Rice Ceremony</option>
-                <option value="Upanayan">Upanayan</option>
-                <option value="PreWedding">Pre-Wedding / Music Video</option>
-                <option value="ShortFilm">Short Film</option>
-                <option value="Event">Event</option>
-                <option value="ModelShoot">Model Shoot</option>
-                <option value="Other">Other</option>
+                <option className="bg-[#0a0a0a]" value="WeddingGroom">Wedding (Groom Side)</option>
+                <option className="bg-[#0a0a0a]" value="WeddingBride">Wedding (Bride Side)</option>
+                <option className="bg-[#0a0a0a]" value="WeddingBoth">Wedding (Both Side)</option>
+                <option className="bg-[#0a0a0a]" value="Birthday">Birthday / Rice Ceremony</option>
+                <option className="bg-[#0a0a0a]" value="Upanayan">Upanayan Archive</option>
+                <option className="bg-[#0a0a0a]" value="PreWedding">Pre-Wedding / Cine Video</option>
+                <option className="bg-[#0a0a0a]" value="ShortFilm">Short Film Sequence</option>
+                <option className="bg-[#0a0a0a]" value="Event">Event Documentation</option>
+                <option className="bg-[#0a0a0a]" value="ModelShoot">Model Portfolio</option>
+                <option className="bg-[#0a0a0a]" value="Other">Bespoke Protocol</option>
               </select>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Number of Days</label>
+            <div className="space-y-4">
+              <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-white/30">Temporal Duration (Days)</label>
               <input 
                 type="number" 
                 min="1"
                 value={formData.days}
                 onChange={(e) => setFormData({...formData, days: parseInt(e.target.value) || 1})}
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-black transition-all"
+                className="w-full bg-white/[0.02] border-b border-white/10 py-4 outline-none focus:border-primary transition-all text-white font-sans font-medium text-lg"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Photographers</label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+            <div className="space-y-4">
+              <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-white/30">Optical Units (Photo)</label>
               <input 
                 type="number" 
                 min="0"
                 value={formData.photographers}
                 onChange={(e) => setFormData({...formData, photographers: parseInt(e.target.value) || 0})}
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-black transition-all"
+                className="w-full bg-white/[0.02] border-b border-white/10 py-4 outline-none focus:border-primary transition-all text-white font-sans font-medium text-lg"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Videographers</label>
+            <div className="space-y-4">
+              <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-white/30">Motion Units (Video)</label>
               <input 
                 type="number" 
                 min="0"
                 value={formData.videographers}
                 onChange={(e) => setFormData({...formData, videographers: parseInt(e.target.value) || 0})}
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-black transition-all"
+                className="w-full bg-white/[0.02] border-b border-white/10 py-4 outline-none focus:border-primary transition-all text-white font-sans font-medium text-lg"
               />
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Sensor / Camera Type</label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+            <div className="space-y-4">
+              <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-white/30">Sensor Fidelity</label>
               <select 
                 value={formData.sensorType}
                 onChange={(e) => setFormData({...formData, sensorType: e.target.value})}
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-black transition-all"
+                className="w-full bg-white/[0.02] border-b border-white/10 py-4 outline-none focus:border-primary transition-all text-white font-sans font-medium text-lg"
               >
-                <option value="Crop">Crop Sensor (Budget)</option>
-                <option value="Full">Full Sensor (Professional)</option>
-                <option value="Cine">Cinema / Cine cam (Premium)</option>
+                <option className="bg-[#0a0a0a]" value="Crop">Standard Fidelity (Crop)</option>
+                <option className="bg-[#0a0a0a]" value="Full">Studio Fidelity (Full Frame)</option>
+                <option className="bg-[#0a0a0a]" value="Cine">Cinema Grade (CINE)</option>
               </select>
             </div>
-            <div className="flex flex-col justify-center space-y-3 pt-2">
-              <label className="flex items-center space-x-3 cursor-pointer group">
+            <div className="flex flex-col justify-center space-y-6 pt-4">
+              <label className="flex items-center space-x-4 cursor-pointer group">
                 <input 
                   type="checkbox"
                   checked={formData.drone}
                   onChange={(e) => setFormData({...formData, drone: e.target.checked})}
-                  className="w-5 h-5 rounded border-gray-300 text-black focus:ring-black"
+                  className="w-5 h-5 rounded border-white/10 bg-white/5 text-primary focus:ring-primary transition-all"
                 />
-                <span className="text-sm font-medium text-gray-700 group-hover:text-black transition-colors">Include Drone Coverage</span>
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 group-hover:text-white transition-colors">Drone Services</span>
               </label>
-              <label className="flex items-center space-x-3 cursor-pointer group">
+              <label className="flex items-center space-x-4 cursor-pointer group">
                 <input 
                   type="checkbox"
                   checked={formData.album}
                   onChange={(e) => setFormData({...formData, album: e.target.checked})}
-                  className="w-5 h-5 rounded border-gray-300 text-black focus:ring-black"
+                  className="w-5 h-5 rounded border-white/10 bg-white/5 text-primary focus:ring-primary transition-all"
                 />
-                <span className="text-sm font-medium text-gray-700 group-hover:text-black transition-colors">Include Standard Album</span>
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white/40 group-hover:text-white transition-colors">Photo Album</span>
               </label>
             </div>
           </div>
         </div>
 
-        <div className="space-y-6">
-          <h4 className="text-lg font-bold flex items-center gap-2">
-            <Plus className="w-5 h-5" />
-            Additional Services & Packages
+        <div className="space-y-10">
+          <h4 className="text-[10px] font-black uppercase tracking-[0.4em] text-primary flex items-center gap-4">
+            <Plus className="w-4 h-4" />
+            Extra Services
           </h4>
           
           <div className="relative">
             <div className="relative">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <Search className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-white/20" />
               <input 
                 type="text"
-                placeholder="Search and add any package or service..."
+                placeholder="Search Services..."
                 value={serviceSearch}
                 onFocus={() => setShowServiceList(true)}
                 onChange={(e) => setServiceSearch(e.target.value)}
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl pl-12 pr-4 py-3 outline-none focus:ring-2 focus:ring-black transition-all"
+                className="w-full bg-white/[0.03] border border-white/5 rounded-[2rem] pl-16 pr-6 py-6 outline-none focus:border-primary transition-all text-white font-sans font-medium text-lg placeholder:text-white/10"
               />
             </div>
 
             {showServiceList && (
-              <div className="absolute z-50 w-full mt-2 bg-white border border-gray-200 rounded-2xl shadow-xl max-h-64 overflow-y-auto">
+              <div className="absolute z-50 w-full mt-4 bg-[#0f0f0f] border border-white/10 rounded-[2.5rem] shadow-2xl max-h-80 overflow-y-auto no-scrollbar backdrop-blur-3xl animate-in fade-in slide-in-from-top-4 duration-500">
                 {filteredServices.length > 0 ? (
                   filteredServices.map((service, idx) => (
                     <button
                       key={idx}
                       onClick={() => addService(service)}
-                      className="w-full text-left px-6 py-3 hover:bg-gray-50 flex justify-between items-center transition-colors border-b border-gray-50 last:border-0"
+                      className="w-full text-left px-8 py-6 hover:bg-white/[0.03] flex justify-between items-center transition-all border-b border-white/[0.02] last:border-0 group"
                     >
                       <div>
-                        <p className="font-bold text-gray-900">{service.name}</p>
-                        <p className="text-xs text-gray-500 uppercase tracking-wider">{service.category}</p>
+                        <p className="font-bold text-white group-hover:text-primary transition-colors tracking-tight uppercase text-sm">{service.name}</p>
+                        <p className="text-[9px] text-white/20 font-black uppercase tracking-widest mt-1">{service.category}</p>
                       </div>
-                      <span className="font-bold text-black">₹{service.price.toLocaleString()}</span>
+                      <span className="font-sans font-black text-white/40 group-hover:text-white">₹{service.price.toLocaleString()}</span>
                     </button>
                   ))
                 ) : (
-                  <div className="px-6 py-4 text-gray-500 text-center">No matching services found</div>
+                  <div className="px-8 py-10 text-white/20 text-center text-xs font-black uppercase tracking-widest">No Protocol Matches Found</div>
                 )}
               </div>
             )}
             {showServiceList && (
               <div 
-                className="fixed inset-0 z-40" 
+                className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" 
                 onClick={() => setShowServiceList(false)}
               />
             )}
           </div>
 
           {formData.extraServices.length > 0 && (
-            <div className="flex flex-wrap gap-3">
+            <div className="flex flex-wrap gap-4">
               {formData.extraServices.map((service, idx) => (
                 <div 
                   key={idx}
-                  className="bg-gray-100 text-gray-800 px-4 py-2 rounded-full text-sm font-medium flex items-center gap-2 group"
+                  className="bg-primary/10 text-primary px-6 py-3 rounded-full text-[10px] font-black uppercase tracking-[0.2em] flex items-center gap-4 border border-primary/20 animate-in zoom-in duration-300"
                 >
                   <span>{service.name} (₹{service.price.toLocaleString()})</span>
                   <button 
                     onClick={() => removeService(service.name)}
-                    className="hover:text-red-500 transition-colors"
+                    className="hover:text-white transition-colors"
                   >
-                    <Plus className="w-4 h-4 rotate-45" />
+                    <Plus className="w-3 h-3 rotate-45" />
                   </button>
                 </div>
               ))}
@@ -439,80 +468,82 @@ const CustomPackageForm: React.FC = () => {
           )}
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">Shoot Location</label>
+        <div className="space-y-4">
+          <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-white/30">Engagement Coordinates (Location)</label>
           <input 
             type="text" 
-            placeholder="e.g. Berhampore, Kolkata, etc."
+            placeholder="Deployment Radius..."
             value={formData.location}
             onChange={(e) => setFormData({...formData, location: e.target.value})}
-            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-black transition-all"
+            className="w-full bg-white/[0.02] border-b border-white/10 py-4 outline-none focus:border-primary transition-all text-white font-sans font-medium text-lg placeholder:text-white/10"
           />
         </div>
       </div>
 
-      <div className="bg-black text-white p-8 rounded-3xl sticky top-24">
-        <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
-          <LayoutDashboard className="w-6 h-6" />
-          Package Summary
+      <div className="bg-white/[0.02] backdrop-blur-3xl p-12 lg:p-16 rounded-[4rem] border border-white/5 sticky top-32 product-shadow overflow-hidden group/card shadow-2xl">
+        <div className="absolute top-0 right-0 w-32 h-32 bg-primary/10 blur-[80px] rounded-full opacity-50" />
+        
+        <h3 className="text-2xl font-sans font-black text-white tracking-tighter uppercase mb-12 flex items-center gap-6">
+          <LayoutDashboard className="w-8 h-8 text-primary" />
+          Protocol Summary
         </h3>
         
-        <div className="space-y-4 mb-8 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
-          <div className="flex justify-between text-gray-400">
-            <span>Work Type</span>
-            <span className="text-white font-medium">{formData.workType}</span>
+        <div className="space-y-6 mb-16 max-h-[400px] overflow-y-auto pr-4 custom-scrollbar">
+          <div className="flex justify-between items-center group/item">
+            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20 group-hover/item:text-white/40 transition-colors">Archetype</span>
+            <span className="text-white font-black uppercase text-xs tracking-tighter">{formData.workType}</span>
           </div>
-          <div className="flex justify-between text-gray-400">
-            <span>Duration</span>
-            <span className="text-white font-medium">{formData.days} Day(s)</span>
+          <div className="flex justify-between items-center group/item">
+            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20 group-hover/item:text-white/40 transition-colors">Sequence Duration</span>
+            <span className="text-white font-black uppercase text-xs tracking-tighter">{formData.days} Session(s)</span>
           </div>
-          <div className="flex justify-between text-gray-400">
-            <span>Team</span>
-            <span className="text-white font-medium">
-              {formData.photographers > 0 && `${formData.photographers} Photo`}
-              {formData.photographers > 0 && formData.videographers > 0 && ' + '}
-              {formData.videographers > 0 && `${formData.videographers} Video`}
-              {formData.photographers === 0 && formData.videographers === 0 && 'None selected'}
+          <div className="flex justify-between items-center group/item">
+            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20 group-hover/item:text-white/40 transition-colors">Division Team</span>
+            <span className="text-white font-black uppercase text-xs tracking-tighter">
+              {formData.photographers > 0 && `${formData.photographers} OPTIC`}
+              {formData.photographers > 0 && formData.videographers > 0 && ' • '}
+              {formData.videographers > 0 && `${formData.videographers} MOTION`}
+              {formData.photographers === 0 && formData.videographers === 0 && 'UNDEFINED'}
             </span>
           </div>
-          <div className="flex justify-between text-gray-400">
-            <span>Equipment</span>
-            <span className="text-white font-medium">{formData.sensorType} Sensor</span>
+          <div className="flex justify-between items-center group/item">
+            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20 group-hover/item:text-white/40 transition-colors">Optical Standard</span>
+            <span className="text-white font-black uppercase text-xs tracking-tighter">{formData.sensorType} GRAIN</span>
           </div>
           {(formData.drone || formData.album) && (
-            <div className="flex justify-between text-gray-400">
-              <span>Quick Add-ons</span>
-              <span className="text-white font-medium">
-                {[formData.drone && 'Drone', formData.album && 'Album'].filter(Boolean).join(', ')}
+            <div className="flex justify-between items-center group/item">
+              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20 group-hover/item:text-white/40 transition-colors">Integrations</span>
+              <span className="text-primary font-black uppercase text-xs tracking-tighter">
+                {[formData.drone && 'AERIAL', formData.album && 'PHYSICAL'].filter(Boolean).join(' • ')}
               </span>
             </div>
           )}
           {formData.extraServices.length > 0 && (
-            <div className="pt-4 border-t border-white/10 space-y-2">
-              <p className="text-xs font-bold text-gray-500 uppercase tracking-widest">Additional Services</p>
+            <div className="pt-8 border-t border-white/5 space-y-4">
+              <p className="text-[9px] font-black text-white/10 uppercase tracking-[0.5em]">Active Modules</p>
               {formData.extraServices.map((s, i) => (
-                <div key={i} className="flex justify-between text-sm">
-                  <span className="text-gray-400">{s.name}</span>
-                  <span className="text-white">₹{s.price.toLocaleString()}</span>
+                <div key={i} className="flex justify-between items-center text-xs">
+                  <span className="text-white/30 font-bold uppercase tracking-tight">{s.name}</span>
+                  <span className="text-white font-black">₹{s.price.toLocaleString()}</span>
                 </div>
               ))}
             </div>
           )}
           {formData.location && (
-            <div className="flex justify-between text-gray-400 pt-4 border-t border-white/10">
-              <span>Location</span>
-              <span className="text-white font-medium">{formData.location}</span>
+            <div className="flex justify-between items-center pt-8 border-t border-white/5 group/item">
+              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20 group-hover/item:text-white/40 transition-colors">Deployment</span>
+              <span className="text-white font-black uppercase text-xs tracking-tighter">{formData.location}</span>
             </div>
           )}
         </div>
 
-        <div className="pt-8 border-t border-white/10">
-          <div className="flex justify-between items-end mb-8">
+        <div className="pt-12 border-t border-white/5">
+          <div className="flex flex-col gap-4 mb-12">
             <div>
-              <p className="text-gray-400 text-sm mb-1">Estimated Total</p>
-              <p className="text-5xl font-bold">₹{amount.toLocaleString()}</p>
+              <p className="text-white/20 text-[10px] font-black uppercase tracking-[0.5em] mb-4">Calculated Cost Basis</p>
+              <p className="text-7xl font-sans font-black text-white tracking-tighter">₹{amount.toLocaleString()}</p>
             </div>
-            <p className="text-gray-500 text-xs text-right max-w-[150px]">Final price may vary based on travel and specific needs.</p>
+            <p className="text-white/10 text-[9px] font-black uppercase tracking-[0.4em] max-w-xs leading-relaxed">System-generated estimate. Final facilitation parameters subject to studio audit.</p>
           </div>
 
           <button
@@ -531,10 +562,10 @@ const CustomPackageForm: React.FC = () => {
               });
               navigate('/cart');
             }}
-            className="w-full bg-white text-black py-4 rounded-xl font-bold text-center hover:bg-gray-200 transition-all flex items-center justify-center gap-2"
+            className="btn-premium w-full py-8 text-[11px] tracking-[0.5em] uppercase flex items-center justify-center gap-6 group"
           >
-            <span>Proceed to Booking</span>
-            <ArrowRight className="w-5 h-5" />
+            <span>Proceed to Checkout</span>
+            <ArrowRight className="w-5 h-5 transform group-hover:translate-x-2 transition-transform" />
           </button>
         </div>
       </div>

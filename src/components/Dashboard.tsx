@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User } from 'firebase/auth';
 import { collection, query, where, getDocs, limit, orderBy, or } from 'firebase/firestore';
 import { db } from '../firebase';
-import { Calendar, Clock, CheckCircle, AlertCircle, TrendingUp, Users, Camera, Image as ImageIcon, MessageSquare, User as UserIcon } from 'lucide-react';
+import { Calendar, Clock, CheckCircle, AlertCircle, TrendingUp, Users, Camera, Image as ImageIcon, MessageSquare, User as UserIcon, Trash2, Loader2, Heart } from 'lucide-react';
 import Logo from './Logo';
 import { Link } from 'react-router-dom';
 import { format, isValid } from 'date-fns';
@@ -23,6 +23,58 @@ const Dashboard: React.FC<DashboardProps> = ({ user, role }) => {
   const [assignedBookings, setAssignedBookings] = useState<any[]>([]);
   const [pendingInfoBookings, setPendingInfoBookings] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [anniversaries, setAnniversaries] = useState<any[]>([]);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  const handleWhatsAppAnniversary = (order: any) => {
+    const phoneNumber = order.mobileNumber || order.clientMobile;
+    if (!phoneNumber) {
+      import('sonner').then(({ toast }) => toast.error('No mobile number found for this client.'));
+      return;
+    }
+    
+    // Format number to remove non-digits
+    let phoneStr = phoneNumber.replace(/\D/g, '');
+    if (phoneStr.length === 10) phoneStr = '91' + phoneStr;
+    
+    const years = new Date().getFullYear() - new Date(order.date || order.createdAt).getFullYear();
+    const sweetMessage = `Happy ${years}${years === 1 ? 'st' : years === 2 ? 'nd' : years === 3 ? 'rd' : 'th'} Anniversary ${order.clientName}!\n\nIt's been ${years} year${years > 1 ? 's' : ''} since we captured your special moments. We hope you are looking back at those memories with a big smile! 📸✨\n\nWarm wishes from the team at Rays of Moment.`;
+    
+    window.open(`https://api.whatsapp.com/send?phone=${phoneStr}&text=${encodeURIComponent(sweetMessage)}`, '_blank');
+  };
+
+  const handleDeleteOrder = async (orderId: string) => {
+    if (!window.confirm('Are you sure you want to delete this order?')) return;
+    setDeletingId(orderId);
+    try {
+      const { doc, deleteDoc, writeBatch, collection, query, where, getDocs } = await import('firebase/firestore');
+      const batch = writeBatch(db);
+      
+      batch.delete(doc(db, 'orders', orderId));
+      
+      // Attempt to find associated booking
+      const order = recentOrders.find(o => o.id === orderId);
+      if (order?.bookingId) {
+        batch.delete(doc(db, 'bookings', order.bookingId));
+      }
+      
+      // Delete associated payments
+      const paymentsQuery = query(collection(db, 'payments'), where('orderId', '==', orderId));
+      const paymentsSnap = await getDocs(paymentsQuery);
+      paymentsSnap.forEach(p => {
+        batch.delete(doc(db, 'payments', p.id));
+      });
+      
+      await batch.commit();
+      setRecentOrders(prev => prev.filter(o => o.id !== orderId));
+      import('sonner').then(({ toast }) => toast.success('Order deleted successfully'));
+    } catch (error) {
+      console.error('Delete failed:', error);
+      import('sonner').then(({ toast }) => toast.error('Failed to delete order'));
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   useEffect(() => {
     const fetchDashboardData = async () => {
@@ -83,6 +135,31 @@ const Dashboard: React.FC<DashboardProps> = ({ user, role }) => {
             completed: counts.completed,
             totalOrders: counts.total
           }));
+
+          const today = new Date();
+          const currentMonth = today.getMonth();
+          const currentDay = today.getDate();
+          const currentYear = today.getFullYear();
+          
+          const anniversariesList = allOrders.docs.filter(doc => {
+            const data = doc.data();
+            const orderDateStr = data.date || data.createdAt;
+            if (!orderDateStr) return false;
+            
+            const orderDate = new Date(orderDateStr);
+            if (!isValid(orderDate)) return false;
+            
+            return orderDate.getMonth() === currentMonth && 
+                   orderDate.getDate() === currentDay && 
+                   orderDate.getFullYear() < currentYear;
+          }).map(doc => ({ id: doc.id, ...doc.data() }));
+
+          setAnniversaries(anniversariesList);
+          if (anniversariesList.length > 0) {
+            import('sonner').then(({ toast }) => 
+              toast.success(`You have ${anniversariesList.length} client anniversar${anniversariesList.length === 1 ? 'y' : 'ies'} today!`)
+            );
+          }
         } else {
           // Fetch assigned bookings for anyone (staff or admin assigned to projects)
           // Note: Standardising on checking both singular and plural fields if they exist
@@ -149,12 +226,115 @@ const Dashboard: React.FC<DashboardProps> = ({ user, role }) => {
       )}
 
       {role === 'admin' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <StatCard title="Total Orders" value={stats.totalOrders} icon={<TrendingUp className="w-6 h-6 text-blue-600" />} color="bg-blue-50" />
-          <StatCard title="Pending" value={stats.pending} icon={<Clock className="w-6 h-6 text-yellow-600" />} color="bg-yellow-50" />
-          <StatCard title="Confirmed" value={stats.confirmed} icon={<CheckCircle className="w-6 h-6 text-green-600" />} color="bg-green-50" />
-          <StatCard title="Completed" value={stats.completed} icon={<AlertCircle className="w-6 h-6 text-purple-600" />} color="bg-purple-50" />
-        </div>
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            <StatCard title="Total Orders" value={stats.totalOrders} icon={<TrendingUp className="w-6 h-6 text-blue-600" />} color="bg-blue-50" />
+            <StatCard title="Pending" value={stats.pending} icon={<Clock className="w-6 h-6 text-yellow-600" />} color="bg-yellow-50" />
+            <StatCard title="Confirmed" value={stats.confirmed} icon={<CheckCircle className="w-6 h-6 text-green-600" />} color="bg-green-50" />
+            <StatCard title="Completed" value={stats.completed} icon={<AlertCircle className="w-6 h-6 text-purple-600" />} color="bg-purple-50" />
+          </div>
+          
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+              <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+                <MessageSquare className="w-5 h-5 text-gray-500" />
+                Email Server Connection
+              </h2>
+              <p className="text-sm text-gray-500 mt-1">Check if your email server is correctly configured (GoDaddy / ZeptoMail etc.)</p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <button
+                onClick={async () => {
+                  const toast = (await import('sonner')).toast;
+                  try {
+                    toast.loading("Checking email status...");
+                    const res = await fetch('/api/check-email-status');
+                    const data = await res.json();
+                    toast.dismiss();
+                    
+                    if (data.connected) {
+                      toast.success(`Connected! Host: ${data.host || 'Unknown'}`);
+                    } else {
+                      toast.error(`Error: ${data.error || data.message || 'Check logs'} - Host: ${data.host}`);
+                    }
+                  } catch (err: any) {
+                    toast.dismiss();
+                    toast.error(`Request failed: ${err.message}`);
+                  }
+                }}
+                className="px-4 py-2 bg-black text-white rounded-xl font-medium hover:bg-gray-800 transition-colors whitespace-nowrap"
+              >
+                Test Connection
+              </button>
+              <button
+                onClick={async () => {
+                  const to = window.prompt("Enter email address to send a test email to:");
+                  if (!to) return;
+                  const toast = (await import('sonner')).toast;
+                  try {
+                    toast.loading("Sending test email...");
+                    const res = await fetch('/api/send-email', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        to,
+                        subject: 'Test Email from Rays of Moment (ZeptoMail Test)',
+                        text: 'This is a test email to verify the SMTP / ZeptoMail configuration is working correctly.',
+                        html: '<p>This is a test email to verify the <strong>SMTP / ZeptoMail</strong> configuration is working correctly.</p>'
+                      })
+                    });
+                    const data = await res.json();
+                    toast.dismiss();
+                    if (res.ok) {
+                      toast.success(`Email sent successfully! Message ID: ${data.messageId || 'Unknown'}`);
+                    } else {
+                      toast.error(`Error: ${data.error || data.details || 'Check logs'}`);
+                    }
+                  } catch (err: any) {
+                    toast.dismiss();
+                    toast.error(`Request failed: ${err.message}`);
+                  }
+                }}
+                className="px-4 py-2 bg-white border border-gray-200 text-black rounded-xl font-medium hover:bg-gray-50 transition-colors whitespace-nowrap"
+              >
+                Send Test Email
+              </button>
+            </div>
+          </div>
+
+          {/* Anniversaries Notification */}
+          {anniversaries.length > 0 && (
+            <div className="mb-8 bg-gradient-to-r from-pink-50 to-rose-50 p-6 rounded-2xl shadow-sm border border-pink-100 relative overflow-hidden">
+              <div className="relative z-10">
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="p-2 bg-pink-100 rounded-full">
+                    <Heart className="w-6 h-6 text-pink-500" />
+                  </div>
+                  <h2 className="text-xl font-bold text-gray-900">Today's Client Anniversaries</h2>
+                </div>
+                <div className="space-y-3">
+                  {anniversaries.map(anni => (
+                    <div key={anni.id} className="bg-white/80 p-4 rounded-xl flex items-center justify-between shadow-sm border border-pink-50">
+                      <div>
+                        <p className="font-bold text-gray-900">{anni.clientName}</p>
+                        <p className="text-sm text-gray-500">
+                          {new Date().getFullYear() - new Date(anni.date || anni.createdAt).getFullYear()} Year Anniversary • {anni.eventType}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => handleWhatsAppAnniversary(anni)}
+                        className="flex items-center space-x-2 px-4 py-2 bg-[#25D366] text-white rounded-lg hover:bg-[#128C7E] transition-colors font-medium text-sm"
+                      >
+                        <MessageSquare className="w-4 h-4" />
+                        <span>Send Wishes</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
 
       {(role === 'photographer' || role === 'editor' || role === 'other') && (
@@ -193,6 +373,19 @@ const Dashboard: React.FC<DashboardProps> = ({ user, role }) => {
                             {order.status}
                           </span>
                           <p className="text-sm font-bold text-gray-900">₹{order.totalAmount}</p>
+                          {role === 'admin' && (
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault();
+                                handleDeleteOrder(order.id);
+                              }}
+                              disabled={deletingId === order.id}
+                              className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                              title="Delete Order"
+                            >
+                              {deletingId === order.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>

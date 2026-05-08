@@ -7,6 +7,7 @@ import { checkUpcomingEvents } from './services/notificationService';
 import { Toaster } from 'sonner';
 import AppRootErrorBoundary from './components/AppRootErrorBoundary';
 import Navbar from './components/Navbar';
+import Footer from './components/Footer';
 import Auth from './components/Auth';
 import Dashboard from './components/Dashboard';
 import StudioHub from './components/StudioHub';
@@ -42,6 +43,11 @@ import Reviews from './components/Reviews';
 import OtherServices from './components/OtherServices';
 import Blog from './components/Blog';
 import BlogPostDetail from './components/BlogPostDetail';
+import PrivacyPolicy from './components/PrivacyPolicy';
+import TermsConditions from './components/TermsConditions';
+import RefundPolicy from './components/RefundPolicy';
+import FloatingBackground from './components/FloatingBackground';
+import InvoiceView from './components/InvoiceView';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -85,6 +91,18 @@ export default function App() {
               createdAt: new Date().toISOString()
             };
             await setDoc(userDocRef, userData);
+            
+            // Send welcome email
+            if (currentUser.email) {
+              import('./utils/emailHelper').then(({ sendEmail }) => {
+                sendEmail({
+                  to: currentUser.email!,
+                  subject: 'Welcome to Rays of Moment!',
+                  text: `Hi ${currentUser.displayName || ''},\n\nWelcome to Rays of Moment! We are thrilled to have you here.\n\nBest regards,\nThe Rays of Moment Team`
+                });
+              });
+            }
+            
             if (isMounted) setRole(determinedRole);
             
             // Check for upcoming events for new user
@@ -139,7 +157,8 @@ export default function App() {
     <AppRootErrorBoundary>
       <CartProvider>
         <Router>
-          <div className="min-h-screen bg-gray-50 flex flex-col">
+          <div className="min-h-screen relative flex flex-col">
+            <FloatingBackground />
             <Navbar user={user} role={role} />
             <main className="flex-grow">
               <Routes>
@@ -158,10 +177,11 @@ export default function App() {
               <Route path="/assignments" element={user && (role === 'admin' || role === 'photographer' || role === 'editor' || role === 'other') ? <AssignmentsAndPayments user={user} role={role} /> : <Navigate to="/auth" />} />
               <Route path="/bookings" element={user && (role === 'admin' || role === 'photographer' || role === 'editor') ? <BookingManagement user={user} role={role} /> : <Navigate to="/auth" />} />
               <Route path="/wip" element={user && (role === 'admin' || role === 'photographer' || role === 'editor') ? <WorkInProgress user={user} role={role} /> : <Navigate to="/auth" />} />
-              <Route path="/find-my-photos" element={<FindMyPhotos user={user} role={role} />} />
-              <Route path="/photo-selection" element={<PhotoSelection user={user} role={role} />} />
-              <Route path="/photo-selection/:bookingId" element={<PhotoSelection user={user} role={role} />} />
-              <Route path="/payment" element={<Payment user={user} role={role} />} />
+              <Route path="/find-my-photos" element={user ? <FindMyPhotos user={user} role={role} /> : <Navigate to="/auth" />} />
+              <Route path="/photo-selection" element={user ? <PhotoSelection user={user} role={role} /> : <Navigate to="/auth" />} />
+              <Route path="/photo-selection/:bookingId" element={user ? <PhotoSelection user={user} role={role} /> : <Navigate to="/auth" />} />
+              <Route path="/invoice/:id" element={<InvoiceView />} />
+              <Route path="/payment" element={user ? <Payment user={user} role={role} /> : <Navigate to="/auth" />} />
               <Route path="/payment-management" element={user && role === 'admin' ? <PaymentManagement role={role} /> : <Navigate to="/auth" />} />
               <Route path="/financial-overview" element={user && role === 'admin' ? <FinancialOverview userRole={role} /> : <Navigate to="/auth" />} />
               <Route path="/event-costs" element={user && (role === 'admin' || role === 'photographer' || role === 'editor') ? <EventCostManagement user={user} role={role} /> : <Navigate to="/auth" />} />
@@ -176,10 +196,14 @@ export default function App() {
               <Route path="/gallery/:galleryId" element={<Gallery user={user} role={role} />} />
               <Route path="/blog" element={<Blog user={user} role={role} />} />
               <Route path="/blog/:postId" element={<BlogPostDetail user={user} role={role} />} />
+              <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+              <Route path="/terms-conditions" element={<TermsConditions />} />
+              <Route path="/refund-policy" element={<RefundPolicy />} />
               <Route path="/payment-success" element={<PaymentSuccess />} />
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>
           </main>
+          <Footer user={user} />
           <AIChatbot />
           <Toaster position="top-right" />
         </div>

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { User } from 'firebase/auth';
 import { collection, query, where, getDocs, doc, updateDoc, arrayUnion, arrayRemove } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -40,7 +41,7 @@ const FindMyPhotos: React.FC<FindMyPhotosProps> = ({ user, role }) => {
   const [booking, setBooking] = useState<Booking | null>(null);
   const [referenceImage, setReferenceImage] = useState<string | null>(null);
   const [searching, setSearching] = useState(false);
-  const [matchedPhotos, setMatchedPhotos] = useState<string[]>([]);
+  const [matchedPhotos, setMatchedPhotos] = useState<{ url: string; name: string }[]>([]);
   const [scanProgress, setScanProgress] = useState(0);
   
   // Admin states
@@ -91,11 +92,6 @@ const FindMyPhotos: React.FC<FindMyPhotosProps> = ({ user, role }) => {
   const handleFindBooking = async () => {
     if (!clientMobile) {
       toast.error('Please enter your mobile number');
-      return;
-    }
-
-    if (!user) {
-      toast.error('Please log in securely to find your photos.');
       return;
     }
 
@@ -160,62 +156,60 @@ const FindMyPhotos: React.FC<FindMyPhotosProps> = ({ user, role }) => {
       const faceMatcher = new faceapi.FaceMatcher(refDetection);
 
       // Use uploaded photos or fetch from Google Drive if link exists
-      let imageUrls = [...(booking.faceRecognitionPhotos || [])];
+      let images: { url: string; name: string }[] = (booking.faceRecognitionPhotos || []).map(url => ({ 
+        url, 
+        name: url.split('/').pop()?.split('?')[0] || 'manual-photo'
+      }));
       
       if (booking.googleDriveFolderUrl || booking.googleDriveFolderId) {
         const folderId = booking.googleDriveFolderId || extractDriveFolderId(booking.googleDriveFolderUrl || '');
         
         if (folderId) {
           try {
-            setScanProgress(5); // Initial progress for fetching Drive list
+            setScanProgress(5); 
             
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 15000);
 
-            // Use relative path for more reliable fetching
             const response = await fetch(`/api/drive/list/${folderId}`, {
               signal: controller.signal
             });
             clearTimeout(timeoutId);
 
-            if (!response.ok) {
-              const errorText = await response.text();
-              console.error(`Drive API failed with status ${response.status}:`, errorText);
-              throw new Error(`Failed to fetch from Drive API: ${response.status}`);
-            }
-            
-            const files = await response.json();
-            if (Array.isArray(files)) {
-              // Use relative path for drive images as well
-              const driveUrls = files.map((file: any) => `/api/drive/image/${file.id}`);
-              imageUrls = [...imageUrls, ...driveUrls];
+            if (response.ok) {
+              const files = await response.json();
+              if (Array.isArray(files)) {
+                const driveImages = files.map((file: any) => ({
+                  url: `/api/drive/image/${file.id}`,
+                  name: file.name
+                }));
+                images = [...images, ...driveImages];
+              }
             }
           } catch (err: any) {
             console.error('Error fetching Drive files:', err);
-            const isTimeout = err.name === 'AbortError';
-            toast.error(isTimeout ? 'Request timed out. Please try again.' : 'Failed to access Google Drive folder. Ensure it is connected in Studio Hub.');
           }
         }
       }
       
       // Fallback to samples if nothing found (demo purposes)
-      if (imageUrls.length === 0) {
-        imageUrls = [
-          'https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&q=80&w=800',
-          'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=800',
-          'https://images.unsplash.com/photo-1542038784456-1ea8e935640e?auto=format&fit=crop&q=80&w=800',
+      if (images.length === 0) {
+        images = [
+          { url: 'https://images.unsplash.com/photo-1511795409834-ef04bbd61622?auto=format&fit=crop&q=80&w=800', name: 'wedding-sample-1.jpg' },
+          { url: 'https://images.unsplash.com/photo-1519741497674-611481863552?auto=format&fit=crop&q=80&w=800', name: 'wedding-sample-2.jpg' },
+          { url: 'https://images.unsplash.com/photo-1542038784456-1ea8e935640e?auto=format&fit=crop&q=80&w=800', name: 'wedding-sample-3.jpg' },
         ];
       }
 
-      const matches: string[] = [];
-      const totalImages = imageUrls.length;
+      const matches: { url: string; name: string }[] = [];
+      const totalImages = images.length;
       
       for (let i = 0; i < totalImages; i++) {
         setScanProgress(Math.round(((i + 1) / totalImages) * 100));
         
         try {
-          let url = imageUrls[i];
-          // Use proxy for all non-local/non-blob images to avoid CORS issues with face-api
+          let url = images[i].url;
+          // Use proxy for all non-local/non-blob images
           if (url.startsWith('http') && !url.includes(window.location.host)) {
             url = `${window.location.origin}/api/proxy-image?url=${encodeURIComponent(url)}`;
           }
@@ -226,7 +220,7 @@ const FindMyPhotos: React.FC<FindMyPhotosProps> = ({ user, role }) => {
           for (const detection of detections) {
             const match = faceMatcher.findBestMatch(detection.descriptor);
             if (match.label !== 'unknown') {
-              matches.push(imageUrls[i]);
+              matches.push(images[i]);
               break;
             }
           }
@@ -557,17 +551,32 @@ const FindMyPhotos: React.FC<FindMyPhotosProps> = ({ user, role }) => {
           </div>
         ) : (
           <div className="space-y-8">
-            <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex items-center justify-between">
-              <div>
-                <h2 className="text-2xl font-bold text-gray-900">Welcome, {booking.clientName}!</h2>
-                <p className="text-gray-500">{booking.eventType} • {new Date(booking.eventDate).toLocaleDateString()}</p>
+            <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col md:flex-row items-center justify-between gap-4">
+              <div className="flex items-center space-x-4">
+                <div className="w-12 h-12 bg-black rounded-2xl flex items-center justify-center text-white">
+                  <LayoutGrid className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="text-xl md:text-2xl font-bold text-gray-900">Welcome, {booking.clientName}!</h2>
+                  <p className="text-gray-500 text-sm">{booking.eventType} • {new Date(booking.eventDate).toLocaleDateString()}</p>
+                </div>
               </div>
-              <button
-                onClick={() => setBooking(null)}
-                className="text-sm font-bold text-gray-400 hover:text-black transition-colors"
-              >
-                Change Booking
-              </button>
+              <div className="flex items-center space-x-3 w-full md:w-auto">
+                <Link
+                  to={`/photo-selection/${booking.id}`}
+                  className="flex-1 md:flex-none px-6 py-3 bg-black text-white rounded-xl font-bold hover:bg-gray-800 transition-all flex items-center justify-center space-x-2 shadow-lg shadow-black/10"
+                >
+                  <CheckCircle2 className="w-5 h-5" />
+                  <span>Shortlist Gallery</span>
+                </Link>
+                <button
+                  onClick={() => setBooking(null)}
+                  className="p-3 text-gray-400 hover:text-black transition-colors"
+                  title="Change Booking"
+                >
+                  <Settings className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -642,17 +651,20 @@ const FindMyPhotos: React.FC<FindMyPhotosProps> = ({ user, role }) => {
                 <div className="space-y-4 h-[400px] overflow-y-auto pr-2 custom-scrollbar">
                   {matchedPhotos.length > 0 ? (
                     <div className="grid grid-cols-2 gap-4">
-                      {matchedPhotos.map((url, i) => (
-                        <div key={i} className="aspect-square rounded-xl overflow-hidden shadow-sm border border-gray-100 relative group">
-                          <img src={url} alt={`Match ${i}`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                          <a 
-                            href={url} 
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="absolute bottom-2 right-2 p-2 bg-white/90 rounded-lg opacity-0 group-hover:opacity-100 transition-all shadow-sm"
-                          >
-                            <Upload className="w-4 h-4 text-black rotate-180" />
-                          </a>
+                      {matchedPhotos.map((photo, i) => (
+                        <div key={i} className="flex flex-col gap-2">
+                          <div className="aspect-square rounded-xl overflow-hidden shadow-sm border border-gray-100 relative group">
+                            <img src={photo.url} alt={photo.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            <a 
+                              href={photo.url} 
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="absolute bottom-2 right-2 p-2 bg-white/90 rounded-lg opacity-0 group-hover:opacity-100 transition-all shadow-sm"
+                            >
+                              <Upload className="w-4 h-4 text-black rotate-180" />
+                            </a>
+                          </div>
+                          <p className="text-[10px] font-bold text-gray-500 uppercase truncate px-1">{photo.name}</p>
                         </div>
                       ))}
                     </div>

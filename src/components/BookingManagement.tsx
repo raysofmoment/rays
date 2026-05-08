@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User } from 'firebase/auth';
 import { collection, query, orderBy, onSnapshot, deleteDoc, doc, updateDoc, addDoc, where, getDocs, writeBatch } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { Plus, Search, Filter, MoreVertical, Trash2, Edit2, ExternalLink, CheckCircle2, Clock, AlertCircle, TrendingUp, IndianRupee, Calendar as CalendarIcon, PieChart, Image as ImageIcon, ScanFace } from 'lucide-react';
+import { Plus, Search, Filter, MoreVertical, Trash2, Edit2, ExternalLink, CheckCircle2, Clock, AlertCircle, TrendingUp, IndianRupee, Calendar as CalendarIcon, PieChart, Image as ImageIcon, ScanFace, Share2 } from 'lucide-react';
 import { format, isValid } from 'date-fns';
 import { toast } from 'sonner';
 import { Link } from 'react-router-dom';
@@ -16,6 +16,31 @@ interface BookingManagementProps {
 
 const BookingManagement: React.FC<BookingManagementProps> = ({ user, role }) => {
   const [bookings, setBookings] = useState<any[]>([]);
+
+  const handleWhatsAppShare = (booking: any) => {
+    if (!booking.clientMobile) {
+      toast.error('No mobile number available for this client');
+      return;
+    }
+    const baseUrl = window.location.origin;
+    const items = [
+      `Hi *${booking.clientName}*, here are your project links from Rays of Moment:`,
+      '',
+      `🧾 *Invoice*: ${baseUrl}/invoice/${booking.id}`,
+      `💰 *Total Amount*: ₹${(booking.finalAmount || booking.totalPackageAmount).toLocaleString()}`,
+      `💳 *Payment Link*: ${baseUrl}/orders`,
+      `🖼️ *Photo Selection Link*: ${baseUrl}/photo-selection/${booking.id}`,
+      `🔍 *Find My Photos*: ${baseUrl}/find-my-photos`
+    ];
+    
+    let phoneStr = booking.clientMobile;
+    phoneStr = phoneStr.replace(/\D/g, '');
+    if (phoneStr.length === 10) {
+      phoneStr = '91' + phoneStr;
+    }
+    const message = encodeURIComponent(items.join('\n'));
+    window.open(`https://api.whatsapp.com/send?phone=${phoneStr}&text=${message}`, '_blank');
+  };
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -80,7 +105,30 @@ const BookingManagement: React.FC<BookingManagementProps> = ({ user, role }) => 
       }
 
       await batch.commit();
+      
+      // Send email
+      if (booking.clientEmail) {
+        import('../utils/emailHelper').then(({ sendEmail }) => {
+          sendEmail({
+            to: booking.clientEmail,
+            subject: `Order Accepted - Invoice ${invoiceNumber}`,
+            text: `Hi ${booking.clientName},\n\nYour order request has been accepted! Invoice ${invoiceNumber} has been generated.\nYour final bill amount is ₹${finalAmount.toLocaleString()}.\n\nThank you for choosing Rays of Moment!`,
+            html: `
+              <div style="font-family: sans-serif; padding: 20px;">
+                <h2>Order Accepted!</h2>
+                <p>Hi <strong>${booking.clientName}</strong>,</p>
+                <p>Your order request has been accepted! Invoice <strong>${invoiceNumber}</strong> has been generated.</p>
+                <p>Your final bill amount is: <strong>₹${finalAmount.toLocaleString()}</strong></p>
+                <br/>
+                <p>Thank you for choosing Rays of Moment!</p>
+              </div>
+            `
+          });
+        });
+      }
+
       toast.success(`Request accepted! Invoice ${invoiceNumber} generated.`);
+      handleWhatsAppShare({ ...booking, invoiceNumber, finalAmount });
     } catch (error) {
       console.error('Error accepting request:', error);
       toast.error('Failed to accept request');
@@ -134,9 +182,27 @@ const BookingManagement: React.FC<BookingManagementProps> = ({ user, role }) => 
   const confirmDelete = async () => {
     if (!itemToDelete) return;
     try {
-      await deleteDoc(doc(db, 'bookings', itemToDelete));
+      const batch = writeBatch(db);
+      batch.delete(doc(db, 'bookings', itemToDelete));
+      
+      // Find the associated order (if any)
+      const q = query(collection(db, 'orders'), where('bookingId', '==', itemToDelete));
+      const snap = await getDocs(q);
+      for (const d of snap.docs) {
+        batch.delete(doc(db, 'orders', d.id));
+        
+        // Delete associated payments for this order
+        const paymentsQuery = query(collection(db, 'payments'), where('orderId', '==', d.id));
+        const paymentsSnap = await getDocs(paymentsQuery);
+        paymentsSnap.forEach(p => {
+          batch.delete(doc(db, 'payments', p.id));
+        });
+      }
+      
+      await batch.commit();
       toast.success('Information deleted successfully');
     } catch (error) {
+      console.error('Error deleting project:', error);
       toast.error('Failed to delete information');
     } finally {
       setDeleteConfirmOpen(false);
@@ -435,9 +501,31 @@ const BookingManagement: React.FC<BookingManagementProps> = ({ user, role }) => 
                           <ImageIcon className="w-5 h-5" />
                         </div>
                       )}
-                      <button onClick={() => handleDelete(booking.id)} className="p-2 text-gray-400 hover:text-red-600 rounded-lg transition-colors">
-                        <Trash2 className="w-5 h-5" />
+                      <button 
+                        onClick={() => {
+                          const link = `${window.location.origin}/photo-selection/${booking.id}`;
+                          navigator.clipboard.writeText(link);
+                          toast.success('Selection link copied to clipboard!');
+                        }}
+                        className="p-2 text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
+                        title="Copy Photo Selection Link"
+                      >
+                        <CheckCircle2 className="w-5 h-5" />
                       </button>
+                      {role === 'admin' && (
+                        <>
+                          <button
+                            onClick={() => handleWhatsAppShare(booking)}
+                            className="p-2 text-green-500 hover:bg-green-50 rounded-lg transition-colors"
+                            title="Share on WhatsApp"
+                          >
+                            <Share2 className="w-5 h-5" />
+                          </button>
+                          <button onClick={() => handleDelete(booking.id)} className="p-2 text-gray-400 hover:text-red-600 rounded-lg transition-colors">
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>

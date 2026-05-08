@@ -52,7 +52,7 @@ const AIChatbot: React.FC = () => {
           }
         ],
         config: {
-          systemInstruction: "Be concise, friendly, and professional. Guide the user to relevant pages like /packages, /orders, or /gallery if needed. Always mention that Rays of Moment is dedicated to capturing moments and preserving memories.",
+          systemInstruction: "Be concise, friendly, and professional. Guide the user to relevant pages like /packages, /orders, or /gallery if needed. Always mention that Rays of Moment's tagline is 'Your moment our priority'.",
         }
       });
 

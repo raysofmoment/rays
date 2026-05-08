@@ -36,6 +36,10 @@ const Gallery: React.FC<GalleryProps> = ({ user, role }) => {
       try {
         const response = await fetch('/api/auth/google/status');
         if (!response.ok) return;
+        
+        const contentType = response.headers.get('content-type');
+        if (!contentType || !contentType.includes('application/json')) return;
+        
         const data = await response.json();
         setIsDriveConnected(data.connected);
       } catch (error) {
@@ -125,51 +129,16 @@ const Gallery: React.FC<GalleryProps> = ({ user, role }) => {
     }
   };
 
-  const handleDownloadAll = async () => {
-    if (photos.length === 0) {
-      toast.error('No photos to download');
-      return;
-    }
-
-    setDownloading(true);
-    const zip = new JSZip();
-    const toastId = toast.loading('Preparing your download...');
-
-    try {
-      const downloadPromises = photos.map(async (photo, index) => {
-        try {
-          // Use proxy to bypass CORS
-          const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(photo.url)}`;
-          const response = await fetch(proxyUrl);
-          if (!response.ok) throw new Error(`Proxy failed: ${response.statusText}`);
-          const blob = await response.blob();
-          const extension = photo.type === 'video' ? 'mp4' : 'jpg';
-          zip.file(`photo-${index + 1}.${extension}`, blob);
-        } catch (err) {
-          console.error(`Failed to download photo ${index + 1}:`, err);
-        }
-      });
-
-      await Promise.all(downloadPromises);
-      const content = await zip.generateAsync({ type: 'blob' });
-      saveAs(content, `${gallery.name.replace(/\s+/g, '_')}_Gallery.zip`);
-      toast.success('Download started!', { id: toastId });
-    } catch (error) {
-      console.error('Error creating zip:', error);
-      toast.error('Failed to download all photos', { id: toastId });
-    } finally {
-      setDownloading(false);
-    }
-  };
-
   const handleAddPhotoByUrl = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!galleryId || !newPhotoUrl) return;
 
     try {
+      const fileName = newPhotoUrl.split('/').pop()?.split('?')[0] || 'manual-upload';
       await addDoc(collection(db, `galleries/${galleryId}/photos`), {
         galleryId,
         url: newPhotoUrl,
+        name: fileName,
         thumbnailUrl: newPhotoUrl,
         type: newPhotoType,
         uploadedAt: new Date().toISOString()
@@ -191,6 +160,8 @@ const Gallery: React.FC<GalleryProps> = ({ user, role }) => {
     }
 
     setUploading(true);
+    const toastId = toast.loading(`Uploading ${acceptedFiles.length} file(s) to Drive...`);
+    
     try {
       for (const file of acceptedFiles) {
         const formData = new FormData();
@@ -219,16 +190,17 @@ const Gallery: React.FC<GalleryProps> = ({ user, role }) => {
         await addDoc(collection(db, `galleries/${galleryId}/photos`), {
           galleryId,
           url: data.url,
+          name: data.name || file.name,
           thumbnailUrl: data.thumbnailUrl,
           driveFileId: data.id,
           type,
           uploadedAt: new Date().toISOString()
         });
       }
-      toast.success('Files uploaded to Google Drive successfully!');
-    } catch (error) {
+      toast.success('Files uploaded and synced successfully!', { id: toastId });
+    } catch (error: any) {
       console.error('Upload error:', error);
-      toast.error('Failed to upload files');
+      toast.error(error.message || 'Failed to upload files', { id: toastId });
     } finally {
       setUploading(false);
     }
@@ -340,14 +312,6 @@ const Gallery: React.FC<GalleryProps> = ({ user, role }) => {
             <Share2 className="w-3 h-3 sm:w-4 sm:h-4" />
             <span>Share</span>
           </button>
-          <button 
-            onClick={handleDownloadAll}
-            disabled={downloading}
-            className="flex items-center space-x-2 px-3 sm:px-4 py-2 rounded-lg bg-black text-white text-[10px] sm:text-sm font-medium hover:bg-gray-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {downloading ? <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" /> : <Download className="w-3 h-3 sm:w-4 sm:h-4" />}
-            <span className="whitespace-nowrap">{downloading ? 'Zipping...' : 'Download'}</span>
-          </button>
         </div>
       </header>
 
@@ -411,7 +375,7 @@ const Gallery: React.FC<GalleryProps> = ({ user, role }) => {
                 rel="noopener noreferrer"
                 className="p-3 bg-white rounded-full text-black hover:bg-gray-100 transition-colors shadow-lg"
               >
-                {photo.type === 'video' ? <Play className="w-5 h-5" /> : <Download className="w-5 h-5" />}
+                {photo.type === 'video' ? <Play className="w-5 h-5" /> : <ExternalLink className="w-5 h-5" />}
               </a>
               {(role === 'admin' || role === 'team') && (
                 <button 
